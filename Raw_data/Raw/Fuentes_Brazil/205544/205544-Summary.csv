@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Buddy,205544,Mk10,,74,1203,99,3,3848,,,,,14,22:01:00 10-Jan-2021,23:26:57 04-May-2021,114,21:00:00 10-Jan-2021,08:00:00 04-May-2021,113,,,

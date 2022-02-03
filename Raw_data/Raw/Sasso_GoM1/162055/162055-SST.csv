@@ -1,0 +1,18 @@
+DeployID,Ptt,DepthSensor,Instr,Date,LocationQuality,Latitude,Longitude,Depth,Temperature,Source
+Green,162055,,Mk10,12:00:00 13-Feb-2017,,,,0.0,21.8,Status
+Green,162055,,Mk10,08:00:00 18-Feb-2017,,,,0.0,22.1,Status
+Green,162055,,Mk10,16:00:00 20-Feb-2017,,,,0.0,24.7,Status
+Green,162055,,Mk10,08:00:00 28-Feb-2017,,,,0.0,24.5,Status
+Green,162055,,Mk10,10:00:00 07-Mar-2017,,,,0.0,19.3,Status
+Green,162055,,Mk10,04:00:00 05-Apr-2017,,,,0.0,27.1,Status
+Green,162055,,Mk10,23:00:00 05-Apr-2017,,,,0.0,27.9,Status
+Green,162055,,Mk10,02:00:00 09-Apr-2017,,,,0.0,24.0,Status
+Green,162055,,Mk10,12:00:00 09-Apr-2017,,,,0.0,22.6,Status
+Green,162055,,Mk10,12:00:00 25-Apr-2017,,,,0.0,25.6,Status
+Green,162055,,Mk10,11:00:00 26-Apr-2017,,,,0.0,25.4,Status
+Green,162055,,Mk10,03:00:00 05-May-2017,,,,0.0,29.1,Status
+Green,162055,,Mk10,12:00:00 10-May-2017,,,,0.0,26.8,Status
+Green,162055,,Mk10,12:00:00 11-May-2017,,,,0.0,27.8,Status
+Green,162055,,Mk10,13:00:00 12-May-2017,,,,0.0,28.3,Status
+Green,162055,,Mk10,15:00:00 15-May-2017,,,,0.0,27.1,Status
+Green,162055,,Mk10,00:00:00 21-May-2017,,,,0.0,29.4,Status

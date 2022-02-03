@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Lasquinha,205537,Mk10,,78,3346,99,3,9961,,,,,14,23:51:40 24-Nov-2020,22:43:32 08-Jun-2021,196,01:00:00 25-Nov-2020,08:00:00 07-Jun-2021,194,,,

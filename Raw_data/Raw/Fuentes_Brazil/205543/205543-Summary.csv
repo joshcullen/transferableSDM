@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Black 4.4,205543,Mk10,,73,1269,99,3,3347,,,,,14,08:36:11 31-Dec-2020,11:50:16 23-Jun-2021,174,21:00:00 10-Jan-2021,23:03:43 26-Mar-2021,75,,,

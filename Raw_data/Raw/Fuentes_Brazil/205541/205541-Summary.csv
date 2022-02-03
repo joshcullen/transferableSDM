@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Luan,205541,Mk10,,78,2733,99,3,8493,,,,,14,19:53:21 02-Jan-2021,23:54:05 24-Aug-2021,234,17:00:00 02-Jan-2021,08:00:00 24-Aug-2021,234,,,

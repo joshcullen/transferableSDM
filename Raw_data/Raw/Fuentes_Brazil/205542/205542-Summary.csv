@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Mr. Green,205542,Mk10,,79,2430,99,3,7812,,,,,14,21:41:32 02-Jan-2021,08:47:54 17-Jul-2021,195,21:41:46 02-Jan-2021,08:00:00 16-Jul-2021,194,,,

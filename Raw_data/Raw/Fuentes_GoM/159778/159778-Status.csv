@@ -1,0 +1,7 @@
+DeployID,Ptt,DepthSensor,Instr,SW,RTC,Received,Time Offset,LocationQuality,Latitude,Longitude,Type,HauledOut,BrokenThermistor,BrokenLink,Transmits,BattVoltage,TransmitVoltage,TransmitCurrent,Temperature,Depth,MaxDepth,ZeroDepthOffset,LightLevel,NoDawnDusk,ReleaseType,ReleaseTime,InitiallyBroken,BurnMinutes,ReleaseDepth,FastGPSPower,TWICPower,PowerLimit,WetDry,MinWetDry,MaxWetDry,WetDryThreshold,StatusWord,TransmitPower,Resets,PreReleaseTilt,PreReleaseTiltSd,PreReleaseTiltCount,XmitQueue,FastGPSLocNumber,FastGPSFailures,BattDiscon
+159778,159778,,Mk10,,00:55:20 07-May-2016,00:55:21 07-May-2016,1,2,28.8963,-82.6112,CRC,0,0,,,,1.024,0.076,,,0.0,0,,,,,,,,,,,255,255,255,80,,,,,,,,51,9,
+159778,159778,,Mk10,,01:48:40 07-May-2016,01:48:41 07-May-2016,1,3,28.8944,-82.6138,CRC,0,0,,,,1.024,0.076,,,0.0,0,,,,,,,,,,,255,255,255,80,,,,,,,,52,9,
+159778,159778,,Mk10,,02:42:00 07-May-2016,02:42:01 07-May-2016,1,1,28.8958,-82.6110,CRC,0,0,,,,1.024,0.080,,,0.0,0,,,,,,,,,,,255,255,255,80,,,,,,,,53,9,
+159778,159778,,Mk10,,02:31:10 10-May-2016,02:31:11 10-May-2016,1,B,28.8310,-82.7794,CRC,0,0,,,,1.016,0.144,,,-40.0,0,,,,,,,,,,,92,33,255,91,,,,,,,,143,47,
+159778,159778,,Mk10,,,15:06:56 12-May-2016,,B,28.8372,-82.7984,CRC,0,0,,1738,3.568,1.016,0.120,25.50,,-40.0,0,,,,,,,,,,,255,33,255,91,,,,,,,,236,106,
+159778,159778,,Mk10,,,11:55:12 17-May-2016,,B,28.8325,-82.7918,,0,0,,2058,3.568,1.016,0.156,26.20,13.0,1878.0,0,,,,,,,,,,,,126,133,84,41301,,,,,,,,,

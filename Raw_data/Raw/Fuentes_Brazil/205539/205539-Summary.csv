@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Gustavo,205539,Mk10,,74,1610,99,3,4087,,,,,14,21:36:12 10-Dec-2020,19:16:18 04-Apr-2021,115,20:00:00 10-Dec-2020,07:41:19 04-Apr-2021,114,,,
