@@ -110,7 +110,15 @@ ggplot() +
   theme_bw() +
   facet_wrap(~ Ptt, scales = "free")
 
-# Check possible issues w/ 172677 and 175692
+# Check possible issues w/ 142658, 142659, 172677, and 175692
+lamont.gom2 %>%
+  filter(Ptt == 142658) %>%
+  slice(1:50)  #remove obs before 2017-09-22
+
+lamont.gom2 %>%
+  filter(Ptt == 142659) %>%
+  slice(1:50)  #remove obs before 2017-11-03
+
 lamont.gom2 %>%
   filter(Ptt == 172677) %>%
   slice(1:10)  #remove obs before 2019-01-01
@@ -122,6 +130,7 @@ lamont.gom2 %>%
 
 # Filter by date
 lamont.gom3 <- lamont.gom2 %>%
+  filter(!(Ptt %in% c(142658, 142659) & date < "2017-09-22")) %>%
   filter(!(Ptt %in% c(172677, 175692) & date < "2019-01-01"))
 
 # Check if data have been sufficiently filtered
@@ -135,8 +144,7 @@ plotly::ggplotly(
   ggplot() +
     geom_sf(data = north.am) +
     geom_sf(data = states) +
-    geom_path(data = lamont.gom3 %>%
-                filter(Ptt %in% c(172677, 175692)), aes(Longitude, Latitude, color = factor(Ptt)), alpha = 0.6) +
+    geom_path(data = lamont.gom3, aes(Longitude, Latitude, color = factor(Ptt)), alpha = 0.6) +
     theme_bw() +
     coord_sf(xlim = c(-96, -70), ylim = c(20, 31))
 )
@@ -356,7 +364,7 @@ for (i in 1:9) {
 #
 # ## Grab results and plot
 #
-# res.crw<- grab(fit.crw, what = "fitted", as_sf = FALSE)
+res.crw<- grab(fit.crw, what = "fitted", as_sf = FALSE)
 #
 #
 #
@@ -405,6 +413,41 @@ for (i in 1:9) {
 #   rename(x = lon, y = lat) %>%
 #   bayesmove::shiny_tracks(., 4326)
 #
+
+## Filter data only for GoM (Fuentes and Lamont[juv only])
+id.noaa <- dat4 %>%
+  filter(Region == 'GoM', Source %in% c('Lamont','Fuentes'), Age == 'Juv') %>%
+  filter(!str_detect(Ptt, "^169")) %>%
+  dplyr::select(Ptt) %>%
+  distinct() %>%
+  unlist()
+
+dat.noaa <- res.crw %>%
+  filter(id %in% id.noaa)
+
+plotly::ggplotly(
+  ggplot() +
+    geom_sf(data = north.am) +
+    geom_sf(data = states) +
+    geom_path(data = dat.noaa, aes(lon, lat, color = factor(id)), alpha = 0.6) +
+    theme_bw() +
+    coord_sf(xlim = c(-96, -70), ylim = c(20, 31))
+)
+
+# Add metadata column for "source"
+dat.noaa <- dat.noaa %>%
+  mutate(source = case_when(str_detect(id, "^159") ~ "Fuentes",
+                            TRUE ~ as.character("Lamont")
+                            ),
+         age = "Juv",
+         .before = id)
+
+dat.noaa2 <- dat.noaa %>%
+  dplyr::select(source, age, lon, lat)
+
+#export
+write.csv(dat.noaa2, "Processed_data/Fuentes_Lamont_Cm_juv_tracks.csv", row.names = FALSE)
+
 #
 #
 # ## Export results
