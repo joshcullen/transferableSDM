@@ -11,6 +11,7 @@ library(foieGras)
 library(rnaturalearth)
 library(tictoc)
 library(plotly)
+library(future)  #needed to properly run foieGras::osar() in parallel
 
 
 
@@ -67,7 +68,7 @@ fuentes.gom2<- fuentes.gom %>%
 
 # Check if data have been sufficiently filtered
 ggplot() +
-  geom_path(data = fuentes.gom2, aes(date, Latitude, color = factor(Ptt))) +
+  geom_path(data = fuentes.gom2, aes(date, Longitude, color = factor(Ptt))) +
   theme_bw() +
   facet_wrap(~ Ptt, scales = "free")
 
@@ -81,6 +82,44 @@ plotly::ggplotly(
     coord_sf(xlim = c(-85, -70), ylim = c(24, 31))
 )
 
+fuentes.gom2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+
+
+# Filter by longitude for Crystal River pre-deployment locations
+cr.filt.dates <- fuentes.gom2 %>%
+  filter(str_detect(Ptt, "^159")) %>%
+  group_by(Ptt) %>%
+  filter(Longitude < -82.7) %>%
+  slice(1) %>%
+  dplyr::select(date) %>%
+  group_split()
+
+fuentes.gom3 <- fuentes.gom2 %>%
+  split(.$Ptt)
+
+fuentes.gom3[1:5] <- fuentes.gom3[1:5] %>%
+  map2(.x = ., .y = cr.filt.dates, ~{
+    .x %>%
+      filter(date >= .y$date)
+  })
+
+# Convert from list to data.frame and remove aberrant locs from end of 159774 track
+fuentes.gom3 <- bind_rows(fuentes.gom3) %>%
+  filter(!(Ptt == '159774' & date > as_datetime('2016-07-04 12:00:05')))
+
+# Check if data have been sufficiently filtered
+ggplot() +
+  geom_path(data = fuentes.gom3, aes(date, Longitude, color = factor(Ptt))) +
+  theme_bw() +
+  facet_wrap(~ Ptt, scales = "free")
+
+fuentes.gom3 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
 
 
 
@@ -308,7 +347,7 @@ plotly::ggplotly(
 ######################################################################
 
 # merge all filtered datasets back together
-dat3 <- rbind(fuentes.gom2,
+dat3 <- rbind(fuentes.gom3,
               lamont.gom3,
               sasso.gom2,
               fuentes.fdn,
@@ -343,7 +382,7 @@ dat5<- dat4 %>%
 ## Run model (w/o predicting; no track regularization) for all IDs at once since not hierarchical model
 tic()
 fit.crw <- fit_ssm(dat5, vmax = 3, model = "crw", time.step = NA, control = ssm_control(verbose = 1))
-toc()  #took 28 min where time.step = NA
+toc()  #took 2 min where time.step = NA
 
 # Check convergence and positive-definite Hessian matrices
 oo <- 1
@@ -355,66 +394,84 @@ for (i in 1:9) {
 
 
 
-# # Viz the filtered outliers (gold), raw observations (blue), and estimated locations (red), along with associated uncertainty (red shading)
-# plot(fit.crw, what = "fitted", type = 1, ask = TRUE)
-# plot(fit.crw, what = "fitted", type = 2, ask = TRUE)
-#
-#
-#
-#
-# ## Grab results and plot
-#
-res.crw<- grab(fit.crw, what = "fitted", as_sf = FALSE)
-#
-#
-#
-#
-# # Compare raw tracks vs fitted tracks (for adults tagged at Fernando de Noronha)
-# ggplot() +
-#   geom_sf(data = Br) +
-#   geom_path(data = dat4 %>%
-#               filter(str_detect(id, "^205")),
-#             aes(lon, lat, group = id), color = 'black') +  #raw tracks
-#   geom_path(data = res.crw %>%
-#               filter(str_detect(id, "^205")),
-#             aes(lon, lat, group = id), color = "blue") +  #modeled tracks
-#   theme_bw() +
-#   facet_wrap(~id) +
-#   coord_sf(xlim = c(-40, -32), ylim = c(-7, -1))
-#
-#
-# # Compare raw tracks vs fitted tracks (for juveniles tagged near Paranagua)
-# ggplot() +
-#   geom_sf(data = Br) +
-#   geom_path(data = dat4 %>%
-#               filter(!str_detect(id, "^205")),
-#             aes(lon, lat, group = id), color = 'black') +  #raw tracks
-#   geom_path(data = res.crw %>%
-#               filter(!str_detect(id, "^205")),
-#             aes(lon, lat, group = id), color = "blue") +  #modeled tracks
-#   theme_bw() +
-#   facet_wrap(~id) +
-#   coord_sf(xlim = c(-49, -38), ylim = c(-27, -15))
-#
-#
-# # Viz modeled tracks by together
-# ggplot() +
-#   geom_sf(data = Br) +
-#   geom_path(data = res.crw, aes(lon, lat, group = id, color = id)) +
-#   scale_color_viridis_d(option = "inferno") +
-#   theme_bw() +
-#   coord_sf(xlim = c(-49, -32), ylim = c(-27, -1))
-#
-#
-#
-# # Interactively viz time-series of tracks
-# res.crw %>%
-#   dplyr::select(-c(x, y)) %>%
-#   rename(x = lon, y = lat) %>%
-#   bayesmove::shiny_tracks(., 4326)
-#
+# Viz the filtered outliers (gold), raw observations (blue), and estimated locations (red), along with associated uncertainty (red shading)
+plot(fit.crw, what = "fitted", type = 1, ask = TRUE)
+plot(fit.crw, what = "fitted", type = 2, ask = TRUE)
 
-## Filter data only for GoM (Fuentes and Lamont[juv only])
+fmap(x = fit.crw, y = NULL, what = "fitted")
+
+
+
+## Grab results and plot
+
+res.crw<- grab(fit.crw, what = "fitted", as_sf = FALSE)
+
+
+
+
+# Compare raw tracks vs fitted tracks (for adults tagged at Fernando de Noronha)
+ggplot() +
+  geom_sf(data = brazil) +
+  geom_path(data = dat5 %>%
+              filter(str_detect(id, "^205")),
+            aes(lon, lat, group = id), color = 'black') +  #raw tracks
+  geom_path(data = res.crw %>%
+              filter(str_detect(id, "^205")),
+            aes(lon, lat, group = id), color = "blue") +  #modeled tracks
+  theme_bw() +
+  facet_wrap(~id) +
+  coord_sf(xlim = c(-40, -32), ylim = c(-7, -1))
+
+
+# Compare raw tracks vs fitted tracks (for juveniles tagged near Paranagua)
+ggplot() +
+  geom_sf(data = brazil) +
+  geom_path(data = dat5 %>%
+              filter(!str_detect(id, "^205")),
+            aes(lon, lat, group = id), color = 'black') +  #raw tracks
+  geom_path(data = res.crw %>%
+              filter(!str_detect(id, "^205")),
+            aes(lon, lat, group = id), color = "blue") +  #modeled tracks
+  theme_bw() +
+  facet_wrap(~id) +
+  coord_sf(xlim = c(-49, -38), ylim = c(-27, -15))
+
+
+# Viz modeled tracks together
+ggplot() +
+  geom_sf(data = brazil) +
+  geom_path(data = res.crw, aes(lon, lat, group = id, color = id)) +
+  scale_color_viridis_d(option = "inferno") +
+  theme_bw() +
+  coord_sf(xlim = c(-49, -32), ylim = c(-27, -1))
+
+
+
+# Interactively viz time-series of tracks
+res.crw %>%
+  dplyr::select(-c(x, y, s.se)) %>%
+  filter(lon < 0 & lat > 0) %>%
+  rename(x = lon, y = lat) %>%
+  dplyr::select(id, date, x, y) %>%
+  data.frame() %>%  #current version of shiny_tracks won't work w/ tibble format or when a column has all NAs
+  bayesmove::shiny_tracks(., 4326)
+
+
+
+
+
+
+## Export results
+
+# write.csv(res.crw, "Processed_data/Processed_Cm_Tags_SSM.csv", row.names = FALSE)  #add info here to save your data
+
+
+
+
+
+
+
+## Filter data only for GoM (Fuentes and Lamont[juv only]) for NOAA
 id.noaa <- dat4 %>%
   filter(Region == 'GoM', Source %in% c('Lamont','Fuentes'), Age == 'Juv') %>%
   filter(!str_detect(Ptt, "^169")) %>%
@@ -438,18 +495,12 @@ plotly::ggplotly(
 dat.noaa <- dat.noaa %>%
   mutate(source = case_when(str_detect(id, "^159") ~ "Fuentes",
                             TRUE ~ as.character("Lamont")
-                            ),
-         age = "Juv",
-         .before = id)
+  ),
+  age = "Juv",
+  .before = id)
 
 dat.noaa2 <- dat.noaa %>%
   dplyr::select(source, age, lon, lat)
 
 #export
-write.csv(dat.noaa2, "Processed_data/Fuentes_Lamont_Cm_juv_tracks.csv", row.names = FALSE)
-
-#
-#
-# ## Export results
-#
-# #write.csv(res.crw,)  #add info here to save your data
+# write.csv(dat.noaa2, "Processed_data/Fuentes_Lamont_Cm_juv_tracks.csv", row.names = FALSE)
