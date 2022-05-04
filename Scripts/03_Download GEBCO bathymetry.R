@@ -1,12 +1,12 @@
 
-### Download GEBCO (2019) bathymetry data for each region ###
+### Define extents on which to download GEBCO (2021) bathymetry data for each region from website ###
+# https://download.gebco.net
 
 library(tidyverse)
 library(terra)
 library(sf)
 library(cmocean)
 
-source('Scripts/helper functions.R')
 
 
 ## Load processed tracks
@@ -27,10 +27,10 @@ gom.bbox <- st_bbox(turts.gom)
 bbox.gom <- terra::rast(xmin = gom.bbox[1], xmax = gom.bbox[3], ymin = gom.bbox[2], ymax = gom.bbox[4],
                         resolution = 15/3600, crs = "epsg:4326")
 bbox.gom <- extend(bbox.gom, 50)  #pad each side by 5 cells (w/ 15 arc sec resolution)
+ext(bbox.gom)
 
-
-## Download GEBCO 2019 bathymetry for GoM extent
-gom.rast <- get_gebco(bbox.gom)
+## Load GEBCO bathymetry for GoM extent
+gom.rast <- rast("Environ_data/GoM bathymetry.tif")
 
 
 ## Plot bathymetry data and tracks
@@ -62,10 +62,10 @@ brazil.bbox <- st_bbox(turts.brazil)
 bbox.brazil <- terra::rast(xmin = brazil.bbox[1], xmax = brazil.bbox[3], ymin = brazil.bbox[2],
                            ymax = brazil.bbox[4], resolution = 15/3600, crs = "epsg:4326")
 bbox.brazil <- extend(bbox.brazil, 50)  #pad each side by 5 cells (w/ 15 arc sec resolution)
+ext(bbox.brazil)
 
-
-## Download GEBCO 2019 bathymetry for Brazil extent
-brazil.rast <- get_gebco(bbox.brazil)
+## Load GEBCO bathymetry for Brazil extent
+brazil.rast <- rast("Environ_data/Brazil bathymetry.tif")
 
 
 ## Plot bathymetry data and tracks
@@ -97,10 +97,10 @@ qatar.bbox <- st_bbox(turts.qatar)
 bbox.qatar <- terra::rast(xmin = qatar.bbox[1], xmax = qatar.bbox[3], ymin = qatar.bbox[2],
                            ymax = qatar.bbox[4], resolution = 15/3600, crs = "epsg:4326")
 bbox.qatar <- extend(bbox.qatar, 50)  #pad each side by 5 cells (w/ 15 arc sec resolution)
+ext(bbox.qatar)
 
-
-## Download GEBCO 2019 bathymetry for Qatar extent
-qatar.rast <- get_gebco(bbox.qatar)
+## Load GEBCO bathymetry for Qatar extent
+qatar.rast <- rast("Environ_data/Qatar bathymetry.tif")
 
 
 ## Plot bathymetry data and tracks
@@ -117,8 +117,3 @@ ggplot() +
 
 
 
-### Export bathymetry rasters ###
-
-terra::writeRaster(gom.rast, "Environ_data/GoM bathymetry.tif")
-terra::writeRaster(brazil.rast, "Environ_data/Brazil bathymetry.tif")
-terra::writeRaster(qatar.rast, "Environ_data/Qatar bathymetry.tif")
