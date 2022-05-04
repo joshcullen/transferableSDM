@@ -27,7 +27,7 @@ dat.fast<- list.files(path = "./Raw_data/Raw/Fuentes_Brazil",
   rename(DeployID = Name, Date = InitTime)
 
 # Remove any FastGPS locations with Residual > 30
-dat.fast2<- filter(dat.fast, Residual < 31 | is.na(Residual))
+# dat.fast2<- filter(dat.fast, Residual < 31 | is.na(Residual))
 
 
 
@@ -35,7 +35,7 @@ dat.fast2<- filter(dat.fast, Residual < 31 | is.na(Residual))
 
 ## Merge 'Satellites' and 'Residual' columns from dat.fast with dat.loc
 dat.loc2<- left_join(dat.loc,
-                     dat.fast2[,c("DeployID","Date","Satellites","Residual")],
+                     dat.fast[,c("DeployID","Date","Satellites","Residual")],
                      by = c('DeployID','Date'))
 # The number of obs increases by 748, but this is just due to duplicates being inserted from dat.fast2 for some reason when using left_join(); these can be filtered later during data cleaning
 

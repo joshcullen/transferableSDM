@@ -52,6 +52,7 @@ glimpse(dat3)
 
 table(dat3$Type, useNA = 'ifany')
 table(dat3$Ptt, useNA = 'ifany')
+table(dat3$Quality, useNA = 'ifany')
 
 # Look at no. of obs by region and age class (before filtering by behavioral state)
 dat3 %>%
@@ -65,7 +66,7 @@ dat3 %>%
 ## Qatar, Juv:     1582
 
 dat3$Date<- as_datetime(dat3$Date)
-dat3$Quality<- ifelse(dat3$Type == "FastGPS", NA, dat3$Quality)
+# dat3$Quality<- ifelse(dat3$Type == "FastGPS", NA, dat3$Quality)
 
 glimpse(dat3)
 table(dat3$Quality, useNA = 'ifany')
@@ -195,4 +196,4 @@ ggplot() +
 
 ### Export master data.frame
 
-# write.csv(dat3, "Raw_data/Master Sat Tag Dataset.csv", row.names = FALSE)
+write.csv(dat3, "Raw_data/Master Sat Tag Dataset.csv", row.names = FALSE)

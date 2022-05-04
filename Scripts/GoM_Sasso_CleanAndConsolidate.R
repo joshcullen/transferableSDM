@@ -27,7 +27,7 @@ dat.fast<- list.files(path = "./Raw_data/Raw/Sasso_GoM1",
   rename(Ptt = Name, Date = InitTime, Type = InitType)
 
 # Remove any FastGPS locations with Residual > 30
-dat.fast<- filter(dat.fast, Residual < 31 | is.na(Residual))
+# dat.fast<- filter(dat.fast, Residual < 31 | is.na(Residual))
 
 
 
@@ -49,7 +49,7 @@ dat.chazz.fast<- list.files(path = "./Raw_data/Raw/Sasso_GoM2",
   rename(Ptt = Name)
 
 # Remove any FastGPS locations with Residual > 30
-dat.chazz.fast<- filter(dat.chazz.fast, Residual < 31 | is.na(Residual))
+# dat.chazz.fast<- filter(dat.chazz.fast, Residual < 31 | is.na(Residual))
 
 
 
@@ -65,6 +65,11 @@ dat.chazz.loc2<- left_join(dat.chazz.loc, dat.chazz.fast[,c("Ptt","Latitude","Lo
                            by = c('Ptt','Latitude','Longitude'))
 # The number of obs increases by 24, but this is just due to duplicates being inserted from dat.chazz.fast for some reason when using left_join(); these can be filtered later during data cleaning
 
+
+## Add number of satellites (for FastGPS) to 'Quality' column
+dat.chazz.loc2$Quality <- ifelse(dat.chazz.loc2$Type == "GPS",
+                                 dat.chazz.loc2$Satellites,
+                                 dat.chazz.loc2$Quality)
 
 
 
