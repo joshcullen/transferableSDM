@@ -1,4 +1,18 @@
 
+# function to convert list object from rerddapXtracto::rxtracto() into a data.frame for ggplot
+array2df <- function(lon, lat, var, var.name, time) {
+  dims <- dim(var)
+  rast.df <- expand.grid(x = lon, y = lat, time = time)
+  rast.df$var <- array(apply(var, 3, rbind), dims[1] * dims[2] * dims[3])
+  names(rast.df)[4] <- var.name
+  rast.df <- data.frame(rast.df) %>%
+    mutate(across(everything(), as.vector))
+
+  return(rast.df)
+}
+
+#---------------------------
+
 ### Utility functions to download GEBCO_2019 bathymetry data from Github gist
 # https://gist.github.com/mdsumner/dea21c65674108574bab22cf6f011f8d
 
