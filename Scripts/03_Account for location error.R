@@ -66,7 +66,7 @@ mean(speed$mean.speed) * 3600  #turtles typically can travel ~1 km in 1 hr
 ## Run model (w/o predicting; no track regularization) for all IDs at once since not hierarchical model
 tic()
 fit.crw <- fit_ssm(dat2, vmax = 3, model = "crw", time.step = 4, control = ssm_control(verbose = 1))
-toc()  #took 5.5 min where time.step = 1
+toc()  #took 5 min where time.step = 4
 
 # Check convergence and positive-definite Hessian matrices
 oo <- 1
@@ -88,7 +88,7 @@ map(x = fit.crw, y = NULL, what = "fitted")
 
 ## Grab results and plot
 
-res.crw<- grab(fit.crw, what = "fitted", as_sf = FALSE)
+res.crw<- grab(fit.crw, what = "predicted", as_sf = FALSE)
 
 
 
@@ -108,17 +108,17 @@ ggplot() +
 
 
 # Compare raw tracks vs fitted tracks (for juveniles tagged near Paranagua)
-ggplot() +
-  geom_sf(data = brazil) +
-  geom_path(data = dat2 %>%
-              filter(!str_detect(id, "^205")),
-            aes(lon, lat, group = id), color = 'black') +  #raw tracks
-  geom_path(data = res.crw %>%
-              filter(!str_detect(id, "^205")),
-            aes(lon, lat, group = id), color = "blue") +  #modeled tracks
-  theme_bw() +
-  facet_wrap(~id) +
-  coord_sf(xlim = c(-49, -38), ylim = c(-27, -15))
+# ggplot() +
+#   geom_sf(data = brazil) +
+#   geom_path(data = dat2 %>%
+#               filter(!str_detect(id, "^205")),
+#             aes(lon, lat, group = id), color = 'black') +  #raw tracks
+#   geom_path(data = res.crw %>%
+#               filter(!str_detect(id, "^205")),
+#             aes(lon, lat, group = id), color = "blue") +  #modeled tracks
+#   theme_bw() +
+#   facet_wrap(~id) +
+#   coord_sf(xlim = c(-49, -38), ylim = c(-27, -15))
 
 
 # Viz modeled tracks together
@@ -147,7 +147,7 @@ res.crw %>%
 
 ## Export results
 
-# write.csv(res.crw, "Processed_data/Processed_Cm_Tracks_SSM.csv", row.names = FALSE)  #add info here to save your data
+# write.csv(res.crw, "Processed_data/Processed_Cm_Tracks_SSM_4hr.csv", row.names = FALSE)
 
 
 
