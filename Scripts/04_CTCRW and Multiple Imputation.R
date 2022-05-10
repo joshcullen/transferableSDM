@@ -11,6 +11,10 @@ library(sf)
 library(ptolemy)
 library(crawlUtils)
 library(trip)
+library(doRNG)  #only needed when running sourced function cu_crw_sample()
+
+# load in modified {crawlUtils} functions (that I know work)
+source("Scripts/crawlUtils functions.R")
 
 
 ### Load turtle track data ###
@@ -36,18 +40,17 @@ ggplot(dat, aes(Longitude, Latitude, color = keep)) +
   coord_equal()
 
 
+## Filter data to only retain locs from GoM and that passed sda filter
 
 dat.filt <- dat %>%
   filter(keep == TRUE) %>%
   dplyr::select(-keep)
 
-
-
 dat.gom <- dat.filt %>%
   filter(Region == 'GoM' & Longitude < -80 & Longitude > -100)
 
 dat.gom.sf <- dat.gom %>%
-  st_as_sf(., coords = c('Longitude','Latitude'), crs = 4326) %>%
+  st_as_sf(., coords = c('Longitude','Latitude'), crs = 4326, remove = FALSE) %>%
   st_transform(3395)
 
 
@@ -80,14 +83,21 @@ dat.gom.sf %>%
 dat.tracks <- dat.gom.sf %>%
   filter(Ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
   janitor::clean_names() %>%
-  mutate(x = st_coordinates(.)[,1],
-         y = st_coordinates(.)[,2]) %>%
-  st_drop_geometry() %>%
+  # mutate(x = st_coordinates(.)[,1],
+  #        y = st_coordinates(.)[,2]) %>%
+  # st_drop_geometry() %>%
+  st_sf() %>%  #helps make use of dplyr::rename work below
   rename(datetime = date) %>%
   group_by(ptt) %>%
   arrange(datetime) %>%
   ungroup()
 
+
+## Define bouts per PTT where gap > 7 days (for splitting imputed tracks)
+int_tbl <- dat.tracks %>%
+  split(.$ptt) %>%
+  map(., ~mutate(.x, bout = cu_get_bouts(x = .$datetime, gap = 7, time_unit = "days"))) %>%
+  map(., ~cu_bout_summary(x = .x, bout = "bout"))
 
 
 
@@ -100,11 +110,10 @@ set.seed(123)
 dat.tracks.crawl <- cu_add_argos_cols(dat.tracks) %>%
   mutate(type = case_when(type == "Argos_kf" ~ "Argos_ls",
                           TRUE ~ type)) %>%
-  bayesmove::df_to_list(., ind = "ptt")
+  split(.$ptt)
 
-progressr::with_progress({
-  dat.tracks.crw <- cu_crw_argos(data_list = dat.tracks.crawl, bm = FALSE)
-})
+dat.tracks.crw <- cu_crw_argos(data_list = dat.tracks.crawl, bm = FALSE)
+
 
 
 ## Create Visibility Graph
@@ -112,10 +121,9 @@ vis_graph <- pathroutr::prt_visgraph(gom.sf)
 
 
 # Make predictions at 2 hr time interval
-progressr::with_progress({
-  dat.tracks.pred <- cu_batch_predict(fit_list = dat.tracks.crw, predTime = "2 hours",
-                                      barrier = gom.sf, vis_graph = vis_graph, crs = 3395)
-})
+dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "2 hours",
+                                      barrier = gom.sf, vis_graph = vis_graph)
+
 
 preds <- bind_rows(dat.tracks.pred) %>%
   group_by(ptt) %>%
@@ -124,47 +132,30 @@ preds <- bind_rows(dat.tracks.pred) %>%
 
 ggplot() +
   geom_sf(data = gom.sf) +
-  geom_point(data = dat.tracks, aes(x, y, color = ptt), size = 0.5) +
-  scale_color_viridis_d(option = "turbo") +
+  geom_sf(data = dat.tracks, aes(color = ptt), size = 0.5) +
   geom_sf(data = preds, aes(color = ptt), size = 0.5) +
   theme_bw()
 
 
 
 # Perform multiple imputation on tracks
+doFuture::registerDoFuture()
+plan("multisession")
+set.seed(123)
+
 nsims <- 20
 progressr::with_progress({
   dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "2 hours", size = nsims,
-                                   barrier = gom.sf, vis_graph = vis_graph, crs = 3395)
+                                   barrier = gom.sf, vis_graph = vis_graph)
 })
 
-## create own functions to generate multiple imputations to see if this fixes anything
-# proc_imp <- function(crw_fit, iter, predTime) {
-#
-#   simObj <- crw_fit %>%
-#     crawl::crwSimulator(predTime = predTime, parIS = 0)
-#
-#   sim_tracks = list()
-#   for (i in 1:iter) {
-#     sim_tracks[[i]] <- crawl::crwPostIS(simObj, fullPost = FALSE)
-#   }
-#
-#   sim_tracks.df <- sim_tracks %>%
-#     set_names(1:iter) %>%
-#     map(~{.$alpha.sim %>%
-#         as.data.frame()}) %>%
-#     bind_rows(.id = "rep")
-#
-#   return(sim_tracks.df)
-# }
-#
-# sims <- proc_imp(crw_fit = dat.tracks.crw[[2]], iter = 20, predTime = "1 hour")
+
 
 
 # Viz multiple imputations for tracks
 
 foo <- dat.tracks.sims %>%
-  set_names(unique(dat.tracks$ptt)) %>%
+  set_names(preds$ptt) %>%
   map(., set_names, 1:nsims) %>%
   # map_depth(2, ~{.$alpha.sim %>%
   #     as.data.frame()}) %>%
@@ -172,11 +163,16 @@ foo <- dat.tracks.sims %>%
   bind_rows(.id = "ptt") %>%
   mutate(rep = paste(ptt, rep, sep = "_"))
 
+# filter by the defined bout periods
+foo.bout <- foo %>%
+  split(.$ptt) %>%
+  map2(., int_tbl, ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
+  bind_rows()
 
-test <- foo %>%
-  # filter(id == 181800) %>%
-  group_by(ptt, rep) %>%
-  # slice(1:1000)
+
+test <- foo.bout %>%
+  filter(!is.na(bout)) %>%  #remove predictions that don't belong to a bout period
+  group_by(ptt, rep, bout) %>%
   summarize(do_union = FALSE) %>%
   st_cast("MULTILINESTRING")
 
@@ -189,44 +185,4 @@ plotly::ggplotly(
     coord_sf()
 )
 
-# ggplot() +
-#   geom_sf(data = gom.sf) +
-#   scale_color_viridis_d(option = "turbo") +
-#   geom_path(data = foo, aes(mu.x, mu.y, group = rep, color = ptt),
-#             size = 0.5, alpha = 0.5) +
-#   geom_path(data = preds, aes(mu.x, mu.y, group = ptt, color = ptt),
-#             size = 0.5) +
-#   geom_point(data = dat.tracks, aes(x, y, color = ptt), size = 0.5) +
-#   theme_bw() +
-#   coord_sf()
 
-
-
-## Check what's going on with imputed tracks for PTT 175692
-
-ggplot(dat.tracks %>%
-         filter(ptt == 175692), aes(datetime, y)) +
-  geom_point() +
-  theme_bw()
-## large gap towards beginning of track; try using tools from {crawlUtils} to investigate further and potentially split track before analysis
-
-ptt.175692 <- dat.tracks %>%
-  filter(ptt == 175692) %>%
-  st_as_sf(., coords = c('x','y'), crs = 3395)
-ptt.175692$bout <- cu_get_bouts(x = ptt.175692$datetime, gap = 7, time_unit = "days")
-
-
-
-cu_bout_summary <- function(x,bout){
-  datetime <- NULL
-  x <- x %>% group_by(.data[[bout]]) %>% st_drop_geometry() %>%
-    summarize(start=min(datetime), end=max(datetime))
-
-  return(x)
-}
-cu_bout_summary(x = ptt.175692, bout = "bout")
-
-
-test <- dat.tracks %>%
-  filter(ptt == 175692)
-test2 <- cu_join_interval_tbl(x = test, int_tbl = x)
