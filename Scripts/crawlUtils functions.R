@@ -31,6 +31,10 @@
 #         upper=c(rep(Inf,3), Inf, log(-log(1.0e-4)))
 #       )
 #       theta <- c(rep(log(1.2),3),9,0.5)
+#       # prior <- function(x) {
+#       #   dnorm(x[5], -4, 2, log = TRUE)
+#       # }
+#
 #     } else{
 #       err.model <- list(x =  ~0+ln.sd.x, y = ~0+ln.sd.y, rho= ~error.corr)
 #       fixPar <- c(1,1,NA,NA)
@@ -50,9 +54,9 @@
 #     suppressMessages(
 #       out <- crawl::crwMLE(
 #         mov.model = ~1, err.model = err.model, data = dat, Time.name="datetime",
-#         fixPar = fixPar, constr = constr, theta = theta,
-#         control = list(maxit=2000, trace = 1, REPORT = 1), initialSANN = list(maxit=1500, temp=10),
-#         attempts=10, method = "L-BFGS-B")
+#         fixPar = fixPar, constr = constr, theta = theta, prior = prior,
+#         control = list(maxit=2000, trace = 2, REPORT = 1), initialSANN = list(maxit=1500, temp=10),
+#         attempts=1, method = "L-BFGS-B", retrySD = 2)
 #     )
 #     p()
 #     out
@@ -125,6 +129,9 @@ cu_crw_sample <- function(size=8, fit_list, predTime, barrier=NULL, vis_graph=NU
     simObj <- crawl::crwSimulator(fit_list[[i]], parIS = 0, predTime=predTime)
     out <- foreach(j=1:size)%do%{
       samp <- crawl::crwPostIS(simObj, fullPost = FALSE)
+
+      samp$datetime <- lubridate::as_datetime(simObj$TimeNum*3600)  #modify based on helper function from Johnson et al 2021
+
       if(!is.null(barrier) & !is.null(vis_graph)){
         if (! requireNamespace("pathroutr", quietly = TRUE)) stop("Please install {pathroutr}: install.packages('pathroutr',repos='https://jmlondon.r-universe.dev')")
         samp <- samp %>% crawl::crw_as_sf(ftype="POINT", locType="p")
@@ -139,3 +146,4 @@ cu_crw_sample <- function(size=8, fit_list, predTime, barrier=NULL, vis_graph=NU
   }
   return(slist)
 }
+

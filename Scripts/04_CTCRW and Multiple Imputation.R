@@ -12,6 +12,8 @@ library(ptolemy)
 library(crawlUtils)
 library(trip)
 library(doRNG)  #only needed when running sourced function cu_crw_sample()
+library(tictoc)
+library(progressr)
 
 # load in modified {crawlUtils} functions (that I know work)
 source("Scripts/crawlUtils functions.R")
@@ -34,7 +36,7 @@ dat$keep <- trip(obj = dat %>%
 
 ## Viz filtered relocations
 
-ggplot(dat, aes(Longitude, Latitude, color = keep)) +
+ggplot(dat %>% filter(Ptt == 169273), aes(Longitude, Latitude, color = keep)) +
   geom_point(size = 0.5) +
   theme_bw() +
   coord_equal()
@@ -47,7 +49,7 @@ dat.filt <- dat %>%
   dplyr::select(-keep)
 
 dat.gom <- dat.filt %>%
-  filter(Region == 'GoM' & Longitude < -80 & Longitude > -100)
+  filter(Region == 'GoM' & Longitude < -74 & Longitude > -100)
 
 dat.gom.sf <- dat.gom %>%
   st_as_sf(., coords = c('Longitude','Latitude'), crs = 4326, remove = FALSE) %>%
@@ -68,20 +70,20 @@ dat.gom.sf %>%
   mapview::mapview(zcol = "Ptt", map.types = c("Esri.WorldImagery"))
 
 
-# plotly::ggplotly(
-#   ggplot() +
-#     geom_sf(data = gom.sf,
-#             fill = "grey60", size = 0.2) +
-#     geom_sf(data = dat.gom.sf, aes(color = Ptt),
-#             alpha = 0.1)
-# )
+plotly::ggplotly(
+  ggplot() +
+    geom_sf(data = gom.sf,
+            fill = "grey60", size = 0.2) +
+    geom_sf(data = dat.gom.sf %>% filter(Ptt == 169273), aes(color = Ptt),
+            alpha = 0.1)
+)
 
 
 
 ## Use PTT 159776, 181807 and 181800 as examples
 
 dat.tracks <- dat.gom.sf %>%
-  filter(Ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
+  # filter(Ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
   janitor::clean_names() %>%
   # mutate(x = st_coordinates(.)[,1],
   #        y = st_coordinates(.)[,2]) %>%
@@ -112,8 +114,9 @@ dat.tracks.crawl <- cu_add_argos_cols(dat.tracks) %>%
                           TRUE ~ type)) %>%
   split(.$ptt)
 
-dat.tracks.crw <- cu_crw_argos(data_list = dat.tracks.crawl, bm = FALSE)
-
+tic()
+dat.tracks.crw <- crawlUtils::cu_crw_argos(data_list = dat.tracks.crawl, bm = FALSE)
+toc()  #takes 2 min
 
 
 ## Create Visibility Graph
@@ -121,8 +124,10 @@ vis_graph <- pathroutr::prt_visgraph(gom.sf)
 
 
 # Make predictions at 2 hr time interval
+tic()
 dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "2 hours",
                                       barrier = gom.sf, vis_graph = vis_graph)
+toc()  #took 5 min to run
 
 
 preds <- bind_rows(dat.tracks.pred) %>%
@@ -131,8 +136,8 @@ preds <- bind_rows(dat.tracks.pred) %>%
   st_cast("MULTILINESTRING")
 
 ggplot() +
-  geom_sf(data = gom.sf) +
-  geom_sf(data = dat.tracks, aes(color = ptt), size = 0.5) +
+  # geom_sf(data = gom.sf) +
+  geom_sf(data = dat.tracks %>% filter(ptt %in% preds$ptt), aes(color = ptt), size = 0.5) +
   geom_sf(data = preds, aes(color = ptt), size = 0.5) +
   theme_bw()
 
@@ -143,19 +148,20 @@ doFuture::registerDoFuture()
 plan("multisession")
 set.seed(123)
 
-nsims <- 20
+nsims <- 5
+tic()
 progressr::with_progress({
-  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "2 hours", size = nsims,
+  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw[1], predTime = "2 hours", size = nsims,
                                    barrier = gom.sf, vis_graph = vis_graph)
 })
-
+toc()
 
 
 
 # Viz multiple imputations for tracks
 
 foo <- dat.tracks.sims %>%
-  set_names(preds$ptt) %>%
+  set_names(preds$ptt[1]) %>%
   map(., set_names, 1:nsims) %>%
   # map_depth(2, ~{.$alpha.sim %>%
   #     as.data.frame()}) %>%
@@ -166,7 +172,7 @@ foo <- dat.tracks.sims %>%
 # filter by the defined bout periods
 foo.bout <- foo %>%
   split(.$ptt) %>%
-  map2(., int_tbl, ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
+  map2(., int_tbl[1], ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
   bind_rows()
 
 
