@@ -127,7 +127,7 @@ vis_graph <- pathroutr::prt_visgraph(gom.sf)
 tic()
 dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "2 hours",
                                       barrier = gom.sf, vis_graph = vis_graph)
-toc()  #took 5 min to run
+toc()  #took 7 min to run
 
 
 preds <- bind_rows(dat.tracks.pred) %>%
@@ -151,17 +151,17 @@ set.seed(123)
 nsims <- 5
 tic()
 progressr::with_progress({
-  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw[1], predTime = "2 hours", size = nsims,
+  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "2 hours", size = nsims,
                                    barrier = gom.sf, vis_graph = vis_graph)
 })
-toc()
+toc()  #took 70 min to run
 
 
 
 # Viz multiple imputations for tracks
 
 foo <- dat.tracks.sims %>%
-  set_names(preds$ptt[1]) %>%
+  set_names(preds$ptt) %>%
   map(., set_names, 1:nsims) %>%
   # map_depth(2, ~{.$alpha.sim %>%
   #     as.data.frame()}) %>%
@@ -172,7 +172,7 @@ foo <- dat.tracks.sims %>%
 # filter by the defined bout periods
 foo.bout <- foo %>%
   split(.$ptt) %>%
-  map2(., int_tbl[1], ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
+  map2(., int_tbl, ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
   bind_rows()
 
 
