@@ -9,7 +9,7 @@ library(furrr)
 library(terra)
 library(sf)
 library(ptolemy)
-library(crawlUtils)
+library(crawlUtils)  #needs to be used w/ crawl v2.2.1 otherwise it crashes
 library(trip)
 library(doRNG)  #only needed when running sourced function cu_crw_sample()
 library(tictoc)
@@ -56,7 +56,7 @@ dat.gom.sf <- dat.gom %>%
   st_transform(3395)
 
 
-gom.sf <- ptolemy::extract_gshhg(data = dat.gom.sf, resolution = 'f')
+gom.sf <- ptolemy::extract_gshhg(data = dat.gom.sf, resolution = 'f', buffer = 50000)
 
 
 ggplot() +
@@ -115,7 +115,9 @@ dat.tracks.crawl <- cu_add_argos_cols(dat.tracks) %>%
   split(.$ptt)
 
 tic()
-dat.tracks.crw <- crawlUtils::cu_crw_argos(data_list = dat.tracks.crawl, bm = FALSE)
+# with_progress({
+  dat.tracks.crw <- crawlUtils::cu_crw_argos(data_list = dat.tracks.crawl, bm = FALSE)
+# })
 toc()  #takes 2 min
 
 
@@ -127,7 +129,7 @@ vis_graph <- pathroutr::prt_visgraph(gom.sf)
 tic()
 dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "2 hours",
                                       barrier = gom.sf, vis_graph = vis_graph)
-toc()  #took 7 min to run
+toc()  #took 7 min to run on laptop; 4.5 min on desktop
 
 
 preds <- bind_rows(dat.tracks.pred) %>%
@@ -136,7 +138,7 @@ preds <- bind_rows(dat.tracks.pred) %>%
   st_cast("MULTILINESTRING")
 
 ggplot() +
-  # geom_sf(data = gom.sf) +
+  geom_sf(data = gom.sf) +
   geom_sf(data = dat.tracks %>% filter(ptt %in% preds$ptt), aes(color = ptt), size = 0.5) +
   geom_sf(data = preds, aes(color = ptt), size = 0.5) +
   theme_bw()
