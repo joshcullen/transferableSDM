@@ -28,7 +28,7 @@ mid.east<- ne_countries(scale = 10, country = c("Qatar", "Iran", "Bahrain", "Sau
                                                 "United Arab Emirates"), returnclass = 'sf')
 
 
-## Generate time steps for data (along w/ SL, TA, and NSD)
+## Remove all LC Z locs
 dat2<- dat %>%
   rename(date = Date) %>%
   filter(Quality != "Z")  #remove Z LCs
@@ -58,6 +58,12 @@ fuentes.gom2<- fuentes.gom %>%
 
 
 # Check if data have been sufficiently filtered
+fuentes.gom2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+#potential issues w/ 159774 and 159783
+
 ggplot() +
   geom_path(data = fuentes.gom2, aes(date, Longitude, color = factor(Ptt))) +
   theme_bw() +
@@ -73,10 +79,7 @@ plotly::ggplotly(
     coord_sf(xlim = c(-85, -70), ylim = c(24, 31))
 )
 
-fuentes.gom2 %>%
-  rename(id = Ptt, x = Longitude, y = Latitude) %>%
-  dplyr::select(id, date, x, y) %>%
-  bayesmove::shiny_tracks(epsg = 4326)
+
 
 
 # Filter by longitude for Crystal River pre-deployment locations
@@ -135,6 +138,12 @@ lamont.gom2<- lamont.gom %>%
 
 
 # Check if data have been sufficiently filtered
+lamont.gom2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+#Likely undeployed locs in PTTs 142658, 142659, 161459, 172677, 175692
+
 ggplot() +
   geom_path(data = lamont.gom2, aes(date, Longitude, color = factor(Ptt))) +
   theme_bw() +
@@ -150,6 +159,10 @@ lamont.gom2 %>%
   slice(1:50)  #remove obs before 2017-11-03
 
 lamont.gom2 %>%
+  filter(Ptt == 161459) %>%
+  slice(1:100)  #remove obs before 2017-08-08 (roughly)
+
+lamont.gom2 %>%
   filter(Ptt == 172677) %>%
   slice(1:10)  #remove obs before 2019-01-01
 
@@ -161,7 +174,8 @@ lamont.gom2 %>%
 # Filter by date
 lamont.gom3 <- lamont.gom2 %>%
   filter(!(Ptt %in% c(142658, 142659) & date < "2017-09-22")) %>%
-  filter(!(Ptt %in% c(172677, 175692) & date < "2019-01-01"))
+  filter(!(Ptt %in% c(172677, 175692) & date < "2019-01-01")) %>%
+  filter(!(Ptt %in% 161459 & date < "2017-08-08"))
 
 # Check if data have been sufficiently filtered
 ggplot() +
@@ -208,6 +222,11 @@ sasso.gom2<- sasso.gom %>%
 
 
 # Check if data have been sufficiently filtered
+sasso.gom2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+
 ggplot() +
   geom_path(data = sasso.gom2, aes(date, Longitude, color = factor(Ptt))) +
   theme_bw() +
@@ -241,6 +260,13 @@ ggplot() +
   theme_bw() +
   coord_sf(xlim = c(-40, -32), ylim = c(-7, -1))
 
+# Check if data have been sufficiently filtered
+fuentes.fdn %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+
+
 # don't need to remove any (pre-deployment) locations
 
 
@@ -259,8 +285,26 @@ ggplot() +
   theme_bw() +
   coord_sf(xlim = c(-49, -38), ylim = c(-27, -15))
 
-# don't need to remove any (pre-deployment) locations
+# Check if data have been sufficiently filtered
+fuentes.par %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
 
+#remove points before 2016-05-22 12:00 for PTT 160105_1
+#remove points before 2018-03-16 for PTT 160105_2
+
+
+# Filter by date
+fuentes.par2 <- fuentes.par %>%
+  filter(!(Ptt %in% '160105_1' & date < "2016-05-22 12:00:00")) %>%
+  filter(!(Ptt %in% '160105_2' & date < "2018-03-16"))
+
+# Check if data have been sufficiently filtered
+fuentes.par2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
 
 
 
@@ -284,6 +328,22 @@ domit.par2<- domit.par %>%
 
 
 # Check if data have been sufficiently filtered
+domit.par2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+#remove points before 2018-03-19 for PTT 161638
+#remove points before 2017-03-31 for PTT 161639
+#remove points before 2017-02-21 for PTT 161640
+#remove points before 2016-09-30 for PTT 161642
+#remove points before 2017-03-22 16:00 for PTT 161643
+#remove points after 2016-10-13 for PTT 161644
+#remove points before 2016-10-01 08:00 for PTT 165364
+#remove points before 2017-02-18 for PTT 165365
+#remove points before 2016-10-03 14:00 for PTT 165366
+#remove points before 2017-02-27 12:00 for PTT 165367
+#remove points before 2019-08-29 22:00 for PTT 181925
+
 ggplot() +
   geom_path(data = domit.par2, aes(date, Longitude, color = factor(Ptt))) +
   theme_bw() +
@@ -321,6 +381,11 @@ marshall.qatar2<- marshall.qatar %>%
 
 
 # Check if data have been sufficiently filtered
+marshall.qatar2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+
 ggplot() +
   geom_path(data = marshall.qatar2, aes(date, Longitude, color = factor(Ptt))) +
   theme_bw() +
@@ -347,7 +412,7 @@ dat3 <- rbind(fuentes.gom3,
               lamont.gom3,
               sasso.gom2,
               fuentes.fdn,
-              fuentes.par,
+              fuentes.par2,
               domit.par2,
               marshall.qatar2)
 
