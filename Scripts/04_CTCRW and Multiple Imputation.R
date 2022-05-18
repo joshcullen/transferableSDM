@@ -105,9 +105,6 @@ int_tbl <- dat.tracks %>%
 
 
 # Fit CTCRW model
-doFuture::registerDoFuture()
-plan("multisession")
-
 set.seed(123)
 dat.tracks.crawl <- cu_add_argos_cols(dat.tracks) %>%
   mutate(type = case_when(type == "Argos_kf" ~ "Argos_ls",
@@ -147,16 +144,16 @@ ggplot() +
 
 # Perform multiple imputation on tracks
 doFuture::registerDoFuture()
-plan("multisession")
-set.seed(123)
+plan("multisession", workers = nbrOfWorkers() - 2)
+set.seed(2022)
 
-nsims <- 5
+nsims <- 20
 tic()
 progressr::with_progress({
   dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "2 hours", size = nsims,
                                    barrier = gom.sf, vis_graph = vis_graph)
 })
-toc()  #took 70 min to run
+toc()  #took 40 min to run w/ 10 imputations on desktop
 
 
 

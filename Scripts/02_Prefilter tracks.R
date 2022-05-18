@@ -16,6 +16,9 @@ library(plotly)
 dat<- read.csv("Raw_data/Master Sat Tag Dataset.csv") %>%
   mutate(Date = as_datetime(Date))
 
+deploy <- read.csv("Raw_data/Turtle deploy metadata.csv") %>%
+  mutate(Deploy_Date = parse_date_time(Deploy_Date, orders = "mdyHM", truncated = 2))
+
 
 ## Load land spatial layers
 states<- ne_states(country = 'United States of America', returnclass = 'sf') %>%
@@ -42,8 +45,17 @@ dat2<- dat %>%
 # Fuentes-GoM #
 ###############
 
+deploy.fuentes.gom <- deploy %>%
+  filter(Source == "Fuentes" & Region == "GoM") %>%
+  split(.$PTT)
+
 fuentes.gom<- dat2 %>%
-  filter(Source == 'Fuentes' & Region == 'GoM')
+  filter(Source == 'Fuentes' & Region == 'GoM') %>%
+  split(.$Ptt) %>%
+  map2(.x = ., .y = deploy.fuentes.gom,
+       ~{.x %>%
+           filter(., date >= .y$Deploy_Date)}) %>%
+  bind_rows()
 
 ggplot() +
   geom_sf(data = north.am) +
@@ -115,15 +127,28 @@ fuentes.gom3 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
-
+#original length is 8556; after filetering w/ deploy dates, new length is 8527
 
 
 ##############
 # Lamont-GoM #
 ##############
 
-lamont.gom<- dat2 %>%
+deploy.lamont.gom <- deploy %>%
   filter(Source == 'Lamont' & Region == 'GoM')
+
+lamont.gom<- dat2 %>%
+  filter(Source == 'Lamont' & Region == 'GoM') %>%
+  split(.$Ptt)
+
+deploy.ind <- which(names(lamont.gom) %in% deploy.lamont.gom$PTT)
+
+lamont.gom[deploy.ind] <- lamont.gom[deploy.ind] %>%
+  map2(.x = ., .y = deploy.lamont.gom %>% split(.$PTT),
+       ~{.x %>%
+           filter(., date >= .y$Deploy_Date)})
+
+lamont.gom <- bind_rows(lamont.gom)
 
 ggplot() +
   geom_sf(data = north.am) +
@@ -149,33 +174,15 @@ ggplot() +
   theme_bw() +
   facet_wrap(~ Ptt, scales = "free")
 
-# Check possible issues w/ 142658, 142659, 172677, and 175692
-lamont.gom2 %>%
-  filter(Ptt == 142658) %>%
-  slice(1:50)  #remove obs before 2017-09-22
-
-lamont.gom2 %>%
-  filter(Ptt == 142659) %>%
-  slice(1:50)  #remove obs before 2017-11-03
-
+# Check possible issues w/ 161459
 lamont.gom2 %>%
   filter(Ptt == 161459) %>%
-  slice(1:100)  #remove obs before 2017-08-08 (roughly)
-
-lamont.gom2 %>%
-  filter(Ptt == 172677) %>%
-  slice(1:10)  #remove obs before 2019-01-01
-
-lamont.gom2 %>%
-  filter(Ptt == 175692) %>%
-  slice(1:50)  #remove obs before 2019-01-01
+  slice(1:100)  #remove obs before 2017-08-03 (roughly)
 
 
 # Filter by date
 lamont.gom3 <- lamont.gom2 %>%
-  filter(!(Ptt %in% c(142658, 142659) & date < "2017-09-22")) %>%
-  filter(!(Ptt %in% c(172677, 175692) & date < "2019-01-01")) %>%
-  filter(!(Ptt %in% 161459 & date < "2017-08-08"))
+  filter(!(Ptt %in% 161459 & date < "2017-08-03"))
 
 # Check if data have been sufficiently filtered
 ggplot() +
@@ -198,6 +205,9 @@ lamont.gom3 %>%
   rename(id = Ptt, x = Longitude, y = Latitude) %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
+
+#original has length 19512; filtered by deploy date has length 19444
+
 
 
 
@@ -251,8 +261,17 @@ plotly::ggplotly(
 # Fuentes-FDN #
 ###############
 
+deploy.fuentes.fdn <- deploy %>%
+  filter(str_detect(PTT, '^205')) %>%
+  split(.$PTT)
+
 fuentes.fdn<- dat2 %>%
-  filter(Source == 'Fuentes' & Region == 'Brazil' & Age == 'Adult')
+  filter(Source == 'Fuentes' & Region == 'Brazil' & Age == 'Adult') %>%
+  split(.$Ptt) %>%
+  map2(.x = ., .y = deploy.fuentes.fdn,
+       ~{.x %>%
+           filter(., date >= .y$Deploy_Date)}) %>%
+  bind_rows()
 
 ggplot() +
   geom_sf(data = brazil) +
@@ -269,6 +288,9 @@ fuentes.fdn %>%
 
 # don't need to remove any (pre-deployment) locations
 
+#original has length 24162; filtered by deploy date has same length
+
+
 
 
 
@@ -276,8 +298,23 @@ fuentes.fdn %>%
 # Fuentes-Parana #
 ##################
 
+deploy.fuentes.par <- deploy %>%
+  filter(str_detect(PTT, "^160")) %>%
+  split(.$PTT)
+
 fuentes.par<- dat2 %>%
-  filter(Source == 'Fuentes' & Region == 'Brazil' & Age == 'Juv')
+  filter(Source == 'Fuentes' & Region == 'Brazil' & Age == 'Juv') %>%
+  split(.$Ptt)
+
+deploy.ind <- which(names(fuentes.par) %in% names(deploy.fuentes.par))
+
+fuentes.par[deploy.ind] <- fuentes.par[deploy.ind] %>%
+  map2(.x = ., .y = deploy.fuentes.par,
+       ~{.x %>%
+           filter(., date >= .y$Deploy_Date)})
+
+fuentes.par <- bind_rows(fuentes.par)
+
 
 ggplot() +
   geom_sf(data = brazil) +
@@ -306,6 +343,7 @@ fuentes.par2 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
+#original has length of 7530; filtered by deploy date has same length
 
 
 
@@ -313,8 +351,17 @@ fuentes.par2 %>%
 # Domit-Parana #
 ################
 
+deploy.domit.par <- deploy %>%
+  filter(Source == "Domit") %>%
+  split(.$PTT)
+
 domit.par<- dat2 %>%
-  filter(Source == 'Domit' & Region == 'Brazil')
+  filter(Source == 'Domit' & Region == 'Brazil') %>%
+  split(.$Ptt) %>%
+  map2(.x = ., .y = deploy.domit.par,
+       ~{.x %>%
+           filter(., date > .y$Deploy_Date)}) %>%
+  bind_rows()
 
 ggplot() +
   geom_sf(data = brazil) +
@@ -322,27 +369,19 @@ ggplot() +
   theme_bw() +
   coord_sf(xlim = c(-49, -46), ylim = c(-27, -23))
 
-# Filter by study extent
-domit.par2<- domit.par %>%
-  filter(Longitude < -46)
 
 
 # Check if data have been sufficiently filtered
-domit.par2 %>%
+domit.par %>%
   rename(id = Ptt, x = Longitude, y = Latitude) %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
-#remove points before 2018-03-19 for PTT 161638
-#remove points before 2017-03-31 for PTT 161639
-#remove points before 2017-02-21 for PTT 161640
-#remove points before 2016-09-30 for PTT 161642
-#remove points before 2017-03-22 16:00 for PTT 161643
-#remove points after 2016-10-13 for PTT 161644
-#remove points before 2016-10-01 08:00 for PTT 165364
-#remove points before 2017-02-18 for PTT 165365
-#remove points before 2016-10-03 14:00 for PTT 165366
-#remove points before 2017-02-27 12:00 for PTT 165367
-#remove points before 2019-08-29 22:00 for PTT 181925
+#remove first 2 points for each PTT since these are generally associated w/ same same location on land
+
+
+domit.par2 <- domit.par %>%
+  group_by(Ptt) %>%
+  slice(3:n())
 
 ggplot() +
   geom_path(data = domit.par2, aes(date, Longitude, color = factor(Ptt))) +
@@ -358,6 +397,12 @@ plotly::ggplotly(
     coord_sf(xlim = c(-49, -46), ylim = c(-27, -23))
 )
 
+domit.par2 %>%
+  rename(id = Ptt, x = Longitude, y = Latitude) %>%
+  dplyr::select(id, date, x, y) %>%
+  bayesmove::shiny_tracks(epsg = 4326)
+
+#original has length 7573; filtered by deploy date has length 7488
 
 
 
@@ -418,16 +463,17 @@ dat3 <- rbind(fuentes.gom3,
 
 
 # Only keep IDs tracked w/ > 30 observations
+dat3 %>%
+  group_by(Ptt) %>%
+  count() %>%
+  data.frame()
+#all IDs besides 161639 have >=30 obs
+
 dat4 <- dat3 %>%
   group_split(Ptt) %>%
   discard( ~ nrow(.x) < 30) %>%
   bind_rows()
 
-dat3 %>%
-  group_by(Ptt) %>%
-  count() %>%
-  data.frame()
-#all IDs have >=30 obs
 
 
 
