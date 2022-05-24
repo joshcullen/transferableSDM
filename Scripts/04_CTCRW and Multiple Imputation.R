@@ -129,7 +129,9 @@ dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "2 hours
 toc()  #took 7 min to run on laptop; 4.5 min on desktop
 
 
-preds <- bind_rows(dat.tracks.pred) %>%
+preds <- bind_rows(dat.tracks.pred)
+
+preds.sf <- preds %>%
   group_by(ptt) %>%
   summarize(do_union = FALSE) %>%
   st_cast("MULTILINESTRING")
@@ -144,7 +146,7 @@ ggplot() +
 
 # Perform multiple imputation on tracks
 doFuture::registerDoFuture()
-plan("multisession", workers = nbrOfWorkers() - 2)
+plan("multisession", workers = availableCores() - 2)
 set.seed(2022)
 
 nsims <- 20
@@ -153,13 +155,13 @@ progressr::with_progress({
   dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "2 hours", size = nsims,
                                    barrier = gom.sf, vis_graph = vis_graph)
 })
-toc()  #took 40 min to run w/ 10 imputations on desktop
+toc()  #took 1.8 hrs to run w/ 20 imputations on desktop
 
 
 
 # Viz multiple imputations for tracks
 
-foo <- dat.tracks.sims %>%
+dat.tracks.sims2 <- dat.tracks.sims %>%
   set_names(preds$ptt) %>%
   map(., set_names, 1:nsims) %>%
   # map_depth(2, ~{.$alpha.sim %>%
@@ -169,14 +171,14 @@ foo <- dat.tracks.sims %>%
   mutate(rep = paste(ptt, rep, sep = "_"))
 
 # filter by the defined bout periods
-foo.bout <- foo %>%
+dat.tracks.sims2 <- dat.tracks.sims2 %>%
   split(.$ptt) %>%
   map2(., int_tbl, ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
-  bind_rows()
+  bind_rows() %>%
+  filter(!is.na(bout))  #remove predictions that don't belong to a bout period
 
 
-test <- foo.bout %>%
-  filter(!is.na(bout)) %>%  #remove predictions that don't belong to a bout period
+dat.tracks.sims.sf <- dat.tracks.sims2 %>%
   group_by(ptt, rep, bout) %>%
   summarize(do_union = FALSE) %>%
   st_cast("MULTILINESTRING")
@@ -184,10 +186,29 @@ test <- foo.bout %>%
 plotly::ggplotly(
   ggplot() +
     geom_sf(data = gom.sf) +
-    geom_sf(data = test, aes(color = ptt), size = 0.15, alpha = 0.25) +
+    geom_sf(data = dat.tracks.sims.sf, aes(color = ptt), size = 0.15, alpha = 0.25) +
     geom_sf(data = preds, aes(color = ptt), size = 0.5) +
     theme_bw() +
     coord_sf()
 )
 
 
+
+
+### Export results
+
+# Remove geometry col from sf objects
+preds.df <- preds %>%
+  mutate(mu.x = st_coordinates(.)[,1],
+         mu.y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry()
+
+dat.tracks.sims.df <- dat.tracks.sims2 %>%
+  mutate(mu.x = st_coordinates(.)[,1],
+         mu.y = st_coordinates(.)[,2]) %>%
+  st_drop_geometry()
+
+
+
+# write.csv(preds.df, "Processed_data/Processed_Cm_Tracks_SSM_2hr.csv")
+# write.csv(preds.df, "Processed_data/Imputed_Cm_Tracks_SSM_2hr.csv")
