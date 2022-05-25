@@ -9,8 +9,10 @@ library(ctmcmove)
 
 
 ## Load turtle tracks
-dat <- read.csv("Processed_data/Processed_Cm_Tracks_SSM.csv") %>%
-  mutate(across(date, as_datetime))
+dat <- read.csv("Processed_data/Processed_Cm_Tracks_SSM_2hr.csv") %>%
+  mutate(across(datetime, as_datetime))
+
+glimpse(dat)
 
 
 ## Load environmental layers
@@ -20,28 +22,30 @@ sst.rast <- sst %>%
   map({. %>%
       dplyr::select(-time)}) %>%
   map(~rasterFromXYZ(., crs = "EPSG:4326", res = c(0.01, 0.01), digits = 2)) %>%
-  stack()  #MUST be of class RasterStack in order for path2ctmc() to work
+  stack() %>%  #MUST be of class RasterStack in order for path2ctmc() to work
+  projectRaster(crs = 'EPSG:3395') %>%
+  stack()
 
 
 
 ## Create discrete path
 dat.list <- dat %>%
-  filter(id %in% c(181800, 181807)) %>%
-  split(.$id)
+  filter(ptt %in% c(181800, 181807)) %>%
+  split(.$ptt)
 
 n.turts <- length(dat.list)
 
 ctmc.list <- list()
 for (i in 1:n.turts){
-  ctmc.list[[i]] <- path2ctmc(xy = as.matrix(dat.list[[i]][, c('lon','lat')]), t = as.numeric(dat.list[[i]][, "date"]), method="ShortestPath",
-                              rast = sst.rast, directions = 4, print.iter = TRUE)
+  ctmc.list[[i]] <- path2ctmc(xy = as.matrix(dat.list[[i]][, c('mu.x','mu.y')]), t = as.numeric(dat.list[[i]][, "datetime"]),
+                              method="ShortestPath", rast = sst.rast, directions = 4, print.iter = TRUE)
 }
 
 
 
 ## Turn CTMC path into format for Poisson GLM
 
-int <- stack_rast[[1]]
+int <- sst.rast[[1]]
 examplerast <- int
 glm.list <- list()
 
