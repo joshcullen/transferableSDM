@@ -16,15 +16,10 @@ glimpse(dat)
 
 
 ## Load environmental layers
-sst <- read.csv("Environ_data/GoM SST example.csv")
-sst.rast <- sst %>%
-  split(.$time) %>%
-  map({. %>%
-      dplyr::select(-time)}) %>%
-  map(~rasterFromXYZ(., crs = "EPSG:4326", res = c(0.01, 0.01), digits = 2)) %>%
-  stack() %>%  #MUST be of class RasterStack in order for path2ctmc() to work
-  projectRaster(crs = 'EPSG:3395') %>%
-  stack()
+sst <- rast("Environ_data/GoM SST example.tif")
+sst.proj <- sst %>%
+  project('EPSG:3395') %>%
+  stack()  #MUST be of class RasterStack in order for path2ctmc() to work
 
 
 

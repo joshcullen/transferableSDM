@@ -13,6 +13,30 @@ array2df <- function(lon, lat, var, var.name, time) {
 
 #---------------------------
 
+# function to convert list object from rerddapXtracto::rxtracto() into a {terra} SpatRaster object
+array2rast <- function(lon, lat, var, time, extent) {
+  #lon: a vector of longitude values
+  #lat: a vector of latitude values
+  #var: an array of values for the variable of interest where the 1st two dimensions denote the spatial grid and the third dimensions represents the number of datetimes
+  #time: a vector of dates associated with each 2D array from `var`
+  #extent: a SpatRaster extent on which to spatially define the raster; ordered as xmin, xmax, ymin, ymax
+
+  dims <- dim(var)
+  rast.list <- vector("list", dims[3])
+
+  for (i in 1:dims[3]) {
+    rast.list[[i]] <- terra::rast(t(var[,,i]), crs = 'EPSG:4326', extent = extent) %>%
+      terra::flip(direction = "vertical")
+  }
+
+  rast1 <- terra::rast(rast.list)
+  names(rast1) <- time
+
+  return(rast1)
+}
+
+#---------------------------
+
 ### Utility functions to download GEBCO_2019 bathymetry data from Github gist
 # https://gist.github.com/mdsumner/dea21c65674108574bab22cf6f011f8d
 

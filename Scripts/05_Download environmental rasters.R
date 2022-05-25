@@ -143,12 +143,16 @@ plotBBox(sst.bbox, plotColor = 'thermal')
 
 
 # Create data.frame to plot raster in ggplot
-sst.rast <- array2df(sst.bbox$longitude, sst.bbox$latitude, sst.bbox$sst, "sst", sst.bbox$time)
-sst.rast$time <- as.character(sst.rast$time)
+sst.rast <- array2rast(lon = sst.bbox$longitude, lat = sst.bbox$latitude, var = sst.bbox$sst,
+                       time = sst.bbox$time, extent = ext(bbox.gom))
+sst.rast.df <- as.data.frame(sst.rast, xy = TRUE) %>%
+  pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "sst") %>%
+  arrange(date)
+
 
 # Plot tracks overlaid w/ SST
 ggplot() +
-  geom_raster(data = sst.rast, aes(x, y, fill = sst)) +
+  geom_raster(data = sst.rast.df, aes(x, y, fill = sst)) +
   scale_fill_cmocean() +
   geom_sf(data = turts.gom, aes(color = factor(id))) +
   scale_color_viridis_d() +
@@ -156,18 +160,9 @@ ggplot() +
   scale_x_continuous(expand = c(0,0)) +
   scale_y_continuous(expand = c(0,0)) +
   coord_sf() +
-  facet_wrap(~time)
+  facet_wrap(~date)
 
-# Convert raster from DF to SpatRaster
 
-# sst.spat <- sst.rast %>%
-#   rename(z = sst) %>%
-#   split(.$time) %>%
-#   purrr::map({. %>%
-#       dplyr::select(-time)}) %>%
-#   purrr::map(., ~rast(crs = 'EPSG:4326'))
-# sst.spat2 <- rast(sst.spat[[1]], sst.spat[[2]], sst.spat[[3]], sst.spat[[4]])
+### Export SST rasters as CSV (w/ WGS84 CRS; EPSG:4326)
 
-### Export SST rasters as CSV (w/ WGS84 CRS; EPSG: 4326)
-
-# write.csv(sst.rast, "Environ_data/GoM SST example.csv", row.names = FALSE)
+# writeRaster(sst.rast, "Environ_data/GoM SST example.tif")
