@@ -83,8 +83,8 @@ plotly::ggplotly(
 ## Use PTT 159776, 181807 and 181800 as examples
 
 dat.tracks <- dat.gom.sf %>%
-  filter(Ptt == 181800) %>%
-  # filter(Ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
+  # filter(Ptt == 181800) %>%
+  filter(Ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
   janitor::clean_names() %>%
   # mutate(x = st_coordinates(.)[,1],
   #        y = st_coordinates(.)[,2]) %>%
@@ -123,9 +123,9 @@ toc()  #takes 2 min
 vis_graph <- pathroutr::prt_visgraph(gom.sf)
 
 
-# Make predictions at 1 hr time interval
+# Make predictions at 30 min time interval
 tic()
-dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "2 hours",
+dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "30 mins",
                                       barrier = gom.sf, vis_graph = vis_graph)
 toc()  #took 7 min to run on laptop; 4.5 min on desktop
 
@@ -153,7 +153,7 @@ set.seed(2022)
 nsims <- 20
 tic()
 progressr::with_progress({
-  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "2 hours", size = nsims,
+  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "30 mins", size = nsims,
                                    barrier = gom.sf, vis_graph = vis_graph)
 })
 toc()  #took 1.8 hrs to run w/ 20 imputations on desktop
@@ -212,4 +212,4 @@ dat.tracks.sims.df <- dat.tracks.sims2 %>%
 
 
 # write.csv(preds.df, "Processed_data/Processed_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
-# write.csv(dat.tracks.sims.df, "Processed_data/Imputed_Cm_Tracks_SSM_1hr.csv", row.names = FALSE)
+# write.csv(dat.tracks.sims.df, "Processed_data/Imputed_Cm_Tracks_SSM_30min.csv", row.names = FALSE)

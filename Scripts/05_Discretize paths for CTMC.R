@@ -6,6 +6,8 @@ library(tidyverse)
 library(lubridate)
 library(sf)
 library(crawlUtils)
+library(furrr)
+library(future)
 # library(terra)
 # library(ctmcmove)
 
@@ -13,27 +15,35 @@ source("Scripts/make_hex_grid2.R")
 
 
 ## Load turtle tracks
-dat <- read.csv("Processed_data/Imputed_Cm_Tracks_SSM_1hr.csv") %>%
+dat <- read.csv("Processed_data/Imputed_Cm_Tracks_SSM_30min.csv") %>%
   mutate(across(datetime, as_datetime))
 
 glimpse(dat)
 
-dat.sf.181800 <- dat %>%
-  filter(ptt == 181800) %>%
+dat.sf.p <- dat %>%
+  # filter(ptt == 181800) %>%
   st_as_sf(., coords = c('mu.x', 'mu.y'), crs = 3395)
 
 cellsize <- hex_size(area = 4000^2)
-hex_grid_181800 <- hex_grid_sfsample(sf_tracks = dat.sf.181800, cellsize = cellsize, buffer = 15000)
 
-dat.sf.181800 <- dat.sf.181800 %>%
+plan("multisession", workers = availableCores() - 2)
+hex_grid <- dat.sf.p %>%
+  split(.$ptt) %>%
+  future_map(~hex_grid_sfsample(sf_tracks = ., cellsize = cellsize, buffer = 15000)) %>%
+  set_names(unique(dat.sf.p$ptt))
+
+dat.sf.l <- dat.sf.p %>%
   group_by(ptt, rep, bout) %>%
   summarize(do_union = FALSE) %>%
   st_cast("MULTILINESTRING")
 
 plotly::ggplotly(
   ggplot() +
-    geom_sf(data = hex_grid_181800$poly, fill = "transparent", size = 0.25) +
-    geom_sf(data = dat.sf.181800, aes(color = rep), size = 0.25, alpha = 0.6) +
+    geom_sf(data = hex_grid$`181807`$poly, fill = "transparent", size = 0.25) +
+    geom_sf(data = dat.sf.l %>%
+              filter(ptt == 181807), aes(color = rep), size = 0.25, alpha = 0.6) +
+    geom_sf(data = dat.sf.p %>%
+              filter(ptt == 181807), aes(color = rep), size = 0.25, alpha = 0.6) +
     theme_bw()
 )
 
