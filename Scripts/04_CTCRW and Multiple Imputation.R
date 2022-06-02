@@ -84,7 +84,7 @@ plotly::ggplotly(
 
 dat.tracks <- dat.gom.sf %>%
   # filter(Ptt == 181800) %>%
-  filter(Ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
+  # filter(Ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
   janitor::clean_names() %>%
   # mutate(x = st_coordinates(.)[,1],
   #        y = st_coordinates(.)[,2]) %>%
@@ -127,7 +127,7 @@ vis_graph <- pathroutr::prt_visgraph(gom.sf)
 tic()
 dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "30 mins",
                                       barrier = gom.sf, vis_graph = vis_graph)
-toc()  #took 7 min to run on laptop; 4.5 min on desktop
+toc()  #took 6.5 min on desktop
 
 
 preds <- bind_rows(dat.tracks.pred)
@@ -156,7 +156,7 @@ progressr::with_progress({
   dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "30 mins", size = nsims,
                                    barrier = gom.sf, vis_graph = vis_graph)
 })
-toc()  #took 1.8 hrs to run w/ 20 imputations on desktop
+toc()  #took 3.25 hrs to run w/ 20 imputations on desktop
 
 
 
@@ -174,7 +174,7 @@ dat.tracks.sims2 <- dat.tracks.sims %>%
 # filter by the defined bout periods
 dat.tracks.sims2 <- dat.tracks.sims2 %>%
   split(.$ptt) %>%
-  map2(., int_tbl, ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
+  future_map2(., int_tbl, ~cu_join_interval_tbl(x = .x, int_tbl = .y)) %>%
   bind_rows() %>%
   filter(!is.na(bout))  #remove predictions that don't belong to a bout period
 
@@ -211,5 +211,5 @@ dat.tracks.sims.df <- dat.tracks.sims2 %>%
 
 
 
-# write.csv(preds.df, "Processed_data/Processed_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
+# write.csv(preds.df, "Processed_data/Processed_Cm_Tracks_SSM_30min.csv", row.names = FALSE)
 # write.csv(dat.tracks.sims.df, "Processed_data/Imputed_Cm_Tracks_SSM_30min.csv", row.names = FALSE)
