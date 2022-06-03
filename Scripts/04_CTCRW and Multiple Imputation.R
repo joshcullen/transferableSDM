@@ -6,7 +6,7 @@ library(tidyverse)
 library(lubridate)
 library(future)
 library(furrr)
-library(terra)
+# library(terra)
 library(sf)
 library(ptolemy)
 library(crawlUtils)  #needs to be used w/ crawl v2.2.1 otherwise it crashes

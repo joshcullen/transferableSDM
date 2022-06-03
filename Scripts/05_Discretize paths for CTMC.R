@@ -8,93 +8,137 @@ library(sf)
 library(crawlUtils)
 library(furrr)
 library(future)
-# library(terra)
+library(vroom)
+library(terra)
+library(cmocean)
+library(tictoc)
 # library(ctmcmove)
 
 source("Scripts/make_hex_grid2.R")
 
 
 ## Load turtle tracks
-dat <- read.csv("Processed_data/Imputed_Cm_Tracks_SSM_30min.csv") %>%
-  mutate(across(datetime, as_datetime))
+dat <- vroom("Processed_data/Imputed_Cm_Tracks_SSM_30min.csv", delim = ",")
+dat.orig <- vroom("Processed_data/Prefiltered_Cm_Tracks.csv", delim = ",") %>%
+  filter(Region == "GoM") %>%
+  st_as_sf(., coords = c("Longitude", "Latitude"), crs = 4326) %>%
+  st_transform(3395)
 
 glimpse(dat)
+glimpse(dat.orig)
 
 dat.sf.p <- dat %>%
   # filter(ptt == 181800) %>%
+  # filter(ptt %in% c(159776, 175692, 181796, 181800, 181807)) %>%
   st_as_sf(., coords = c('mu.x', 'mu.y'), crs = 3395)
 
 cellsize <- hex_size(area = 4000^2)
 
 plan("multisession", workers = availableCores() - 2)
+tic()
 hex_grid <- dat.sf.p %>%
   split(.$ptt) %>%
   future_map(~hex_grid_sfsample(sf_tracks = ., cellsize = cellsize, buffer = 15000)) %>%
   set_names(unique(dat.sf.p$ptt))
+toc()
+# takes 5 min to run
 
 dat.sf.l <- dat.sf.p %>%
-  group_by(ptt, rep, bout) %>%
+  group_by(ptt, rep) %>%
   summarize(do_union = FALSE) %>%
   st_cast("MULTILINESTRING")
 
+
+# Download and clip high-res land spatial layer
+gom.sf <- ptolemy::extract_gshhg(data = dat.orig, resolution = 'f', buffer = 50000)
+
+bb = st_bbox(hex_grid$`181800`$poly)
 plotly::ggplotly(
   ggplot() +
-    geom_sf(data = hex_grid$`181807`$poly, fill = "transparent", size = 0.25) +
+    geom_sf(data = gom.sf, size = 0.2) +
+    geom_sf(data = hex_grid$`181800`$poly, fill = "transparent", size = 0.25) +
     geom_sf(data = dat.sf.l %>%
-              filter(ptt == 181807), aes(color = rep), size = 0.25, alpha = 0.6) +
-    geom_sf(data = dat.sf.p %>%
-              filter(ptt == 181807), aes(color = rep), size = 0.25, alpha = 0.6) +
-    theme_bw()
+              filter(ptt == 181800), aes(color = rep), size = 0.25, alpha = 0.6) +
+    scale_color_viridis_d("Imputation", option = "turbo") +
+    # geom_sf(data = dat.sf.p %>%
+    #           filter(ptt == 181800), aes(color = rep), size = 0.25, alpha = 0.6) +
+    geom_sf(data = dat.orig %>%
+                 filter(Ptt == 181800), size = 1) +
+    coord_sf(xlim = c(bb["xmin"]-50000, bb["xmax"]+50000), ylim = c(bb["ymin"]-50000, bb["ymax"]+50000)) +
+    theme_bw() +
+    theme(panel.grid = element_blank())
 )
+
+  if(!dir.exists("Plots")) dir.create("Plots")
+
+
+
+### Export plots of hexgrids w/ imputed tracks and original points
+  PTTs <- unique(dat.sf.l$ptt)
+
+  for (i in 1:length(PTTs)) {
+    message("plotting ", PTTs[i], " ...")
+
+    lines <- dat.sf.l %>%
+      filter(ptt == PTTs[i])
+    pts <- dat.sf.p %>%
+      filter(ptt == PTTs[i])
+    orig.pts <- dat.orig %>%
+      filter(Ptt == PTTs[i])
+    hexes <- hex_grid[[i]]$poly
+    bb <- st_bbox(hexes)
+
+    p_data <- ggplot() +
+      geom_sf(data = gom.sf, size = 0.2) +
+      geom_sf(data = hexes, fill = "transparent", size = 0.25) +
+      geom_sf(data = lines, aes(color = rep), size = 0.25, alpha = 0.6) +
+      scale_color_viridis_d(option = "turbo", guide = "none") +
+      # geom_sf(data = pts, aes(color = rep), size = 0.25, alpha = 0.6) +
+      geom_sf(data = orig.pts, size = 1) +
+      coord_sf(xlim = c(bb["xmin"] - 10000, bb["xmax"] + 10000), ylim = c(bb["ymin"] - 10000, bb["ymax"] + 10000)) +
+      ggtitle(paste("PTT", PTTs[i])) +
+      theme_bw() +
+      theme(panel.grid = element_blank(),
+            title = element_text(size = 18, face = "bold"))
+
+    nm = paste0("Plots/p_", PTTs[i],"_data.pdf")
+    ggsave(nm, p_data, dpi = "retina", width = 7, height = 7, units = 'in')
+
+  }
 
 
 ## Load environmental layers
 sst <- rast("Environ_data/GoM SST example.tif")
 sst.proj <- sst %>%
-  project('EPSG:3395') %>%
-  stack()  #MUST be of class RasterStack in order for path2ctmc() to work
+  project('EPSG:3395') #%>%
+  # raster::stack()  #MUST be of class RasterStack in order for path2ctmc() to work
+
+# sst.proj.df <- as.data.frame(sst.proj, xy = TRUE)
+# names(sst.proj.df)[3:6] <- c("Aug", "Sep", "Oct", "Nov")
+# sst.proj.df <- sst.proj.df %>%
+#   pivot_longer(cols = -c('x', 'y'), names_to = "month", values_to = "sst")
+#
+#
+# ggplot() +
+#   geom_raster(data = sst.proj.df %>% filter(month == "Nov"), aes(x, y, fill = sst)) +
+#   scale_fill_cmocean("SST") +
+#   geom_sf(data = hex_grid$`181800`$poly, fill = "transparent", size = 0.25) +
+#   geom_sf(data = dat.sf.l %>%
+#             filter(ptt == 181800), aes(color = rep), size = 0.25, alpha = 0.6) +
+#   scale_color_manual(values = rainbow(20), guide = "none") +
+#   ggtitle("Nov. SST") +
+#   scale_x_continuous(expand = c(0,0)) +
+#   scale_y_continuous(expand = c(0,0)) +
+#   # geom_sf(data = dat.sf.p %>%
+#   #           filter(ptt == 181800), aes(color = rep), size = 0.25, alpha = 0.6) +
+#   theme_bw() +
+#   theme(panel.grid = element_blank())
 
 
 
-## Create discrete path
-dat.list <- dat %>%
-  filter(ptt %in% c(181800, 181807)) %>%
-  split(.$ptt)
 
-n.turts <- length(dat.list)
+### Export products ###
 
-ctmc.list <- list()
-for (i in 1:n.turts){
-  ctmc.list[[i]] <- path2ctmc(xy = as.matrix(dat.list[[i]][, c('mu.x','mu.y')]), t = as.numeric(dat.list[[i]][, "datetime"]),
-                              method="ShortestPath", rast = sst.rast, directions = 4, print.iter = TRUE)
-}
+# save(dat, hex_grid, gom.sf, file = "Data_products/discretized_tracks.RData")
 
 
-
-## Turn CTMC path into format for Poisson GLM
-
-int <- sst.rast[[1]]
-examplerast <- int
-glm.list <- list()
-
-n.list <- length(ctmc.list)
-
-for (i in 1:n.list){
-  glm.list[[i]] <- ctmc2glm(ctmc.list[[i]], stack.static = sst.rast, stack.grad = NULL, grad.point.decreasing = FALSE,
-                            crw = TRUE)
-}
-
-for(i in 1:n.list){
-  glm.list[[i]]$id <- rep(as.numeric(names(dat.list)[i]), times = length(glm.list[[i]]$z)) # To add individual elk ids to each list item
-}
-
-turt.dat <- bind_rows(glm.list)
-# elkdata = glm.list[[1]]
-# for(i in 2:n.list){
-#   elkdata <- rbind(elkdata, glm.list[[i]]) # To bind all the data together in one data frame
-# }
-
-idx <- which(turt.dat$tau<10^-5 | turt.dat$tau>100) # Identifies instantaneous transitions and overly long stays
-turt.dat <- turt.dat[-idx,] # Removes any
-
-head(elkdata) # We do not provide code here for extracting NDVI values closest in date to GPS locations, but for the next steps we uploaded an elkdata file that contains this NDVI information. Also note: the dem.1 and forest.1 fields are gradient values.
