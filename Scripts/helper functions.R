@@ -22,9 +22,19 @@ array2rast <- function(lon, lat, var, time, extent) {
   #extent: a SpatRaster extent on which to spatially define the raster; ordered as xmin, xmax, ymin, ymax
 
   dims <- dim(var)
-  rast.list <- vector("list", dims[3])
 
-  for (i in 1:dims[3]) {
+  # check dims in case "altitude/depth" is included; this code will only select 1st slice of altitude
+  if (length(dims) == 4) {
+    var <- var[,,1,]
+  } else {
+    var <- var
+  }
+
+  dims1 <- dim(var)
+
+  rast.list <- vector("list", dims1[3])
+
+  for (i in 1:dims1[3]) {
     rast.list[[i]] <- terra::rast(t(var[,,i]), crs = 'EPSG:4326', extent = extent) %>%
       terra::flip(direction = "vertical")
   }

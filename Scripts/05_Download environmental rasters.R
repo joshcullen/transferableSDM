@@ -10,31 +10,36 @@ library(terra)
 library(sf)
 library(cmocean)
 library(rerddapXtracto)
+library(tictoc)
 
 source("Scripts/helper functions.R")
 
 
 ## Load processed tracks
-turts <- read.csv("Processed_data/Processed_Cm_Tracks_SSM.csv")
+turts <- read.csv("Processed_data/Processed_Cm_Tracks_SSM_30min.csv")
 
-
-##################
-### Bathymetry ###
-##################
 
 ### Define extent for Gulf of Mexico tracks (including Bimini turts) ###
 
 # define turtle track bbox
 turts.gom <- turts %>%
-  filter(lon < 0 & lat > 0) %>%
-  st_as_sf(., coords = c("lon","lat"), crs = 4326)
+  # filter(lon < 0 & lat > 0) %>%
+  st_as_sf(., coords = c("mu.x","mu.y"), crs = 3395, remove = FALSE) %>%
+  st_transform(4326)
 gom.bbox <- st_bbox(turts.gom)
 
 # define {terra} SpatRaster based on bbox
 bbox.gom <- terra::rast(xmin = gom.bbox[1], xmax = gom.bbox[3], ymin = gom.bbox[2], ymax = gom.bbox[4],
-                        resolution = 15/3600, crs = "epsg:4326")
+                        resolution = 15/3600, crs = "EPSG:4326")
 bbox.gom <- extend(bbox.gom, 50)  #pad each side by 5 cells (w/ 15 arc sec resolution)
 ext(bbox.gom)
+
+
+
+
+##################
+### Bathymetry ###
+##################
 
 ## Load GEBCO bathymetry for GoM extent
 gom.rast <- rast("Environ_data/GoM bathymetry.tif")
@@ -136,27 +141,38 @@ xpos <- ext(bbox.gom)[1:2]
 ypos <- ext(bbox.gom)[3:4]
 tpos <- as_date(range(turts.gom$date)) %>% as.character()
 sstInfo <- rerddap::info('jplMURSST41mday')
-sst.bbox <- rxtracto_3D(sstInfo, parameter = 'sst', xcoord = xpos, ycoord = ypos, tcoord = c("2021-08-01", "2021-11-01"))
 
-plotBBox(sst.bbox, plotColor = 'thermal')
+tic()
+sst.bbox <- rxtracto_3D(sstInfo, parameter = 'sst', xcoord = xpos, ycoord = ypos, tcoord = tpos)
+toc()
+# takes 6.5 min to run
+
+# plotBBox(sst.bbox, plotColor = 'thermal')
 
 
 
-# Create data.frame to plot raster in ggplot
+# Create {terra} SpatRaster for export and data.frame to plot raster in ggplot
 sst.rast <- array2rast(lon = sst.bbox$longitude, lat = sst.bbox$latitude, var = sst.bbox$sst,
                        time = sst.bbox$time, extent = ext(bbox.gom))
-sst.rast.df <- as.data.frame(sst.rast, xy = TRUE) %>%
+
+sst.rast.df <- as.data.frame(sst.rast[[1:12]], xy = TRUE) %>%  #select 1st 12 layers as example for viz
   pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "sst") %>%
   arrange(date)
 
 
 # Plot tracks overlaid w/ SST
+turts.gom.l <- turts.gom %>%
+  group_by(ptt) %>%
+  summarize(do_union = FALSE) %>%
+  st_cast("MULTILINESTRING")
+
 ggplot() +
   geom_raster(data = sst.rast.df, aes(x, y, fill = sst)) +
   scale_fill_cmocean() +
-  geom_sf(data = turts.gom, aes(color = factor(id))) +
-  scale_color_viridis_d() +
+  geom_sf(data = turts.gom.l, aes(color = factor(ptt))) +
+  scale_color_viridis_d(guide = "none") +
   theme_bw() +
+  theme(panel.grid = element_blank()) +
   scale_x_continuous(expand = c(0,0)) +
   scale_y_continuous(expand = c(0,0)) +
   coord_sf() +
@@ -166,3 +182,68 @@ ggplot() +
 ### Export SST rasters as CSV (w/ WGS84 CRS; EPSG:4326)
 
 # writeRaster(sst.rast, "Environ_data/GoM SST example.tif")
+# writeRaster(sst.rast, "Environ_data/GoM SST.tif")
+
+
+
+
+
+
+
+
+
+
+
+################################
+### Net Primary Productivity ###
+################################
+
+## Plot NPP basemap based on defined bbox for particular month-year
+
+xpos <- ext(bbox.gom)[1:2]
+ypos <- ext(bbox.gom)[3:4]
+tpos <- as_date(range(turts.gom$date)) %>% as.character()
+nppInfo <- rerddap::info('erdMH1ppmday')
+nppInfo$alldata$NC_GLOBAL[38,]
+
+tic()
+npp.bbox <- rxtracto_3D(nppInfo, parameter = 'productivity', xcoord = xpos, ycoord = ypos, tcoord = tpos,
+                        zcoord = c(0,0))
+toc()
+# takes 30 sec to run
+
+
+plotBBox(npp.bbox, plotColor = 'algae')
+
+
+# Create {terra} SpatRaster for export and data.frame to plot raster in ggplot
+npp.rast <- array2rast(lon = npp.bbox$longitude, lat = npp.bbox$latitude, var = npp.bbox$productivity,
+                       time = npp.bbox$time, extent = ext(bbox.gom))
+
+npp.rast.df <- as.data.frame(npp.rast[[1:12]], xy = TRUE) %>%  #select 1st 12 layers as example for viz
+  pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "npp") %>%
+  arrange(date)
+
+
+# Plot tracks overlaid w/ NPP
+turts.gom.l <- turts.gom %>%
+  group_by(ptt) %>%
+  summarize(do_union = FALSE) %>%
+  st_cast("MULTILINESTRING")
+
+ggplot() +
+  geom_raster(data = npp.rast.df, aes(x, y, fill = npp)) +
+  scale_fill_cmocean(name = "algae") +
+  geom_sf(data = turts.gom.l, aes(color = factor(ptt))) +
+  scale_color_viridis_d(guide = "none") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  coord_sf() +
+  facet_wrap(~date)
+
+
+### Export NPP rasters as CSV (w/ WGS84 CRS; EPSG:4326)
+
+# writeRaster(npp.rast, "Environ_data/GoM NPP.tif")

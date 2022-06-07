@@ -12,7 +12,6 @@ library(vroom)
 library(terra)
 library(cmocean)
 library(tictoc)
-# library(ctmcmove)
 
 source("Scripts/make_hex_grid2.R")
 
