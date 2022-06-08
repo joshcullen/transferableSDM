@@ -16,14 +16,20 @@ source("Scripts/helper functions.R")
 
 
 ## Load processed tracks
-turts <- read.csv("Processed_data/Processed_Cm_Tracks_SSM_30min.csv")
+turts <- read.csv("Processed_data/Processed_Cm_Tracks_SSM_30min.csv") %>%
+  mutate(datetime = as_datetime(datetime))
+
+# Remove any observations before 2012-01-02; first available data for VIIRS Kd(PAR)
+turts.gt2011 <- turts %>%
+  filter(datetime > "2012-01-01")  #results only in removal of PTT 104833
+
+
 
 
 ### Define extent for Gulf of Mexico tracks (including Bimini turts) ###
 
 # define turtle track bbox
-turts.gom <- turts %>%
-  # filter(lon < 0 & lat > 0) %>%
+turts.gom <- turts.gt2011 %>%
   st_as_sf(., coords = c("mu.x","mu.y"), crs = 3395, remove = FALSE) %>%
   st_transform(4326)
 gom.bbox <- st_bbox(turts.gom)
@@ -46,6 +52,12 @@ gom.rast <- rast("Environ_data/GoM bathymetry.tif")
 
 
 ## Plot bathymetry data and tracks
+
+turts.gom.l <- turts.gom %>%
+  group_by(ptt) %>%
+  summarize(do_union = FALSE) %>%
+  st_cast("MULTILINESTRING")
+
 gom.rast.df <- as.data.frame(gom.rast, xy = TRUE)
 names(gom.rast.df)[3] <- "depth"
 
@@ -53,7 +65,7 @@ ggplot() +
   geom_raster(data = gom.rast.df, aes(x, y, fill = depth)) +
   scale_fill_cmocean("", name = "deep", direction = -1,
                      limits = c(min(gom.rast.df$depth), 0)) +
-  geom_sf(data = turts.gom, aes(color = id)) +
+  geom_sf(data = turts.gom.l, aes(color = ptt)) +
   theme_bw() +
   coord_sf()
 
@@ -139,13 +151,15 @@ ggplot() +
 
 xpos <- ext(bbox.gom)[1:2]
 ypos <- ext(bbox.gom)[3:4]
-tpos <- as_date(range(turts.gom$date)) %>% as.character()
+tpos <- range(turts.gom$datetime) %>%
+  as_date() %>%
+  as.character()
 sstInfo <- rerddap::info('jplMURSST41mday')
 
 tic()
 sst.bbox <- rxtracto_3D(sstInfo, parameter = 'sst', xcoord = xpos, ycoord = ypos, tcoord = tpos)
 toc()
-# takes 6.5 min to run
+# takes 4.5 min to run
 
 # plotBBox(sst.bbox, plotColor = 'thermal')
 
@@ -155,7 +169,7 @@ toc()
 sst.rast <- array2rast(lon = sst.bbox$longitude, lat = sst.bbox$latitude, var = sst.bbox$sst,
                        time = sst.bbox$time, extent = ext(bbox.gom))
 
-sst.rast.df <- as.data.frame(sst.rast[[1:12]], xy = TRUE) %>%  #select 1st 12 layers as example for viz
+sst.rast.df <- as.data.frame(sst.rast[[1:12]], xy = TRUE, na.rm = FALSE) %>%  #select 1st 12 layers as example for viz
   pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "sst") %>%
   arrange(date)
 
@@ -179,7 +193,7 @@ ggplot() +
   facet_wrap(~date)
 
 
-### Export SST rasters as CSV (w/ WGS84 CRS; EPSG:4326)
+### Export SST rasters as GeoTIFF (w/ WGS84 CRS; EPSG:4326)
 
 # writeRaster(sst.rast, "Environ_data/GoM SST example.tif")
 # writeRaster(sst.rast, "Environ_data/GoM SST.tif")
@@ -202,25 +216,27 @@ ggplot() +
 
 xpos <- ext(bbox.gom)[1:2]
 ypos <- ext(bbox.gom)[3:4]
-tpos <- as_date(range(turts.gom$date)) %>% as.character()
+tpos <- range(turts.gom$datetime) %>%
+  as_date() %>%
+  as.character()
 nppInfo <- rerddap::info('erdMH1ppmday')
 nppInfo$alldata$NC_GLOBAL[38,]
 
 tic()
 npp.bbox <- rxtracto_3D(nppInfo, parameter = 'productivity', xcoord = xpos, ycoord = ypos, tcoord = tpos,
-                        zcoord = c(0,0))
+                        zcoord = 0)
 toc()
-# takes 30 sec to run
+# takes 18 sec to run
 
 
-plotBBox(npp.bbox, plotColor = 'algae')
+# plotBBox(npp.bbox, plotColor = 'algae')
 
 
 # Create {terra} SpatRaster for export and data.frame to plot raster in ggplot
 npp.rast <- array2rast(lon = npp.bbox$longitude, lat = npp.bbox$latitude, var = npp.bbox$productivity,
                        time = npp.bbox$time, extent = ext(bbox.gom))
 
-npp.rast.df <- as.data.frame(npp.rast[[1:12]], xy = TRUE) %>%  #select 1st 12 layers as example for viz
+npp.rast.df <- as.data.frame(npp.rast[[1:12]], xy = TRUE, na.rm = FALSE) %>%  #select 1st 12 layers as example for viz
   pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "npp") %>%
   arrange(date)
 
@@ -244,6 +260,74 @@ ggplot() +
   facet_wrap(~date)
 
 
-### Export NPP rasters as CSV (w/ WGS84 CRS; EPSG:4326)
+### Export NPP rasters as GeoTIFF (w/ WGS84 CRS; EPSG:4326)
 
 # writeRaster(npp.rast, "Environ_data/GoM NPP.tif")
+
+
+
+
+
+
+
+
+
+
+
+###########################################################################################
+### Diffuse Attenuation Coefficient of Photosynthetically Available Radiation [Kd(PAR)] ###
+###########################################################################################
+
+## Plot NPP basemap based on defined bbox for particular month-year
+
+xpos <- ext(bbox.gom)[1:2]
+ypos <- ext(bbox.gom)[3:4]
+tpos <- range(turts.gom$datetime) %>%
+  as_date() %>%
+  as.character()
+tpos[1] <- "2014-06-01"  #change to June 1st so that June 2014 layer is also downloaded
+kdparInfo <- rerddap::info('nesdisVHNSQkdparMonthly')
+kdparInfo$alldata$NC_GLOBAL[52,]
+
+tic()
+kdpar.bbox <- rxtracto_3D(kdparInfo, parameter = 'kd_par', xcoord = xpos, ycoord = ypos, tcoord = tpos,
+                        zcoord = 0)
+toc()
+# takes 7 min to run
+
+
+# plotBBox(kdpar.bbox, plotColor = 'turbid')
+
+
+# Create {terra} SpatRaster for export and data.frame to plot raster in ggplot
+kdpar.rast <- array2rast(lon = kdpar.bbox$longitude, lat = kdpar.bbox$latitude, var = kdpar.bbox$kd_par,
+                       time = kdpar.bbox$time, extent = ext(bbox.gom))
+names(kdpar.rast) <- gsub(names(kdpar.rast), pattern = " 12:00:00", replacement = "")
+
+kdpar.rast.df <- as.data.frame(kdpar.rast[[1:12]], xy = TRUE, na.rm = FALSE) %>%  #select 1st 12 layers as example for viz
+  pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "kdpar") %>%
+  arrange(date)
+
+
+# Plot tracks overlaid w/ NPP
+turts.gom.l <- turts.gom %>%
+  group_by(ptt) %>%
+  summarize(do_union = FALSE) %>%
+  st_cast("MULTILINESTRING")
+
+ggplot() +
+  geom_raster(data = kdpar.rast.df, aes(x, y, fill = kdpar)) +
+  scale_fill_cmocean(name = "turbid") +
+  geom_sf(data = turts.gom.l, aes(color = factor(ptt))) +
+  scale_color_viridis_d(guide = "none") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  coord_sf() +
+  facet_wrap(~date)
+
+
+### Export Kd(PAR) rasters as GeoTIFF (w/ WGS84 CRS; EPSG:4326)
+
+# writeRaster(kdpar.rast, "Environ_data/GoM KdPAR.tif")
