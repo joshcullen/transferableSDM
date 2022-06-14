@@ -1,6 +1,6 @@
 
 
-### Download dyanmic environmental variables as raster layers from ERDDAP ###
+### Download dynamic environmental variables as raster layers from ERDDAP ###
 ### Define extents on which to download GEBCO (2021) bathymetry data for each region from website ###
 # https://download.gebco.net
 
@@ -35,8 +35,8 @@ turts.gom <- turts.gt2011 %>%
 gom.bbox <- st_bbox(turts.gom)
 
 # define {terra} SpatRaster based on bbox
-bbox.gom <- terra::rast(xmin = gom.bbox[1], xmax = gom.bbox[3], ymin = gom.bbox[2], ymax = gom.bbox[4],
-                        resolution = 15/3600, crs = "EPSG:4326")
+bbox.gom <- terra::rast(xmin = gom.bbox[1], xmax = gom.bbox[3], ymin = gom.bbox[2],
+                        ymax = gom.bbox[4], resolution = 15/3600, crs = "EPSG:4326")
 bbox.gom <- extend(bbox.gom, 50)  #pad each side by 5 cells (w/ 15 arc sec resolution)
 ext(bbox.gom)
 
@@ -278,7 +278,7 @@ ggplot() +
 ### Diffuse Attenuation Coefficient of Photosynthetically Available Radiation [Kd(PAR)] ###
 ###########################################################################################
 
-## Plot NPP basemap based on defined bbox for particular month-year
+## Plot KdPAR basemap based on defined bbox for particular month-year
 
 xpos <- ext(bbox.gom)[1:2]
 ypos <- ext(bbox.gom)[3:4]
@@ -331,3 +331,86 @@ ggplot() +
 ### Export Kd(PAR) rasters as GeoTIFF (w/ WGS84 CRS; EPSG:4326)
 
 # writeRaster(kdpar.rast, "Environ_data/GoM KdPAR.tif")
+
+
+
+
+
+
+
+
+
+#################################################
+### Geostrophic Currents (U and V Components) ###
+#################################################
+
+## Plot currents basemap based on defined bbox for particular month-year
+
+xpos <- ext(bbox.gom)[1:2]
+ypos <- ext(bbox.gom)[3:4]
+tpos <- range(turts.gom$datetime) %>%
+  as_date() %>%
+  as.character()
+nppInfo <- rerddap::info('erdMH1ppmday')
+nppInfo$alldata$NC_GLOBAL[38,]
+
+tic()
+npp.bbox <- rxtracto_3D(nppInfo, parameter = 'productivity', xcoord = xpos, ycoord = ypos, tcoord = tpos,
+                        zcoord = 0)
+toc()
+# takes 18 sec to run
+
+
+# plotBBox(npp.bbox, plotColor = 'algae')
+
+
+# Create {terra} SpatRaster for export and data.frame to plot raster in ggplot
+npp.rast <- array2rast(lon = npp.bbox$longitude, lat = npp.bbox$latitude, var = npp.bbox$productivity,
+                       time = npp.bbox$time, extent = ext(bbox.gom))
+
+npp.rast.df <- as.data.frame(npp.rast[[1:12]], xy = TRUE, na.rm = FALSE) %>%  #select 1st 12 layers as example for viz
+  pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "npp") %>%
+  arrange(date)
+
+
+# Plot tracks overlaid w/ NPP
+turts.gom.l <- turts.gom %>%
+  group_by(ptt) %>%
+  summarize(do_union = FALSE) %>%
+  st_cast("MULTILINESTRING")
+
+ggplot() +
+  geom_raster(data = npp.rast.df, aes(x, y, fill = npp)) +
+  scale_fill_cmocean(name = "algae") +
+  geom_sf(data = turts.gom.l, aes(color = factor(ptt))) +
+  scale_color_viridis_d(guide = "none") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  coord_sf() +
+  facet_wrap(~date)
+
+
+### Export NPP rasters as GeoTIFF (w/ WGS84 CRS; EPSG:4326)
+
+# writeRaster(npp.rast, "Environ_data/GoM NPP.tif")
+
+
+
+
+
+
+
+### Define quadrature points for monthly time steps of model ###
+
+tpos  #start month/year is June 2014; end month/year is October 2020
+
+tpos2 <- gsub(tpos, pattern = "-..$", replacement = "-01") %>%  #set to 1st of each month
+  as_date()
+quad.pts <- data.frame(date = seq(from = tpos2[1], to = tpos2[2], by = "1 month"))
+
+
+## Export quadrature time points
+
+# write.csv(quad.pts, "Environ_data/quadrature_pts.csv", row.names = FALSE)
