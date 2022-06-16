@@ -1,7 +1,7 @@
 
 # Function to discretize continuous animal trajectories for CT(S)MC model
 
-make_disc_path_internal = function(sims1, hex_poly, quad_times, p) {
+make_disc_path = function(sims1, hex_poly, quad_times, p) {
   # sims: a {sf} POINT object with columns for 'ptt', 'rep', and 'datetime' for a single indiv.
   # hex_poly: a {sf} POLYGON object representing the hexgrid for a particular ID
   # quad_times: a vector of POSIXct dates corresponding w/ the environmental rasters
@@ -68,7 +68,7 @@ make_disc_path_internal = function(sims1, hex_poly, quad_times, p) {
 }
 
 #---------------------------------
-make_disc_path = function(sims, hex_grid, quad_times) {
+make_disc_path2 = function(sims, hex_grid, quad_times) {
   # sims: a {sf} POINT object with columns for 'ptt', 'rep', and 'datetime' for all indivs
   # hex_grid: a list of {sf} POLYGON objects representing the hexgrid for each ID, where each element is a list w/ element named 'poly'
   # quad_times: a vector of POSIXct dates corresponding w/ the environmental rasters
