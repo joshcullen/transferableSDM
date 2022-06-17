@@ -90,8 +90,8 @@ for (i in 1:length(PTTs)) {
 
   lines <- dat.sf.l %>%
     filter(ptt == PTTs[i])
-  pts <- dat.sf.p %>%
-    filter(ptt == PTTs[i])
+  # pts <- dat.sf.p %>%
+  #   filter(ptt == PTTs[i])
   orig.pts <- dat.orig %>%
     filter(Ptt == PTTs[i])
   hexes <- hex_grid[[i]]$poly
@@ -130,16 +130,11 @@ sims <- dat.sf.p %>%
 PTTs <- unique(sims$ptt)
 
 # filter hex_grid in case any PTT removed
-hex_grid1 <- hex_grid[as.character(PTTs)]
-
-# number of imputations
-num_reps <- str_replace(sims$rep, pattern = "\\d+_*", replacement = "") %>%  #convert rep to int
-  as.integer() %>%
-  max()
+hex_grid <- hex_grid[as.character(PTTs)]
 
 
 # create empty list to store results
-fit_list <- vector("list", length(PTTs)) %>%
+disc_path <- vector("list", length(PTTs)) %>%
   set_names(PTTs)
 
 
@@ -163,19 +158,16 @@ for (i in 1:length(PTTs)) {
     p<- progressr::progressor(steps = length(sims_list))
 
     disc_path_list <- future_map(sims_list,
-                                 ~make_disc_path(., hex_grid1[[i]]$poly, quad_times, p),
+                                 ~make_disc_path(., hex_grid[[i]]$poly, quad_times, p),
                                  .options = furrr_options(seed = 2022)
     )
   })
 
-  fit_list[[i]] <- bind_rows(disc_path_list) %>%
+  disc_path[[i]] <- bind_rows(disc_path_list) %>%
     mutate(ptt = PTTs[i], .before = rep)
 }
 toc()  # takes 5.5 min to run on desktop
 plan(sequential)  #return to single core
-
-# create single data.frame
-disc_path <- bind_rows(fit_list)
 
 
 
@@ -183,7 +175,6 @@ disc_path <- bind_rows(fit_list)
 
 ### Export products ###
 
-# write.csv(disc_path, "Data_products/Discretized paths.csv", row.names = FALSE)
 # save(sims, disc_path, hex_grid, gom.sf, file = "Data_products/discretized_tracks.RData")
 
 
