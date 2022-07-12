@@ -102,7 +102,8 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
   }
 
   # extr.covar<- data.frame()
-  extr.covar<- matrix(NA, nrow = nrow(tmp) - 1, ncol = 6 + length(layers))
+  extr.covar<- matrix(NA, nrow = nrow(tmp) - 1, ncol = 6 + length(layers)) %>%
+    data.frame()
   colnames(extr.covar) <- c("n", "dist", "dt", "id", "date", "state", names(layers))
 
   #Extract values from each line segment
@@ -125,9 +126,8 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
       time.ind[cond] <- 1
       layers.tmp[[names(cond)]] <- layers.tmp[[names(cond)]][[1]]
       terra::values(layers.tmp[[names(cond)]]) <- NA
-    } else {
-      dyn_names1 <- dyn_names
     }
+
     layers.tmp[dyn_names] <- map2(layers.tmp[dyn_names], time.ind, ~{.x[[.y]]})
     layers.tmp <- rast(layers.tmp)
 
@@ -135,7 +135,7 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
     # .layers.tmp <- terra::wrap(layers.tmp)
     # .segment <- terra::wrap(terra::vect(segment))
     tmp1<- terra::extract(layers.tmp, terra::vect(segment), along = TRUE,
-                          cellnumbers = FALSE) #%>%
+                          cells = FALSE) #%>%
       # purrr::map(., ~matrix(., ncol = nlyr(layers.tmp))) %>%
       # purrr::pluck(1) %>%
       # data.frame() %>%
@@ -176,12 +176,12 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
     # tmp2<- tmp2[,!apply(is.na(tmp2), 2, any)]
 
     # extr.covar<- rbind(extr.covar, tmp2)
-    extr.covar[j-1,] <- unlist(tmp2)
+    extr.covar[j-1,] <- tmp2
     # rm(.segment)
     # rm(.layers.tmp)
   }
 
-  extr.covar <- as.data.frame(extr.covar) %>%
+  extr.covar <- extr.covar %>%
     mutate(date = as_datetime(date))
 
   p()  #plot progress bar

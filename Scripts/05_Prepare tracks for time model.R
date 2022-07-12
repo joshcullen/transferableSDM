@@ -96,6 +96,7 @@ plan(multisession, workers = availableCores() - 2)
 path<- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('KdPAR','NPP','SST'),
                       ind = "month.year", imputed = TRUE)
 #takes 2.2 min to run
+#takes 28 min to run for the 2nd thru 5th PTTs
 
 plan(sequential)
 
