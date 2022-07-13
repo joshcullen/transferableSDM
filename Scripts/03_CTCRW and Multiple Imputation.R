@@ -6,7 +6,6 @@ library(tidyverse)
 library(lubridate)
 library(future)
 library(furrr)
-# library(terra)
 library(sf)
 library(ptolemy)
 library(crawlUtils)  #needs to be used w/ crawl v2.2.1 otherwise it crashes
@@ -123,11 +122,11 @@ toc()  #takes 2 min
 vis_graph <- pathroutr::prt_visgraph(gom.sf)
 
 
-# Make predictions at 30 min time interval
+# Make predictions at 2 hr time interval
 tic()
-dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "30 mins",
+dat.tracks.pred <- cu_crw_predict(fit_list = dat.tracks.crw, predTime = "2 hours",
                                       barrier = gom.sf, vis_graph = vis_graph)
-toc()  #took 6.5 min on desktop
+toc()  #took 5 min on desktop
 
 
 preds <- bind_rows(dat.tracks.pred)
@@ -153,10 +152,10 @@ set.seed(2022)
 nsims <- 20
 tic()
 progressr::with_progress({
-  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "30 mins", size = nsims,
+  dat.tracks.sims <- cu_crw_sample(fit_list = dat.tracks.crw, predTime = "2 hours", size = nsims,
                                    barrier = gom.sf, vis_graph = vis_graph)
 })
-toc()  #took 3.25 hrs to run w/ 20 imputations on desktop
+toc()  #took 1.85 hrs to run w/ 20 imputations on desktop
 
 
 
@@ -211,5 +210,5 @@ dat.tracks.sims.df <- dat.tracks.sims2 %>%
 
 
 
-# write.csv(preds.df, "Processed_data/Processed_Cm_Tracks_SSM_30min.csv", row.names = FALSE)
-# write.csv(dat.tracks.sims.df, "Processed_data/Imputed_Cm_Tracks_SSM_30min.csv", row.names = FALSE)
+# write.csv(preds.df, "Processed_data/Processed_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
+# write.csv(dat.tracks.sims.df, "Processed_data/Imputed_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)

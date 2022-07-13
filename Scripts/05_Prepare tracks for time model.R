@@ -17,7 +17,7 @@ source('Scripts/helper functions.R')
 ### Import imputed turtle tracks ###
 ####################################
 
-dat <- vroom('Processed_data/Imputed_Cm_Tracks_SSM_30min.csv', delim = ",")
+dat <- vroom('Processed_data/Imputed_Cm_Tracks_SSM_2hr.csv', delim = ",")
 dat <- dat %>%
   mutate(month.year = as_date(datetime),
          .after = 'datetime') %>%
@@ -29,7 +29,7 @@ dat <- dat %>%
 # Calculate step lengths, turning angles, NSD, and dt
 tic()
 dat<- prep_data(dat = dat, coord.names = c('x','y'), id = "rep")
-toc()  # takes 16.5 min to run
+toc()  # takes 5.3 min to run
 
 dat$speed <- dat$step / dat$dt
 
@@ -39,7 +39,7 @@ round(quantile(dat$speed, c(0.01, 0.25, 0.5, 0.75, 0.95, 0.99, 1), na.rm = TRUE)
 any(dat$step == 0, na.rm = TRUE)
 
 
-## There are some extremely fast outliers (9548 m/s) that need to be removed before subsequent analysis
+## There are some extremely fast outliers (9146 m/s) that need to be removed before subsequent analysis
 
 # Remove observations w/ NA step length (i.e., last obs of each PTT)
 dat.filt <- dat %>%
@@ -66,17 +66,17 @@ files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
 cov_list <- sapply(files, rast)
 cov_list
 
-names(cov_list) <- c('bathym', 'KdPAR', 'NPP', 'SST')
+names(cov_list) <- c('bathym', 'Chla', 'Kd490', 'SST')
 
 # Change names for NPP and SST to match KdPAR (YYYY-MM-01)
-for (var in c('NPP', 'SST')) {
+for (var in c('Chla', 'Kd490', 'SST')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
 }
 
 
 ## Transform raster layers to match coarsest spatial resolution (i.e., NPP)
-for (var in c("bathym", "KdPAR", "SST")) {
-  cov_list[[var]] <- resample(cov_list[[var]], cov_list$NPP, method = "bilinear")
+for (var in c("bathym", "SST")) {
+  cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "bilinear")
 }
 
 
@@ -93,16 +93,16 @@ dat.filt <- dat.filt %>%
 
 #for running in parallel; define number of cores to use
 plan(multisession, workers = availableCores() - 2)
-path<- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('KdPAR','NPP','SST'),
+path<- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Chla','Kd490','SST'),
                       ind = "month.year", imputed = TRUE)
-#takes 2.2 min to run
-#takes 28 min to run for the 2nd thru 5th PTTs
+#takes 2.8 hrs to run on desktop
+
 
 plan(sequential)
 
 
+save(dat, dat.filt, cov_list, path, file = "Data_products/Extracted environ covars.RData")
 
 
-
-
+## 75% of observed steps have complete data
 
