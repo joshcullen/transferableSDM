@@ -22,7 +22,7 @@ dat <- dat %>%
   mutate(month.year = as_date(datetime),
          .after = 'datetime') %>%
   mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
-  rename(x = mu.x, y = mu.y, date = datetime)
+  rename(x = mu.x, y = mu.y, date = datetime, id = ptt)
 
 
 
@@ -80,7 +80,12 @@ for (var in c("bathym", "SST")) {
 }
 
 
+## Set all positive bathymetric values (i.e., elevation) as NA
+cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
+
+## Transform CRS to match tracks
+cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 
 
 ########################################################

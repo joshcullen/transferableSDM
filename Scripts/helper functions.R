@@ -241,3 +241,61 @@ extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_
 }
 
 
+#----------------------------
+
+add_avail_steps <- function(data) {
+  ## data = data.frame containing at least columns `id`, `x`, `y`, and `step`
+  ## this function creates a set of 4 available steps per observed step in the 4 cardinal directions
+  ## observed and available steps are grouped together by added column `strata`
+
+  data2 <- data %>%
+    rename(x1 = x, y1 = y) %>%
+    split(.$rep) %>%
+    map(., ~{.x %>%
+        mutate(x2 = c(x1[-1], NA),
+               y2 = c(y1[-1], NA),
+               .after = y1)
+      }) %>%
+    bind_rows()
+
+  data2$strata <- 1:nrow(data2)
+  data2$obs <- 1
+
+
+  ## define available steps
+  avail.list <- vector("list", 4)
+  tmp <- data2
+
+  for (i in 1:4) {
+
+    if (i == 1) {
+      #step north
+      tmp$x2 <- tmp$x1
+      tmp$y2 <- tmp$y1 + tmp$step
+    } else if (i == 2) {
+      #step east
+      tmp$x2 <- tmp$x1 + tmp$step
+      tmp$y2 <- tmp$y1
+    } else if (i == 3) {
+      #step south
+      tmp$x2 <- tmp$x1
+      tmp$y2 <- tmp$y1 - tmp$step
+    } else {
+      #step west
+      tmp$x2 <- tmp$x1 - tmp$step
+      tmp$y2 <- tmp$y1
+    }
+
+    tmp$obs <- 0
+    avail.list[[i]] <- tmp
+  }
+
+  avail <- bind_rows(avail.list)
+
+  #add available steps to observed steps
+  data3 <- rbind(data2, avail) %>%
+    arrange(strata)
+
+  return(data3)
+
+}
