@@ -107,13 +107,13 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
   colnames(extr.covar) <- c("n", "dist", "dt", "id", "date", "state", names(layers))
 
   #Extract values from each line segment
-  for (j in 2:nrow(tmp)) {
+  for (j in 1:nrow(tmp)) {
     # print(j)
-    segment<- tmp[(j-1):j, c("x","y")] %>%
-      as.matrix() %>%
+    segment<- tmp[j, c("x1","y1","x2","y2")] %>%
+      unlist() %>%
+      matrix(nrow = 2, ncol = 2, byrow = TRUE) %>%
       st_linestring() %>%
-      st_sfc(crs = 'EPSG:3395') %>%
-      st_transform(terra::crs(layers[[1]]))
+      st_sfc(crs = 'EPSG:3395')
 
 
     # Create time-matched raster stack
@@ -156,7 +156,7 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
 
     #calculate segment means if continuous and proportions spent in each class if categorical
     if (is.null(which_cat)) {
-      covar.means<- data.frame(t(colMeans(tmp1)))
+      covar.means<- data.frame(t(colMeans(tmp1, na.rm = TRUE)))
     } else {
       covar.means<- data.frame(t(colMeans(tmp1[,names(tmp1) != which_cat, drop = FALSE])))
       cat<- factor(tmp1[,which_cat], levels = lev)
@@ -166,17 +166,17 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
     }
 
 
-    tmp2<- cbind(n = nrow(tmp1), dist = tmp$step[j-1], covar.means) %>%
-      dplyr::mutate(dt = as.numeric(tmp$dt[j-1]),
+    tmp2<- cbind(n = nrow(tmp1), dist = tmp$step[j], covar.means) %>%
+      dplyr::mutate(dt = as.numeric(tmp$dt[j]),
                     id = unique(data$id),
-                    date = tmp$date[j-1],
-                    state = ifelse(!is.null(state.col), tmp[j-1,state.col], NA),
+                    date = tmp$date[j],
+                    state = ifelse(!is.null(state.col), tmp[j,state.col], NA),
                     .after = dist) %>%
       dplyr::select(-ID)
     # tmp2<- tmp2[,!apply(is.na(tmp2), 2, any)]
 
     # extr.covar<- rbind(extr.covar, tmp2)
-    extr.covar[j-1,] <- tmp2
+    extr.covar[j,] <- tmp2
     # rm(.segment)
     # rm(.layers.tmp)
   }

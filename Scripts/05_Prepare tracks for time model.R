@@ -17,7 +17,7 @@ source('Scripts/helper functions.R')
 ### Import imputed turtle tracks ###
 ####################################
 
-dat <- vroom('Processed_data/Imputed_Cm_Tracks_SSM_2hr.csv', delim = ",")
+dat <- vroom('Processed_data/Imputed_Cm_Tracks_SSM_1hr.csv', delim = ",")
 dat <- dat %>%
   mutate(month.year = as_date(datetime),
          .after = 'datetime') %>%
@@ -38,8 +38,13 @@ dat$speed <- dat$step / dat$dt
 round(quantile(dat$speed, c(0.01, 0.25, 0.5, 0.75, 0.95, 0.99, 1), na.rm = TRUE), 2)
 any(dat$step == 0, na.rm = TRUE)
 
-
 ## There are some extremely fast outliers (9146 m/s) that need to be removed before subsequent analysis
+
+
+# Create 4 available steps per observed step
+dat <- add_avail_steps(dat)
+
+
 
 # Remove observations w/ NA step length (i.e., last obs of each PTT)
 dat.filt <- dat %>%
@@ -68,13 +73,13 @@ cov_list
 
 names(cov_list) <- c('bathym', 'Chla', 'Kd490', 'SST')
 
-# Change names for NPP and SST to match KdPAR (YYYY-MM-01)
+# Change names for NPP and SST to match Kd490 (YYYY-MM-01)
 for (var in c('Chla', 'Kd490', 'SST')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
 }
 
 
-## Transform raster layers to match coarsest spatial resolution (i.e., NPP)
+## Transform raster layers to match coarsest spatial resolution (i.e., Chla/Kd490)
 for (var in c("bathym", "SST")) {
   cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "bilinear")
 }
@@ -93,21 +98,32 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 ########################################################
 
 dat.filt <- dat.filt %>%
-  rename(id = ptt) %>%
+  # rename(id = ptt) %>%
   filter(id != 104833)
 
 #for running in parallel; define number of cores to use
 plan(multisession, workers = availableCores() - 2)
-path<- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Chla','Kd490','SST'),
-                      ind = "month.year", imputed = TRUE)
+path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Chla','Kd490','SST'),
+                       ind = "month.year", imputed = TRUE)
 #takes 2.8 hrs to run on desktop
 
 
 plan(sequential)
 
 
-save(dat, dat.filt, cov_list, path, file = "Data_products/Extracted environ covars.RData")
+# add strata and obs columns
+path1 <- cbind(path, dat.filt[,c("strata","obs")])
 
 
-## 75% of observed steps have complete data
+# save(dat, dat.filt, cov_list, path, file = "Data_products/Extracted environ covars.RData")
 
+
+nrow(drop_na(path1, bathym, Chla, Kd490, SST)) / nrow(path1)
+## 95% of observed and available steps have complete data
+
+
+
+
+## Export data
+
+write.csv(path1, "Processed_data/Input for time model.csv", row.names = FALSE)
