@@ -10,7 +10,8 @@ library(furrr)
 # library(future)
 library(vroom)
 library(tictoc)
-library(R2jags)
+# library(R2jags)
+library(rstan)
 library(MCMCvis)
 
 
@@ -45,7 +46,7 @@ PerformanceAnalytics::chart.Correlation(dat2[,c('bathym.s','chla.s','kd490.s','s
 #strong corr (1.00) between Chla and Kd490; omit Kd490 from subsequent analyses
 
 
-### Run time model ###
+### Run time model w/ JAGS ###
 
 model <- function(){
 
@@ -111,3 +112,40 @@ par(mfrow=c(1,1))
 MCMCplot(res, excl = "deviance")
 
 res.summ<- res$BUGSoutput$summary
+
+
+
+### Run time model w/ Stan ###
+
+# data
+N <- nrow(dat2)
+dt <- dat2$dt
+dist <- dat2$dist
+bathym <- dat2$bathym.s
+chla <- dat2$chla.s
+sst <- dat2$sst.s
+dat.list <- list(nobs=nobs, dt=dt, dist=dist, bathym=bathym, chla=chla, sst=sst)
+
+stan.model <- '
+data {
+  int<lower=1> N;                         // sample size
+  int<lower=1> ID;                        // number of individuals
+  vector[N] dt;                           // time interval (min)
+  vector[N] dist;                         // Distance traveled for given step (m)
+  vector[N] bathym;                       // Bathymetric depth (m)
+  vector[N] chla;                         // Chlorophyll a concentration (mg m^-3 d^-1)
+  vector[N] sst                           // Sea surface temperature (C)
+}
+
+
+transformed data {
+  real bathym.s;
+  real chla.s
+  real sst.s
+
+  // Center and scale covariates
+  bathym.s = mean(bathym) / sd(bathym);
+  chla.s = mean(chla) / sd(chla);
+  sst.s = mean(sst) / sd(sst)
+}
+'
