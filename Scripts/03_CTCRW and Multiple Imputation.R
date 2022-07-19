@@ -13,6 +13,8 @@ library(trip)
 library(doRNG)  #only needed when running sourced function cu_crw_sample()
 library(tictoc)
 library(progressr)
+library(arrow)
+library(sfarrow)
 
 # load in modified {crawlUtils} functions (that I know work)
 source("Scripts/crawlUtils functions.R")
@@ -438,7 +440,7 @@ plotly::ggplotly(
 
 
 
-### Export results
+### Export results ###
 
 # Remove geometry col from sf objects
 preds.gom.df <- preds.gom %>%
@@ -469,12 +471,25 @@ dat.qa.tracks.sims.df <- dat.qa.tracks.sims2 %>%
   st_drop_geometry()
 
 
-
+## Write files for best-fit and imputed tracks
 # write.csv(preds.gom.df, "Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
 # write.csv(dat.gom.tracks.sims.df, "Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
+# write_parquet(preds.gom.df, "Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.parquet")
+# write_parquet(dat.gom.tracks.sims.df, "Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.parquet")
 
 # write.csv(preds.br.df, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
 # write.csv(dat.br.tracks.sims.df, "Processed_data/Imputed_Brazil_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
+# write_parquet(preds.br.df, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_2hr.parquet")
+# write_parquet(dat.br.tracks.sims.df, "Processed_data/Imputed_Brazil_Cm_Tracks_SSM_2hr.parquet")
 
 # write.csv(preds.qa.df, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
 # write.csv(dat.qa.tracks.sims.df, "Processed_data/Imputed_Qatar_Cm_Tracks_SSM_2hr.csv", row.names = FALSE)
+# write_parquet(preds.qa.df, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_2hr.parquet")
+# write_parquet(dat.qa.tracks.sims.df, "Processed_data/Imputed_Qatar_Cm_Tracks_SSM_2hr.parquet")
+
+
+## Write files for coastline spatial layers
+# st_write_parquet(gom.sf, 'Environ_data/GoM_land.parquet')
+# st_write_parquet(br.sf, 'Environ_data/Brazil_land.parquet')
+# st_write_parquet(qa.sf, 'Environ_data/Qatar_land.parquet')
+

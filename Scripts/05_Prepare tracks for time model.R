@@ -17,7 +17,7 @@ source('Scripts/helper functions.R')
 ### Import imputed turtle tracks ###
 ####################################
 
-dat <- vroom('Processed_data/Imputed_Cm_Tracks_SSM_1hr.csv', delim = ",")
+dat <- vroom('Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv', delim = ",")
 dat <- dat %>%
   mutate(month.year = as_date(datetime),
          .after = 'datetime') %>%
@@ -105,9 +105,7 @@ dat.filt <- dat.filt %>%
 plan(multisession, workers = availableCores() - 2)
 path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Chla','Kd490','SST'),
                        ind = "month.year", imputed = TRUE)
-#takes 2.8 hrs to run on desktop
-
-
+#takes 13.5 hrs to run on desktop (18)
 plan(sequential)
 
 
@@ -119,11 +117,11 @@ path1 <- cbind(path, dat.filt[,c("strata","obs")])
 
 
 nrow(drop_na(path1, bathym, Chla, Kd490, SST)) / nrow(path1)
-## 95% of observed and available steps have complete data
+## 76% of observed and available steps have complete data
 
 
 
 
 ## Export data
-
-write.csv(path1, "Processed_data/Input for time model.csv", row.names = FALSE)
+# vroom_write(path1, "Processed_data/Input for time model.csv", delim = ",")
+# arrow::write_parquet(path1, "Processed_data/Input for time model.parquet")
