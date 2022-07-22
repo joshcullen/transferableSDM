@@ -119,7 +119,8 @@ res.summ<- res$BUGSoutput$summary
 
 
 ### Run time model w/ Stan ###
-options(mc.cores = 4)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
 
 
 dat3 <- dat2 %>%
