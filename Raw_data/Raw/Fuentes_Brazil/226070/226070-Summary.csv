@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Joao,226070,Mk10,,81,1818,99,4,6699,,,,,14,00:49:38 18-Nov-2021,21:27:36 29-May-2022,193,00:49:38 18-Nov-2021,00:00:00 18-May-2022,181,,,

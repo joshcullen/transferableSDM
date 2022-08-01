@@ -23,13 +23,25 @@ dat.loc<- list.files(path = "./Raw_data/Raw/Fuentes_Brazil",
 dat.fast<- list.files(path = "./Raw_data/Raw/Fuentes_Brazil",
                       pattern = "*FastGPS.csv",
                       full.names = T) %>%
-  map_df(~read.csv(., skip = 3)) %>%
+  map_df(~read.csv(.)) %>%
   rename(DeployID = Name, Date = InitTime)
 
 # Remove any FastGPS locations with Residual > 30
 # dat.fast2<- filter(dat.fast, Residual < 31 | is.na(Residual))
 
 
+
+## Since older column names for 'Location' file errors are different from recent downloads, need to aggregate all values into single column per variable (e.g., Error Radius vs Error radius)
+
+dat.loc <- dat.loc %>%
+  mutate(Error.radius = ifelse(is.na(Error.radius), Error.Radius, Error.radius),
+         Error.Semi.major.axis = ifelse(is.na(Error.Semi.major.axis), Error.Semi.Major.Axis,
+                                        Error.Semi.major.axis),
+         Error.Semi.minor.axis = ifelse(is.na(Error.Semi.minor.axis), Error.Semi.Minor.Axis,
+                                        Error.Semi.minor.axis),
+         Error.Ellipse.orientation = ifelse(is.na(Error.Ellipse.orientation),
+                                            Error.Ellipse.Orientation, Error.Ellipse.orientation)
+         )
 
 
 
@@ -71,7 +83,7 @@ dat.loc3<- dat.loc2 %>%
 
 summary(dat.loc3)
 glimpse(dat.loc3)
-table(dat.loc3$Quality)
+table(dat.loc3$Quality)  #7 obs w/ no value at all (even NA)
 table(dat.loc3$Ptt)
 
 # Change Type = 'User' to 'FastGPS'
@@ -110,9 +122,14 @@ dat.loc3 %>%
   group_by(Ptt, Type) %>%
   summarize(n = n()) %>%
   data.frame()
+#PTTs 41587, 41588, and 41614 likely "have only 1 FastGPS" point since I converted "User" points to  FastGPS
+
+# Remove extraneous columns
+dat.loc4 <- dat.loc3 %>%
+  dplyr::select(-c(Error.Radius:Offset.Orientation))
 
 
 ### Export data
 
-glimpse(dat.loc3)
-write.csv(dat.loc3, "Raw_data/Brazil_Fuentes_Cm_2016_2021.csv", row.names = FALSE)
+glimpse(dat.loc4)
+write.csv(dat.loc4, "Raw_data/Brazil_Fuentes_Cm_2016_2022.csv", row.names = FALSE)

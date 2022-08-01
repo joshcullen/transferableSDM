@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Jubilubi,226067,Mk10,,73,1463,99,3,3967,,,,,14,00:48:28 18-Nov-2021,13:57:31 13-Apr-2022,147,00:48:27 18-Nov-2021,20:09:10 12-Apr-2022,146,,,
