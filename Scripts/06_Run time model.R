@@ -27,9 +27,9 @@ dat <- dat %>%
   filter(obs == 1)
 
 # Remove all observations w/ missing bathym values (since NA values were assigned to land)
-# dat2 <- dat %>%
-#   drop_na(bathym)
-dat2 <- dat
+dat2 <- dat %>%
+  drop_na(bathym)
+# dat2 <- dat
 
 
 # Center and scale covariates
@@ -163,15 +163,15 @@ for (i in 1:iter){
   b0 <- vector("double", nID)
   b0 <- rnorm(nID, mean1, sd1)
 
-  b1_p <- rnorm(1, 0, 1)
-  b2_p <- rnorm(1, 0, 1)
-  b3_p <- rnorm(1, 0, 1)
+  bBathym_p <- rnorm(1, 0, 1)
+  bChla_p <- rnorm(1, 0, 1)
+  bSST_p <- rnorm(1, 0, 1)
 
   b_p <- abs(rnorm(1, 0, 1))
 
 
   # mean of gamma distribution
-  mu = dat2$dist * exp(b0[dat2$id] + b1_p*dat2$bathym.s + b2_p*dat2$chla.s + b3_p*dat2$sst.s)
+  mu = dat2$dist * exp(b0[dat2$id] + bBathym_p*dat2$bathym.s + bChla_p*dat2$chla.s + bSST_p*dat2$sst.s)
 
   # calculate the corresponding a[i] parameter
   a = mu * b_p
@@ -206,7 +206,7 @@ ggplot() +
 tmp <- dat2 %>%
   filter(dt > 100 & dt < 130)
 table(tmp$id)
-# common across IDs; this is likely an artefact of setting the imputed time interval to 2 hrs (120 min)
+# common across IDs; this is likely an artifact of setting the imputed time interval to 2 hrs (120 min)
 
 
 
@@ -218,12 +218,16 @@ table(tmp$id)
 dat2$id <- factor(dat2$id) %>%  #need to convert to integer for Stan
   as.numeric()
 
-dat3 <- dat2 %>%
-  slice_sample(n = 10000)
+table(dat2$id)
+# PTT 162055 has only 13 obs remaining
+
+dat3 <- dat2 #%>%
+  # slice_sample(n = 0.25*nrow(dat2)) %>%
+  # arrange(id, date)
 
 # Define objects pertaining to imputation of missing covars
-bathym_missidx <- which(is.na(dat3$bathym))
-n_bathym_miss <- length(bathym_missidx)
+# bathym_missidx <- which(is.na(dat3$bathym))
+# n_bathym_miss <- length(bathym_missidx)
 chla_missidx <- which(is.na(dat3$chla))
 n_chla_miss <- length(chla_missidx)
 sst_missidx <- which(is.na(dat3$sst))
@@ -240,11 +244,8 @@ dat.list <- list(
   bathym = scale(dat3$bathym)[,1],
   chla = scale(dat3$chla)[,1],
   sst = scale(dat3$sst)[,1],
-  bathym2 = scale(dat3$bathym ^ 2)[,1],
-  chla2 = scale(dat3$chla ^ 2)[,1],
-  sst2 = scale(dat3$sst ^ 2)[,1],
-  n_bathym_miss = n_bathym_miss,
-  bathym_missidx = bathym_missidx,
+  # n_bathym_miss = n_bathym_miss,
+  # bathym_missidx = bathym_missidx,
   n_chla_miss = n_chla_miss,
   chla_missidx = chla_missidx,
   n_sst_miss = n_sst_miss,
@@ -252,12 +253,9 @@ dat.list <- list(
   )
 
 # Replace missing covar values w/ Inf
-dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
+# dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
 dat.list$chla <- ifelse(is.na(dat.list$chla), Inf, dat.list$chla)
 dat.list$sst <- ifelse(is.na(dat.list$sst), Inf, dat.list$sst)
-dat.list$bathym2 <- ifelse(is.na(dat.list$bathym2), Inf, dat.list$bathym2)
-dat.list$chla2 <- ifelse(is.na(dat.list$chla2), Inf, dat.list$chla2)
-dat.list$sst2 <- ifelse(is.na(dat.list$sst2), Inf, dat.list$sst2)
 
 
 stan.model <- '
@@ -267,8 +265,8 @@ data {
   int nID;                                // number of unique IDs
   int n_chla_miss;                        // number of missing Chla vals
   int chla_missidx[n_chla_miss];          // index for missing Chla vals
-  int n_bathym_miss;                      // number of missing bathymetry vals
-  int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
+  //int n_bathym_miss;                      // number of missing bathymetry vals
+  //int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
   int n_sst_miss;                         // number of missing SST vals
   int sst_missidx[n_sst_miss];            // index for missing SST vals
   vector[N] dt;                           // time interval (min)
@@ -276,168 +274,118 @@ data {
   vector[N] bathym;                       // Bathymetric depth (m)
   vector[N] chla;                         // Chlorophyll a concentration (mg m^-3 d^-1)
   vector[N] sst;                          // Sea surface temperature (C)
-  vector[N] bathym2;                      // Squared bathymetric depth (m)
-  vector[N] chla2;                        // Squared chlorophyll a concentration (mg m^-3 d^-1)
-  vector[N] sst2;                         // Squared sea surface temperature (C)
 
 }
 
 
 parameters {
-    real<lower=0> b;                      // Rate param for gamm distrib of likelihood
-    vector[nID] b0_id;                    // Random intercepts by ID
-    real bBathym;                         // Linear reg. coeff for bathymetry
-    real bBathym2;                        // Quadratic reg. coeff for bathymetry
-    real bChla;                           // Linear reg. coeff for chlorophyll-a
-    real bChla2;                          // Quadratic reg. coeff for chlorophyll-a
-    real bSST;                            // Linear reg. coeff for sea surface temp
-    real bSST2;                           // Quadratic reg. coeff for sea surface temp
+    real<lower=0> mu_b;
+    vector<lower=0>[nID] b;
+    vector[nID] b0_id;
+    real bBathym;
+    real bChla;
+    real bSST;
 
-    real mean1;                           // Population mean of intercept
-    real<lower=0> sd1;                    // Population sd of intercept
+    real b0_bar;
+    real<lower=0> sd_b0;
 
-    vector[n_bathym_miss] bathym_miss;    // Index of missing bathymetry values
-    vector[n_chla_miss] chla_miss;        // Index of missing chlorophyll-a values
-    vector[n_sst_miss] sst_miss;          // Index of missing sea surface temp values
-    vector[n_bathym_miss] bathym_miss2;   // Index of squared missing bathymetry values
-    vector[n_chla_miss] chla_miss2;       // Index of squared missing chlorophyll-a values
-    vector[n_sst_miss] sst_miss2;         // Index of squared missing sea surface temp values
+    vector[n_chla_miss] chla_miss;
+    //vector[n_bathym_miss] bathym_miss;
+    vector[n_sst_miss] sst_miss;
 
-    real nu_bathym;                       // Mean value of standardized bathymetry
-    real nu_chla;                         // Mean value of standardized chlorophyll-a
-    real nu_sst;                          // Mean value of standardized sea surface temp
-    real<lower=0> sigma_bathym;           // SD of bathymetry values
-    real<lower=0> sigma_chla;             // SD of chlorophyll-a values
-    real<lower=0> sigma_sst;              // SD of sea surface temp values
-}
-
-
-transformed parameters {
-  vector[N] mu;
-  real<lower=0> a[N];
-  vector[N] bathym_merge;
-  vector[N] chla_merge;
-  vector[N] sst_merge;
-  vector[N] bathym_merge2;
-  vector[N] chla_merge2;
-  vector[N] sst_merge2;
-
-
-// Merge imputed w/ observed covariate vals
-  bathym_merge = bathym;
-    for (i in 1:n_bathym_miss) {
-        bathym_merge[bathym_missidx[i]] = bathym_miss[i];
-    }
-
-  chla_merge = chla;
-    for (i in 1:n_chla_miss) {
-        chla_merge[chla_missidx[i]] = chla_miss[i];
-    }
-
-  sst_merge = sst;
-    for (i in 1:n_sst_miss) {
-        sst_merge[sst_missidx[i]] = sst_miss[i];
-    }
-
-  bathym_merge2 = bathym2;
-    for (i in 1:n_bathym_miss) {
-        bathym_merge2[bathym_missidx[i]] = bathym_miss2[i];
-    }
-
-  chla_merge2 = chla2;
-    for (i in 1:n_chla_miss) {
-        chla_merge2[chla_missidx[i]] = chla_miss2[i];
-    }
-
-  sst_merge2 = sst2;
-    for (i in 1:n_sst_miss) {
-        sst_merge2[sst_missidx[i]] = sst_miss2[i];
-    }
-
-
-// Calculate params for gamma distrib
-  for (i in 1:N){
-    // mean of gamma distribution
-    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym_merge[i] + bBathym2*bathym_merge2[i] +
-    bChla*chla_merge[i] + bChla2*chla_merge2[i] + bSST*sst_merge[i] + bSST2*sst_merge2[i]);
-
-    // calculate the corresponding a[i] parameter
-    a[i] = mu[i] * b;
-  }
+    //real nu_chla;
+    //real nu_bathym;
+    //real nu_sst;
+    //real<lower=0> sigma_chla;
+    //real<lower=0> sigma_bathym;
+    //real<lower=0> sigma_sst;
 }
 
 
 model {
-  // likelihood
-  for (i in 1:N){
-    dt[i] ~ gamma(a[i], b);
-  }
+  vector[N] mu;
+  vector[N] a;
+  vector[N] chla_merge;
+  //vector[N] bathym_merge;
+  vector[N] sst_merge;
+
+  chla_merge = chla;
+  //bathym_merge = bathym;
+  sst_merge = sst;
+
+  chla_merge[chla_missidx] = chla_miss;
+  //bathym_merge[bathym_missidx] = bathym_miss;
+  sst_merge[sst_missidx] = sst_miss;
 
 
   // priors
-  for (j in 1:nID){
-    b0_id[j] ~ normal(mean1,sd1);
-  }
+  b0_id ~ normal(b0_bar, sd_b0);
 
-  mean1 ~ normal(0,1);
-  sd1 ~ normal(0,1);
+  b0_bar ~ normal(0,1);
+  sd_b0 ~ normal(0,1);
 
-  [sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,2);
-  [nu_chla, nu_bathym, nu_sst, b, bBathym, bBathym2, bChla, bChla2, bSST, bSST2] ~ normal(0, 1);
-  chla_merge ~ normal(nu_chla, sigma_chla);
-  bathym_merge ~ normal(nu_bathym, sigma_bathym);
-  sst_merge ~ normal(nu_sst, sigma_sst);
-
-  bathym_merge2 ~ normal(0,1);
-  chla_merge2 ~ normal(0,1);
-  sst_merge2 ~ normal(0,1);
-
-}
+  //[sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,1);
+  //[nu_chla, nu_bathym, nu_sst] ~ normal(0, 0.5);
+  mu_b ~ normal(0, 0.5);
+  b ~ normal(mu_b, 0.5);
+  [bBathym, bChla, bSST] ~ normal(0, 1);
+  target += normal_lpdf(chla_merge | 0, 1);
+  //target += normal_lpdf(bathym_merge | nu_bathym, sigma_bathym);
+  target += normal_lpdf(sst_merge | 0, 1);
 
 
-generated quantities {
-  vector[N] y_hat;
+  for (i in 1:N) {
+    // mean of gamma distribution
+    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym[i] + bChla*chla_merge[i] + bSST*sst_merge[i]);
 
-  // mean of gamma distribution
-  for (i in 1:N){
-    y_hat[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym_merge[i] + bBathym2*bathym_merge2[i] +
-    bChla*chla_merge[i] + bChla2*chla_merge2[i] + bSST*sst_merge[i] + bSST2*sst_merge2[i]);
+    // calculate the corresponding a parameter
+    a[i] = mu[i] * b[ID[i]];
+
+    // likelihood
+    dt[i] ~ gamma(a[i], b[ID[i]]);
   }
 }
 '
 
-mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 8675309)
+mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 5000, warmup = 1000, seed = 8675309)
+# took 50.5 hrs to run 5000 iter for 100% of data
 
-params <- c('b','b0_id','bBathym','bBathym2','bChla','bChla2','bSST','bSST2','mean1','sd1','nu_chla','sigma_chla','nu_bathym',
-            'sigma_bathym','nu_sst','sigma_sst')
+params <- c('mu_b','b','b0_id','bBathym','bChla','bSST','b0_bar','sd_b0')
 print(mod1, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
+# print(mod1, digits_summary = 3, pars = 'bathym_miss', probs = c(0.025, 0.5, 0.975))
+print(mod1, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
+print(mod1, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
 
-MCMCtrace(mod1, ind = TRUE, iter = 1000, pdf = FALSE, params = params)
+MCMCtrace(mod1, ind = TRUE, iter = 4000, pdf = FALSE, params = params)
 par(mfrow=c(1,1))
 MCMCplot(mod1, params = params)
 
-# posterior predictive check
-ppc_dens_overlay(dat3$dt,
-                 rstan::extract(mod1, pars = 'y_hat')$y_hat[1:200,]) +
-  xlim(0,1000)
-
-
-bayesplot::mcmc_acf(mod1, regex_pars = "^b")
-bayesplot::mcmc_intervals(mod1, regex_pars = "^b")
-bayesplot::mcmc_pairs(mod1, regex_pars = "^b")
 bayesplot::mcmc_neff(neff_ratio(mod1, pars = params)) +
   bayesplot::yaxis_text(hjust = 0)
 
+## Save stanfit object
+saveRDS(mod1, "Data_products/Time_model_intercept_stanfit.rds")
+
+
 #posterior prediction
-y_hat <- vector("double", 4000)
+y_hat <- matrix(NA, nrow = 4000, ncol = nrow(dat3))
 
-mu_hat <- extract(mod1, par = 'mu')$mu
-a_hat2 <- rowMeans(a_hat)
-b_hat <- extract(mod1, par = 'b')$b %>%
-  as.vector()
+bathym_merge = dat.list$bathym
+bathym_merge[bathym_missidx] = extract(mod1, par = 'bathym_miss')$bathym_miss %>% colMeans()
+chla_merge = dat.list$chla
+chla_merge[chla_missidx] = extract(mod1, par = 'chla_miss')$chla_miss %>% colMeans()
+sst_merge = dat.list$sst
+sst_merge[sst_missidx] = extract(mod1, par = 'sst_miss')$sst_miss %>% colMeans()
+b0_hat <- extract(mod1, par = 'b0_id')$b0_id
+b1_hat <- extract(mod1, par = 'b1')$b1
+b2_hat <- extract(mod1, par = 'b2')$b2
+b3_hat <- extract(mod1, par = 'b3')$b3
+b_hat <- extract(mod1, par = 'b')$b
 
-for (i in 1:4000) {
-  y_hat[i] <- dgamma(1, shape = a_hat2[i], rate = b_hat[i])
+for (i in 1:nrow(y_hat)) {
+  mu <- dat3$dist * exp(b0_hat[i,dat3$id] + b1_hat[i]*bathym_merge + b2_hat[i]*chla_merge + b3_hat[i]*sst_merge)
+  y_hat[i,] <- mu
 }
-ppc_dens_overlay(dat.list$dt,
-                 extract(mod1, par = 'y_hat')$y_hat[1:200,])
+
+ppc_dens_overlay(dat.list$dt, y_hat) +
+  xlim(0,1000)
