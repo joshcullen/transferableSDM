@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Ravi,226066,Mk10,,80,2226,99,4,8408,,,,,14,00:48:22 18-Nov-2021,01:27:50 13-Jul-2022,237,00:48:21 18-Nov-2021,21:19:12 03-Jul-2022,228,,,

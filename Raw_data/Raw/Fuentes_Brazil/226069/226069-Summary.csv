@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Lorenzo,226069,Mk10,,81,2231,99,4,9810,,,,,14,00:49:34 18-Nov-2021,11:04:35 29-Jul-2022,253,00:49:34 18-Nov-2021,11:51:20 28-Jul-2022,252,,,

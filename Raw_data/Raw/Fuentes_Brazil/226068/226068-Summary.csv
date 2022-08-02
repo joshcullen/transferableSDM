@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Coquinho,226068,Mk10,,79,2181,99,3,7199,,,,,14,23:51:25 17-Nov-2021,20:48:38 15-May-2022,179,00:48:24 18-Nov-2021,16:18:03 14-May-2022,178,,,

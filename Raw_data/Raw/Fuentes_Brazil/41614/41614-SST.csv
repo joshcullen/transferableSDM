@@ -1,0 +1,27 @@
+DeployID,Ptt,DepthSensor,Instr,Date,LocationQuality,Latitude,Longitude,Depth,Temperature,Source
+Leoncio,41614,,Mk10,10:00:00 08-Dec-2021,,,,0.0,29.9,Status
+Leoncio,41614,,Mk10,00:00:00 13-Dec-2021,,,,0.0,27.9,Status
+Leoncio,41614,,Mk10,14:00:00 17-Dec-2021,,,,0.0,28.1,Status
+Leoncio,41614,,Mk10,20:00:00 21-Dec-2021,,,,0.0,28.1,Status
+Leoncio,41614,,Mk10,12:00:00 02-Jan-2022,,,,0.0,27.4,Status
+Leoncio,41614,,Mk10,12:00:00 12-Jan-2022,,,,0.0,28.0,Status
+Leoncio,41614,,Mk10,12:00:00 17-Jan-2022,,,,0.0,27.7,Status
+Leoncio,41614,,Mk10,10:00:00 20-Jan-2022,,,,0.0,27.7,Status
+Leoncio,41614,,Mk10,21:00:00 20-Jan-2022,,,,0.0,27.8,Status
+Leoncio,41614,,Mk10,10:00:00 22-Jan-2022,,,,0.0,27.7,Status
+Leoncio,41614,,Mk10,11:00:00 28-Jan-2022,,,,0.0,28.0,Status
+Leoncio,41614,,Mk10,09:00:00 04-Feb-2022,,,,0.0,28.0,Status
+Leoncio,41614,,Mk10,21:00:00 08-Feb-2022,,,,0.0,28.2,Status
+Leoncio,41614,,Mk10,13:00:00 09-Feb-2022,,,,0.0,28.3,Status
+Leoncio,41614,,Mk10,10:00:00 24-Feb-2022,,,,0.0,27.9,Status
+Leoncio,41614,,Mk10,21:00:00 28-Feb-2022,,,,0.0,28.4,Status
+Leoncio,41614,,Mk10,11:00:00 07-Mar-2022,,,,0.0,29.5,Status
+Leoncio,41614,,Mk10,08:00:00 13-Mar-2022,,,,0.0,29.2,Status
+Leoncio,41614,,Mk10,08:00:00 22-Mar-2022,,,,0.0,29.7,Status
+Leoncio,41614,,Mk10,13:00:00 22-Mar-2022,,,,0.0,30.0,Status
+Leoncio,41614,,Mk10,20:00:00 27-Mar-2022,,,,0.0,29.9,Status
+Leoncio,41614,,Mk10,10:00:00 30-Mar-2022,,,,0.0,29.5,Status
+Leoncio,41614,,Mk10,11:00:00 11-Apr-2022,,,,0.0,29.5,Status
+Leoncio,41614,,Mk10,09:00:00 16-Apr-2022,,,,0.0,29.8,Status
+Leoncio,41614,,Mk10,13:00:00 16-Apr-2022,,,,0.0,30.3,Status
+Leoncio,41614,,Mk10,22:00:00 16-Apr-2022,,,,0.0,30.2,Status

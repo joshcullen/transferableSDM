@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Julio Grande,195967,Mk10,,88,2294,99,3,6246,,,,,4,00:37:35 05-Dec-2019,13:01:26 20-Feb-2020,78,19:13:11 16-Dec-2019,23:00:00 19-Feb-2020,65,,,

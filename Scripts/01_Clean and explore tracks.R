@@ -13,7 +13,7 @@ library(wesanderson)
 
 
 ### Load data and check column names ###
-dat<- list.files(path = "./Raw_data/",
+dat<- list.files(path = "./Raw_data",
              pattern = "(Cm)",
              full.names = T) %>%
   map(~read.csv(.))
@@ -59,7 +59,7 @@ dat3 %>%
   group_by(Region, Age) %>%
   tally()
 
-## Brazil, Adult: 24168
+## Brazil, Adult: 59386
 ## Brazil, Juv:   15120
 ## GoM, Adult:    20283
 ## GoM, Adult:    27758

@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Caramelo,226073,Mk10,,83,2331,99,3,7557,,,,,14,23:51:49 17-Nov-2021,13:11:41 06-Jun-2022,201,00:49:50 18-Nov-2021,20:00:00 04-Jun-2022,199,,,

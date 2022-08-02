@@ -1,0 +1,2 @@
+DeployID,Ptt,Instr,SW,PercentDecoded,Passes,PercentArgosLoc,MsgPerPass,DS,DI,MinPower,AvgPower,MaxPower,MinInterval,EarliestXmitTime,LatestXmitTime,XmitDays,EarliestDataTime,LatestDataTime,DataDays,ReleaseDate,ReleaseType,DeployDate
+Perninha,226072,Mk10,,79,1678,99,4,6346,,,,,14,20:38:47 20-Jan-2022,09:52:23 17-Jul-2022,178,13:00:00 20-Jan-2022,09:24:03 14-Jul-2022,175,,,
