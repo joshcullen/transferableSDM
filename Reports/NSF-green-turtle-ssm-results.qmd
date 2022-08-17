@@ -1,0 +1,126 @@
+---
+title: "Results from state-space model"
+format: 
+  pdf:
+    toc: true
+    number-sections: true
+    number-depth: 2
+    colorlinks: true
+    fig-pos: 'H'
+execute: 
+  echo: false
+  warning: false
+  message: false
+bibliography: references.bib
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthhires)
+library(arrow)
+
+gom.impute.dat <- read_parquet("../Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.parquet")
+br.impute.dat <- read_parquet("../Processed_data/Imputed_Brazil_Cm_Tracks_SSM_2hr.parquet")
+qa.impute.dat <- read_parquet("../Processed_data/Imputed_Qatar_Cm_Tracks_SSM_2hr.parquet")
+```
+
+## Background
+
+Since the tags on air-breathing marine megafauna often transmit positions at irregular time intervals, usually with relatively high location errors, the first major step was to account for this location error in the green turtle (*Chelonia mydas*) tracks. This was performed using the continuous-time correlated walk (CTCRW) version of a state-space model (SSM) as implemented by the `crawl` package in R [@johnson2008]. After initial model fitting, predictions were made at a 2 hr time interval, which is close to the median time interval across all tracked individuals. Another method of accounting for location error is to go one step beyond estimating the most likely track by estimating a number of potential realized paths the animal may have taken between the known observations. This method is called process (or multiple) imputation [@scharf2017], and is a subset of a full posterior distribution of a Bayesian model. A set of 20 imputed tracks were generated for each of the tracked turtles to account for these movements between the predicted observations at the 2 hr time interval. This resulted in `r nrow(gom.impute.dat)` observations for the Gulf of Mexico, `r nrow(br.impute.dat)` for Brazil, and `r nrow(qa.impute.dat)` for Qatar. \newpage
+
+## Visualizations
+
+```{r}
+#| label: fig-imputed-tracks-gom
+#| fig-cap: "A subset of imputed tracks for green turtles in the Gulf of Mexico region. Colors indicate different individuals. Different tracks of the same color indicate the different realizations of the track of a given indivudal as a result of the process imputation procedure."
+
+states<- ne_states(country = 'United States of America', returnclass = 'sf') %>%
+  filter(!name %in% c('Alaska', 'Hawaii'))
+north.am<- ne_countries(scale = 10, continent = "North America", returnclass = 'sf')
+
+gom.impute.sf <- gom.impute.dat %>%
+  filter(str_detect(string = rep, pattern = "_1")) %>%  #only keep subset of imputations to keep file size under 5 MB
+  st_as_sf(., coords = c('mu.x','mu.y'),
+           crs = 3395) %>%
+  st_transform(4326) %>%
+  group_by(ptt, rep) %>% 
+  summarize(do_union = FALSE) %>% 
+  st_cast("MULTILINESTRING")
+
+# Gulf of Mexico
+ggplot() +
+  # geom_sf(data = north.am) +
+  geom_sf(data = states) +
+  geom_sf(data = gom.impute.sf, aes(color = ptt), size = 0.15, alpha = 0.25) +
+  scale_color_viridis_c(option = 'turbo', guide = "none") +
+  annotate(geom = "text", label = "italic(Florida)", x = -82.5, y = 29.7, size = 6,
+           parse = TRUE) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_sf(xlim = c(-86, -82), ylim = c(27, 30))
+
+```
+
+```{r}
+#| label: fig-imputed-tracks-br-qa
+#| fig-cap:
+#|  - "A subset of imputed tracks of green turtles along the coast of Brazil. Colors indicate different individuals. Different tracks of the same color indicate the different realizations of the track of a given indivudal as a result of the process imputation procedure."
+#|  - "A subset of imputed tracks of green turtles along the coast of Qatar. Colors indicate different individuals. Different tracks of the same color indicate the different realizations of the track of a given indivudal as a result of the process imputation procedure."
+
+brazil<- ne_countries(scale = 10, country = "Brazil", returnclass = 'sf')
+mid.east<- ne_countries(scale = 10, country = c("Qatar", "Iran", "Bahrain", "Saudi Arabia",
+                                                "United Arab Emirates"), returnclass = 'sf')
+
+br.impute.sf <- br.impute.dat %>%
+  filter(str_detect(string = rep, pattern = "_1")) %>%
+  st_as_sf(., coords = c('mu.x','mu.y'),
+           crs = 3395) %>%
+  st_transform(4326) %>%
+  group_by(ptt, rep) %>% 
+  summarize(do_union = FALSE) %>% 
+  st_cast("MULTILINESTRING")
+
+qa.impute.sf <- qa.impute.dat %>%
+  filter(str_detect(string = rep, pattern = "_1")) %>%
+  st_as_sf(., coords = c('mu.x','mu.y'),
+           crs = 3395) %>%
+  st_transform(4326) %>%
+  group_by(ptt, rep) %>% 
+  summarize(do_union = FALSE) %>% 
+  st_cast("MULTILINESTRING")
+
+
+
+# Brazil
+ggplot() +
+  geom_sf(data = brazil) +
+  geom_sf(data = br.impute.sf, aes(color = ptt), size = 0.15, alpha = 0.25) +
+  scale_color_viridis_d(option = 'turbo', guide = "none") +
+  annotate(geom = "text", label = "italic(Brazil)", x = -48.6, y = -25.1, size = 8,
+           parse = TRUE) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_sf(xlim = c(-48.8, -47.6), ylim = c(-26, -25))
+
+
+# Qatar
+ggplot() +
+  geom_sf(data = mid.east) +
+  geom_sf(data = qa.impute.sf, aes(color = factor(ptt)), size = 0.15, alpha = 0.25) +
+  scale_color_viridis_d(option = 'turbo', guide = "none") +
+  annotate(geom = "text", label = "italic(Qatar)", x = 51.2, y = 25.2, size = 6,
+           parse = TRUE) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_sf(xlim = c(50, 54), ylim = c(24, 27))
+
+```
+\newpage
+
+## References
+
+::: {#refs}
+:::

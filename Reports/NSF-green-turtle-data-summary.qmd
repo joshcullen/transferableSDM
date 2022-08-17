@@ -1,0 +1,113 @@
+---
+title: "Summary of green turtle tracks"
+format: 
+  pdf:
+    toc: true
+    number-sections: true
+    number-depth: 2
+    colorlinks: true
+    fig-dpi: 100
+    fig-pos: 'h'
+editor: visual
+execute: 
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthhires)
+library(arrow)
+
+prefilt.dat <- read.csv("../Processed_data/Prefiltered_Cm_Tracks.csv")
+```
+
+## Background
+
+In the development of a transferable species distribution modeling approach, green turtle (*Chelonia mydas*) satellite telemetry data was first obtained from five collaborators at three regional sites (Gulf of Mexico, Brazil, Qatar). Upon receiving the raw data, tracks were cleaned and collated to a common set of columns for further processing. This resulted in a total of `r nrow(prefilt.dat)` observations from `r n_distinct(prefilt.dat$Ptt)` total individuals (GoM: N = `r sum(prefilt.dat$Region == 'GoM')`; Brazil: N = `r sum(prefilt.dat$Region == 'Brazil')`; Qatar: N = `r sum(prefilt.dat$Region == 'Qatar')`).
+
+A summary table of the number of tracked juvenile and adult green turtles per study region are shown in Table 1.
+\newline
+
+```{r}
+#| label: tbl-summary
+#| tbl-cap: Sampe size (N) for each study region and age class.
+
+prefilt.dat %>% 
+  mutate(across(Age, factor, levels = c('Juv','Adult'))) %>% 
+  group_by(Region, Age, .drop = FALSE) %>% 
+  summarize(N = n_distinct(Ptt)) %>% 
+  knitr::kable()
+```
+\newpage
+
+## Visualizations
+
+```{r}
+#| label: fig-raw-tracks-gom
+#| fig-cap: "Map of pre-filtered, raw tracks of green turtles in the Gulf of Mexico region (N = 50). Colors indicate different individuals."
+
+
+states<- ne_states(country = 'United States of America', returnclass = 'sf') %>%
+  filter(!name %in% c('Alaska', 'Hawaii'))
+north.am<- ne_countries(scale = 10, continent = "North America", returnclass = 'sf')
+
+# Gulf of Mexico
+ggplot() +
+  geom_sf(data = north.am) +
+  geom_sf(data = states) +
+  geom_path(data = prefilt.dat %>% 
+              filter(Region == 'GoM'), aes(Longitude, Latitude, color = factor(Ptt), group = Ptt),
+            alpha = 0.6) +
+  scale_color_viridis_d(option = 'turbo', guide = "none") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_sf(xlim = c(-95, -74), ylim = c(20, 31))
+
+```
+
+```{r}
+#| label: fig-raw-tracks-br-qa
+#| fig-cap: 
+#|  - "Map of pre-filtered, raw tracks of green turtles along the coast of Brazil in the South Atlantic (N = 26). Colors indicate different individuals."
+#|  - "Map of pre-filtered, raw tracks of green turtles along the coast of Qatar in the Arabian Gulf (N = 10). Colors indicate different individuals."
+#| layout-ncol: 1
+#| fig-pos: 'h'
+
+
+brazil<- ne_countries(scale = 10, country = "Brazil", returnclass = 'sf')
+mid.east<- ne_countries(scale = 10, country = c("Qatar", "Iran", "Bahrain", "Saudi Arabia",
+                                                "United Arab Emirates"), returnclass = 'sf')
+
+# Brazil
+ggplot() +
+  geom_sf(data = brazil) +
+  geom_path(data = prefilt.dat %>% 
+              filter(Region == 'Brazil'), aes(Longitude, Latitude, color = factor(Ptt), group = Ptt),
+            alpha = 0.6) +
+  scale_color_viridis_d(option = 'turbo', guide = "none") +
+  annotate(geom = "text", label = "italic(Brazil)", x = -45, y = -10, size = 8,
+           parse = TRUE) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_sf(xlim = c(-49, -32), ylim = c(-27, -1))
+
+# Qatar
+ggplot() +
+  geom_sf(data = mid.east) +
+  geom_path(data = prefilt.dat %>% 
+              filter(Region == 'Qatar'), aes(Longitude, Latitude, color = factor(Ptt), group = Ptt),
+            alpha = 0.6) +
+  scale_color_viridis_d(option = 'turbo', guide = "none") +
+  annotate(geom = "text", label = "italic(Qatar)", x = 51.15, y = 25, size = 6,
+           parse = TRUE) +
+  annotate(geom = "text", label = "italic(KSA)", x = 50.5, y = 24.25, size = 6,
+           parse = TRUE) +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  coord_sf(xlim = c(50, 54), ylim = c(24, 27))
+```
