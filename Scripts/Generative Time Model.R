@@ -42,12 +42,13 @@ mean1 <- -0.4
 sd1 <- 1
 b0_id <- rnorm(nID, mean = mean1, sd = sd1)
 b1 <- -0.5
+b1_2 <- 0.25
 b2 <- 0
 b3 <- 0.5
 b <- 0.05
 
 # Generate time interval (dt) using subset of real data for `dist` and environ covars
-mu <- dist * exp(b0_id[ID] + b1*bathym.s + b2*chla.s + b3*sst.s)
+mu <- dist * exp(b0_id[ID] + b1*bathym.s + b1_2*bathym.s^2 + b2*chla.s + b3*sst.s)
 a <- mu * b
 dt <- rgamma(N, shape = a, rate = b)
 
@@ -57,7 +58,7 @@ dt <- rgamma(N, shape = a, rate = b)
 
 ## Prior predictive simulation ##
 
-plot(density(dt), lwd = 2, col = "red")
+# plot(density(dt), lwd = 2, col = "red")
 
 iter <- 1000
 n <- 5000
@@ -73,25 +74,35 @@ for (i in 1:iter){
   b0 <- rnorm(nID, mean2, sd2)
 
   b1_p <- rnorm(n, 0, 1)
+  b1_2_p <- rnorm(n, 0, 1)
   b2_p <- rnorm(n, 0, 1)
   b3_p <- rnorm(n, 0, 1)
 
   b_p <- abs(rnorm(1, 0, 1))
 
   # mean of gamma distribution
-  mu = dist * exp(b0[ID] + b1*bathym.s + b2*chla.s + b3*sst.s)
+  mu = dist * exp(b0[ID] + b1_p*bathym.s + b1_2_p*bathym.s^2 + b2_p*chla.s + b3_p*sst.s)
   # calculate the corresponding a[i] parameter
   a = mu * b
   dt_p <- rgamma(n, a, b)
 
   pp_list[[i]] <- dt_p
 }
+names(pp_list) <- 1:length(pp_list)
 
-for (i in 1:length(pp_list)) {
-  lines(density(pp_list[[i]]), lwd = 0.25, xlim = c(0,1000))
-}
+prior_pred <- bind_rows(pp_list, .id = "iter") %>%
+  t() %>%
+  data.frame() %>%
+  mutate(iter = rownames(.)) %>%
+  pivot_longer(cols = -c("iter"), names_to = "obs", values_to = "dt")
 
-lines(density(dt), lwd = 2, col = "red")
+
+
+ggplot() +
+  geom_line(data = prior_pred, aes(dt, group = iter), stat = "density", alpha = 0.1, color = "lightblue") +
+  geom_density(data = data.frame(dt=dt), aes(dt)) +
+  xlim(0,1000) +
+  theme_bw()
 
 
 
@@ -136,6 +147,7 @@ parameters {
     real<lower=0> b;
     vector[nID] b0_id;
     real b1;
+    real b1_2;
     real b2;
     real b3;
 
@@ -150,7 +162,8 @@ transformed parameters {
 
   for (i in 1:N){
     // mean of gamma distribution
-    mu[i] = dist[i] * exp(b0_id[ID[i]] + b1*bathym_s[i] + b2*chla_s[i] + b3*sst_s[i]);
+    mu[i] = dist[i] * exp(b0_id[ID[i]] + b1*bathym_s[i] + b1_2*bathym_s[i]^2 + b2*chla_s[i] + b3*sst_s[i]);
+
     // calculate the corresponding a[i] parameter
     a[i] = mu[i] * b;
   }
@@ -170,13 +183,14 @@ model {
   }
 
   b1 ~ normal(0,1);
+  b1_2 ~ normal(0,1);
   b2 ~ normal(0,1);
   b3 ~ normal(0,1);
 
   b ~ normal(0,1);
 
-  mean1 ~ normal(0,1);
-  sd1 ~ normal(0,1);
+  mean1 ~ normal(0,2);
+  sd1 ~ normal(0,2);
 }
 
 
@@ -185,7 +199,7 @@ generated quantities {
 
   // mean of gamma distribution
   for (i in 1:N){
-    y_hat[i] = dist[i] * exp(b0_id[ID[i]] + b1*bathym_s[i] + b2*chla_s[i] + b3*sst_s[i]);
+    y_hat[i] = dist[i] * exp(b0_id[ID[i]] + b1*bathym_s[i] + b1_2*bathym_s[i]^2 + b2*chla_s[i] + b3*sst_s[i]);
   }
 }
 '
@@ -195,7 +209,7 @@ generated quantities {
 mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000,
              seed = 8675309)
 
-params <- c('b','b0_id','b1','b2','b3','mean1','sd1')
+params <- c('b','b0_id','b1', 'b1_2','b2','b3','mean1','sd1')
 print(mod1, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
 
 MCMCtrace(mod1, ind = TRUE, iter = 1000, pdf = FALSE, params = params)
@@ -314,44 +328,24 @@ parameters {
 
 
 transformed parameters {
-  vector[N] mu;
-  real<lower=0> a[N];
-  vector[N] chla_merge;
-  vector[N] bathym_merge;
-  vector[N] sst_merge;
 
-  // merge observed and imputed Chla vals
-  chla_merge = chla;
-    for (i in 1:n_chla_miss) {
-        chla_merge[chla_missidx[i]] = chla_miss[i];
-    }
-
-  // merge observed and imputed bathymetry vals
-  bathym_merge = bathym;
-    for (i in 1:n_bathym_miss) {
-        bathym_merge[bathym_missidx[i]] = bathym_miss[i];
-    }
-
-  // merge observed and imputed SST vals
-  sst_merge = sst;
-    for (i in 1:n_sst_miss) {
-        sst_merge[sst_missidx[i]] = sst_miss[i];
-    }
-
-  for (i in 1:N){
-    // mean of gamma distribution
-    mu[i] = dist[i] * exp(b0_id[ID[i]] + b1*bathym_merge[i] + b2*chla_merge[i] + b3*sst_merge[i]);
-    // calculate the corresponding a[i] parameter
-    a[i] = mu[i] * b;
-  }
 }
 
 
 model {
-  // likelihood
-  for (i in 1:N){
-    dt[i] ~ gamma(a[i], b);
-  }
+  vector[N] mu;
+  real a[N];
+  vector[N] chla_merge;
+  vector[N] bathym_merge;
+  vector[N] sst_merge;
+
+  chla_merge = chla;
+  bathym_merge = bathym;
+  sst_merge = sst;
+
+  chla_merge[chla_missidx] = chla_miss;
+  bathym_merge[bathym_missidx] = bathym_miss;
+  sst_merge[sst_missidx] = sst_miss;
 
 
   // priors
@@ -362,23 +356,31 @@ model {
   mean1 ~ normal(0,1);
   sd1 ~ normal(0,1);
 
-  [sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,2);
-  [nu_chla, nu_bathym, nu_sst, b, b1, b2, b3] ~ normal(0, 1);
-  chla_merge ~ normal(nu_chla, sigma_chla);
-  bathym_merge ~ normal(nu_bathym, sigma_bathym);
-  sst_merge ~ normal(nu_sst, sigma_sst);
+  [sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,1);
+  [nu_chla, nu_bathym, nu_sst] ~ normal(0, 0.5);
+  [b, b1, b2, b3] ~ normal(0, 1);
+  target += normal_lpdf(chla_merge | nu_chla, sigma_chla);
+  target += normal_lpdf(bathym_merge | nu_bathym, sigma_bathym);
+  target += normal_lpdf(sst_merge | nu_sst, sigma_sst);
 
-}
 
 
-generated quantities {
-  vector[N] y_hat;
-
-  // mean of gamma distribution
   for (i in 1:N){
-    y_hat[i] = dist[i] * exp(b0_id[ID[i]] + b1*bathym_merge[i] + b2*chla_merge[i] + b3*sst_merge[i]);
+    // mean of gamma distribution
+    mu[i] = dist[i] * exp(b0_id[ID[i]] + b1*bathym_merge[i] + b2*chla_merge[i] + b3*sst_merge[i]);
+
+    // calculate the corresponding a[i] parameter
+    a[i] = mu[i] * b;
+
+    // likelihood
+    dt[i] ~ gamma(a[i], b);
   }
+
 }
+
+
+
+
 '
 
 
@@ -389,6 +391,9 @@ mod2 <- rstan::stan(model_code = stan.model, data = dat.list, chains = 4, iter =
 params <- c('b','b0_id','b1','b2','b3','mean1','sd1','nu_chla','sigma_chla','nu_bathym',
             'sigma_bathym','nu_sst','sigma_sst')
 print(mod2, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
+print(mod2, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
+print(mod2, digits_summary = 3, pars = 'bathym_miss', probs = c(0.025, 0.5, 0.975))
+print(mod2, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
 
 MCMCtrace(mod2, ind = TRUE, iter = 1000, pdf = FALSE, params = params)
 par(mfrow=c(1,1))
@@ -396,7 +401,8 @@ MCMCplot(mod2, params = params)
 
 # posterior predictive check
 ppc_dens_overlay(dt,
-                 rstan::extract(mod2, pars = 'y_hat')$y_hat[1:200,])
+                 rstan::extract(mod2, pars = 'y_hat')$y_hat[1:200,]) +
+  xlim(0,1000)
 
 
 
@@ -442,7 +448,12 @@ b <- 0.05
 mu <- dist * exp(betas[ID,1] + betas[ID,2]*bathym.s[,1] + betas[ID,3]*chla.s[,1] +
                    betas[ID,4]*sst.s[,1])
 a <- mu * b
-dt <- rgamma(N, shape = a, rate = b)
+
+dt <- vector("numeric", N)
+for (i in 1:N) {
+  dt[i] <- rgamma(1, shape = a[i], rate = b)
+}
+
 
 
 
@@ -488,9 +499,9 @@ data {
 
 parameters {
     real<lower=0> b;
-    matrix[nID,4] betas;
+    vector[4] betas[nID];
     vector[4] mu_betas;
-    cholesky_factor_corr[4] L_Rho;
+    corr_matrix[4] Rho;
     vector<lower=0>[4] sigma;
 
     vector[n_chla_miss] chla_miss;
@@ -506,34 +517,46 @@ parameters {
 }
 
 
-transformed parameters {
+model {
   vector[N] mu;
-  real<lower=0> a[N];
+  real a[N];
   vector[N] chla_merge;
   vector[N] bathym_merge;
   vector[N] sst_merge;
-  matrix[4,4] L_Sigma;
+  //matrix[4,4] Sigma;
+
+  chla_merge = chla;
+  bathym_merge = bathym;
+  sst_merge = sst;
+
+  chla_merge[chla_missidx] = chla_miss;
+  bathym_merge[bathym_missidx] = bathym_miss;
+  sst_merge[sst_missidx] = sst_miss;
 
   // generate coefficients for regression from MVN w/ Cholesky decomp
-  L_Sigma = diag_pre_multiply(sigma, L_Rho);
+  //Sigma = diag_pre_multiply(sigma, Rho);
 
-  // merge observed and imputed Chla vals
-  chla_merge = chla;
-    for (i in 1:n_chla_miss) {
-        chla_merge[chla_missidx[i]] = chla_miss[i];
-    }
 
-  // merge observed and imputed bathymetry vals
-  bathym_merge = bathym;
-    for (i in 1:n_bathym_miss) {
-        bathym_merge[bathym_missidx[i]] = bathym_miss[i];
-    }
 
-  // merge observed and imputed SST vals
-  sst_merge = sst;
-    for (i in 1:n_sst_miss) {
-        sst_merge[sst_missidx[i]] = sst_miss[i];
-    }
+  // priors
+  to_vector(mu_betas) ~ normal(0,1);
+  sigma ~ normal(0,1);
+  Rho ~ lkj_corr(4);
+
+  //for (j in 1:nID) {
+    //betas[j,] ~ multi_normal_cholesky(mu_betas, Sigma);
+  //}
+
+  betas ~ multi_normal(mu_betas,
+                       quad_form_diag(Rho, sigma));
+
+  b ~ normal(0,1);
+  [sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,1);
+  [nu_chla, nu_bathym, nu_sst] ~ normal(0, 0.5);
+  target += normal_lpdf(bathym_merge | nu_bathym, sigma_bathym);
+  target += normal_lpdf(chla_merge | nu_chla, sigma_chla);
+  target += normal_lpdf(sst_merge | nu_sst, sigma_sst);
+
 
   for (i in 1:N){
     // mean of gamma distribution
@@ -541,48 +564,12 @@ transformed parameters {
 
     // calculate the corresponding a[i] parameter
     a[i] = mu[i] * b;
-  }
-}
 
-
-model {
-  // likelihood
-  for (i in 1:N){
+    // likelihood
     dt[i] ~ gamma(a[i], b);
   }
-
-
-  // priors
-  to_vector(mu_betas) ~ normal(0,1);
-  sigma ~ normal(0,1);
-  L_Rho ~ lkj_corr_cholesky(2);
-
-  for (j in 1:nID) {
-    betas[j,] ~ multi_normal_cholesky(mu_betas, L_Sigma);
-  }
-
-
-  [sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,2);
-  [nu_chla, nu_bathym, nu_sst, b] ~ normal(0, 1);
-  chla_merge ~ normal(nu_chla, sigma_chla);
-  bathym_merge ~ normal(nu_bathym, sigma_bathym);
-  sst_merge ~ normal(nu_sst, sigma_sst);
-
 }
 
-
-generated quantities {
-  vector[N] y_hat;
-  matrix[4,4] Rho;
-
-  // mean of gamma distribution
-  for (i in 1:N){
-    y_hat[i] = dist[i] * exp(betas[ID[i],1] + betas[ID[i],2]*bathym_merge[i] + betas[ID[i],3]*chla_merge[i] + betas[ID[i],4]*sst_merge[i]);
-  }
-
-  // Correlations from variance-covariance matrix
-  Rho = multiply_lower_tri_self_transpose(L_Rho);
-}
 '
 
 
