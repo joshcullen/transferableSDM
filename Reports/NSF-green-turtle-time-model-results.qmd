@@ -1,0 +1,503 @@
+---
+title: "Results from stage 1 of time-explicit step-selection function: Time model"
+format: 
+ pdf:
+  toc: true
+  number-sections: true
+  number-depth: 2
+  colorlinks: true
+  fig-pos: 'H'
+  fig-width: 6
+  fig-dpi: 300
+  fig-format: png
+execute: 
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: load-data
+
+
+library(tidyverse)
+library(lubridate)
+library(rstan)
+library(MCMCvis)
+library(bayesplot)
+library(arrow)
+library(terra)
+library(sfarrow)
+library(sf)
+
+
+### Load model fit, model input, tracks, and land layer ###
+
+mod <- readRDS('../Data_products/Time_model_intercept_stanfit.rds')
+mod.input <- read_parquet("../Processed_data/Input for time model.parquet")
+dat <- read_csv('../Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv')
+
+gom <- sfarrow::st_read_parquet("../Environ_data/GoM_land.parquet") %>%
+  st_transform(3395)
+
+
+### Load environmental raster layers to make predictions of time to cross pixel ###
+
+files <- list.files(path = '../Environ_data', pattern = "GoM", full.names = TRUE)
+files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+files <- files[!grepl(pattern = "parquet", files)]  #remove any parquet files
+
+# Merge into list; each element is a different covariate
+cov_list <- sapply(files, rast)
+names(cov_list) <- c('bathym', 'Chla', 'Kd490', 'SST')
+
+# Change names for NPP and SST to match Kd490 (YYYY-MM-01)
+for (var in c('Chla', 'Kd490', 'SST')) {
+  names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
+}
+
+
+## Transform raster layers to match coarsest spatial resolution (i.e., Chla/Kd490)
+for (var in c("bathym", "SST")) {
+  cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "bilinear")
+}
+
+
+## Set all positive bathymetric values (i.e., elevation) as NA
+cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
+
+
+## Transform CRS to match tracks
+cov_list <- map(cov_list, terra::project, 'EPSG:3395')
+```
+
+```{r}
+#| label: wrangle-data
+
+### Wrangle tracking data ###
+dat <- dat %>%
+  mutate(month.year = as_date(datetime),
+         .after = 'datetime') %>%
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  rename(x = mu.x, y = mu.y, date = datetime, id = ptt)
+
+
+
+### Wrangle model input to required format ###
+
+# Change time step from secs to mins
+mod.input$dt <- mod.input$dt/60
+
+# Retain only observed steps
+mod.input <- mod.input %>%
+  filter(obs == 1)
+
+# Remove all observations w/ missing bathym values (since NA values were assigned to land)
+mod.input2 <- mod.input %>%
+  drop_na(bathym)
+
+
+# Center and scale covariates
+mod.input2 <- mod.input2 %>%
+  mutate(bathym.s = scale(bathym) %>%
+           as.vector(),
+         chla.s = scale(Chla) %>%
+           as.vector(),
+         kd490.s = scale(Kd490) %>%
+           as.vector(),
+         sst.s = scale(SST) %>%
+           as.vector())
+```
+
+## Background
+
+After I accounted for location error in the tracks using the continuous-time correlated random walk state-space model, the data were now ready to be used to estimate habitat selection. To do so, I chose to implement a recently developed extension of the standard step-selection function often used to estimate in terrestrial habitat selection studies, which is called the time-explicit step-selection function (Valle et al. In Review). This is a two-stage model that accounts for both the time it takes for an individual to traverse the landscape, as well as its habitat selection responses for each successive step. Together, the joint posterior probability that an individual visited a grid cell of a rasterized landscape is the product of the result from the time model as well as the step-selection model. This is particularly helpful because it accounts for the time between successive observations along an entire track length, narrowing down the number of plausible locations an animal could have visited. These time estimates in combination with the habitat preferences can then be used to determine if the individual was moving faster or slower on average with respect to whether it preferred or avoided a given habitat (which is comprised of a set of environmental covariates selected by the researcher). This can provide inference on the animal's functional use of the landscape, such as whether a habitat can be classified as a potential resource, risk, corridor, or barrier. <br><br>
+
+At this stage of my progress in running the model, I have completed the time model component and am currently preparing to analyze the tracking data within the second stage of the modeling framework (i.e., the step-selection function). To provide some general context as to how the time model was formulated, the next section of this document provides greater detail as to the mathematical expressions that were used.
+
+## Time model description
+
+The goal of the time model is to estimate the effect of environmental covariates on the time it takes an individual to cross a grid cell (or set of grid cells) over the landscape. We assume that the distribution of time intervals for each of the turtle tracks can be expressed as:
+
+$$\Delta t_i \sim Gamma(a_i,b_{i,id}),$$ where $\Delta t_i$ represents the time difference for step $i$ of an individual, $a_i$ is the shape parameter, and $b_{i,id}$ is the rate parameter that varies per ID. We assume that the mean of this gamma distribution is given by:
+
+$$\mu_i = \frac{a_i}{b_{i,id}} = D_i \times exp(\beta_{0,id} + \beta_1Bathymetry_i + \beta_2Chla_i + \beta_3SST_i),$$ where $D_i$ is the distance traversed by the animal during time step $i$, $\beta_{0,id}$ is the intercept that varies by turtle ID, $Bathymetry$ is the bathymetric depth, $Chla$ is the monthly average of chlorophyll-a, and $SST$ is the monthly average of sea surface temperature. We can solve this expression by solving for $a_i$:
+
+$$a_i = \mu_i \times b_{i,id}.$$
+
+We finish by specifying this model with regularizing priors that shrink that slopes (i.e., $\beta_1,\beta_2,\beta_3$) towards zero and use slightly informative priors on the remaining parameters and hyperparameters of the model. Therefore, this model is likely to be more generalizable since it is less likely to overfit the data.
+
+## Results
+
+### Marginal effects plots
+
+Marginal effects plots are shown below to visualize the estimated relationship between each environmental covariate and the time to traverse the median distance covered by all 49 tracked green turtles in the Gulf of Mexico (\~400 m). Since varying effects were included on the rate parameter of the gamma distribution ($b_{i,id}$) and the intercept ($\beta_{0,id}$), separate regression lines are shown for each individual.
+
+#### Bathymetry
+
+A positive slope was estimated for the relationship between the time to traverse the landscape and bathymetry. Since bathymetric depth was measured using negative values, this means that the time to cross a given pixel increased as depths got more shallow. However, it is currently unclear why these turtles are moving more slowly at shallow depths from the time model alone.
+
+```{r}
+#| label: marg-eff-bath
+#| fig-cap:
+#|  - "Relationships between bathymetric depth and the time taken to traverse ~400 m for each of the 49 tracked green turtles in the Gulf of Mexico. Regression lines show median expectation, whereas shaded regions denote the 95% credible interval over the range of visited depth values per turtle."
+#|  - "Zoomed-in version of Figure 1, highlighting the relationship between the majority of the individuals."
+
+### Viz marginal effects plots to show relationships by ID ###
+
+n <- 100
+id1 <- unique(mod.input2$id)
+dist1 <- median(mod.input2$dist)  #median step length is ~400 m
+b0 <- rstan::extract(mod, pars = 'b0_bar')$b0_bar
+b0_id <- rstan::extract(mod, pars = 'b0_id')$b0_id
+bBathym <- rstan::extract(mod, pars = 'bBathym')$bBathym
+bChla <- rstan::extract(mod, pars = 'bChla')$bChla
+bSST <- rstan::extract(mod, pars = 'bSST')$bSST
+
+
+
+## Bathymetry
+bathym.res<- list()
+
+for (i in 1:length(id1)) {
+
+  tmp<- mod.input2 %>%
+    filter(id == id1[i])
+
+  #Generate sequence along bathymetry
+  rango1<- tmp %>%
+    dplyr::select(bathym.s) %>%
+    range()
+  seq.bathym<- seq(rango1[1], rango1[2], length.out = n)
+
+
+  # Create object to store results
+  bathy.pred <- matrix(NA, n, 3)
+
+  # Make predictions (while holding Chla and SST at 0)
+  for (j in 1:n) {
+    linear.func <- b0_id[,i] + bBathym * seq.bathym[j]
+    mu <- dist1 * exp(linear.func)
+    bathy.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
+  }
+
+  # Convert to data.frame and add additional vars
+  bathy.pred <- data.frame(bathy.pred) %>%
+    rename(lower = X1, med = X2, upper = X3) %>%
+    mutate(bathy = seq.bathym * sd(mod.input2$bathym) + mean(mod.input2$bathym),
+           id = id1[i])
+
+  bathym.res[[i]] <- bathy.pred
+}
+
+bathym.res.df<- bind_rows(bathym.res)
+
+# Plot relationship
+ggplot(data = bathym.res.df, aes(x = bathy)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako", guide = "none") +
+  scale_fill_viridis_d("ID", option = "mako", guide = "none") +
+  labs(x = 'Bathymetric depth (m)', y = "Time (min)") +
+  theme_bw() #+
+  # theme(axis.title = element_text(size = 18),
+  #       axis.text = element_text(size = 18))
+
+ggplot(data = bathym.res.df, aes(x = bathy)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako", guide = "none") +
+  scale_fill_viridis_d("ID", option = "mako", guide = "none") +
+  labs(x = 'Bathymetric depth (m)', y = "Time (min)") +
+  theme_bw() +
+  # theme(axis.title = element_text(size = 18),
+  #       axis.text = element_text(size = 18)) +
+  xlim(-500,0) +
+  ylim(0,240)
+
+```
+
+
+
+#### Chlorophyll-a
+
+A negative slope was estimated for the relationship between the time to traverse the landscape and chlorophyll-a concentration. Since green turtles often spend much time foraging on seagrass and benthic macroalgae in shallow, coastal habitats, it appears that chlorophyll-a is not actually capturing this submerged aquatic vegetation (even in relatively shallow waters). Therefore, it seems likely that chlorophyll-a in this context is serving more as a measure of phytoplankton towards the water surface rather than of all photosynthetically active species.
+
+```{r}
+#| label: marg-eff-chla
+#| fig-cap:
+#|  - "Relationships between chlorophyll-a concentration and the time taken to traverse ~400 m for each of the 49 tracked green turtles in the Gulf of Mexico. Regression lines show median expectation, whereas shaded regions denote the 95% credible interval over the range of visited depth values per turtle."
+#|  - "Zoomed-in version of Figure 3, highlighting the relationship between the majority of the individuals."
+
+## Chlorophyll-a
+
+chla.res<- list()
+
+for (i in 1:length(id1)) {
+
+  tmp<- mod.input2 %>%
+    filter(id == id1[i])
+
+  #Generate sequence along bathymetry
+  rango1<- tmp %>%
+    dplyr::select(chla.s) %>%
+    range(na.rm = TRUE)
+  seq.chla<- seq(rango1[1], rango1[2], length.out = n)
+
+
+  # Create object to store results
+  chla.pred <- matrix(NA, n, 3)
+
+  # Make predictions (while holding bathym and SST at 0)
+  for (j in 1:n) {
+    linear.func <- b0_id[,i] + bChla * seq.chla[j]
+    mu <- dist1 * exp(linear.func)
+    chla.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
+  }
+
+  # Convert to data.frame and add additional vars
+  chla.pred <- data.frame(chla.pred) %>%
+    rename(lower = X1, med = X2, upper = X3) %>%
+    mutate(chla = seq.chla * sd(mod.input2$Chla, na.rm = TRUE) + mean(mod.input2$Chla, na.rm = TRUE),
+           id = id1[i])
+
+  chla.res[[i]] <- chla.pred
+}
+
+chla.res.df<- bind_rows(chla.res)
+
+# Plot relationship
+ggplot(data = chla.res.df, aes(x = chla)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako", guide = "none") +
+  scale_fill_viridis_d("ID", option = "mako", guide = "none") +
+  labs(x = 'Chlorophyll-a concentration (mg m^-3 d^-1)', y = "Time (min)") +
+  theme_bw()
+
+ggplot(data = chla.res.df, aes(x = chla)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako", guide = "none") +
+  scale_fill_viridis_d("ID", option = "mako", guide = "none") +
+  labs(x = 'Chlorophyll-a concentration (mg m^-3 d^-1)', y = "Time (min)") +
+  theme_bw() +
+  xlim(0,20) +
+  ylim(0,240)
+```
+
+
+#### Sea surface temperature
+
+A negative slope was also estimated for the relationship between the time to traverse the landscape and sea surface temperature. This implies that the green turtles are moving more quickly 
+(i.e., require less time to cross a pixel) at warmer water temperatures. This could be due to a number of reasons, such as increased metabolic activity in warmer water or potentially migrating to find a more suitable region within their thermal niche from warm waters > 30°C. As of now, it is unclear what factor(s) are driving this relationship.
+
+
+```{r}
+#| label: marg-eff-sst
+#| fig-cap:
+#|  - "Relationships between sea surface temperature and the time taken to traverse ~400 m for each of the 49 tracked green turtles in the Gulf of Mexico. Regression lines show median expectation, whereas shaded regions denote the 95% credible interval over the range of visited depth values per turtle."
+#|  - "Zoomed-in version of Figure 5, highlighting the relationship between the majority of the individuals."
+
+## Sea surface temperature
+
+sst.res<- list()
+
+for (i in 1:length(id1)) {
+
+  tmp<- mod.input2 %>%
+    filter(id == id1[i])
+
+  #Generate sequence along bathymetry
+  rango1<- tmp %>%
+    dplyr::select(sst.s) %>%
+    range(na.rm = TRUE)
+  seq.sst<- seq(rango1[1], rango1[2], length.out = n)
+
+
+  # Create object to store results
+  sst.pred <- matrix(NA, n, 3)
+
+  # Make predictions (while holding bathym and SST at 0)
+  for (j in 1:n) {
+    linear.func <- b0_id[,i] + bSST * seq.sst[j]
+    mu <- dist1 * exp(linear.func)
+    sst.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
+  }
+
+  # Convert to data.frame and add additional vars
+  sst.pred <- data.frame(sst.pred) %>%
+    rename(lower = X1, med = X2, upper = X3) %>%
+    mutate(sst = seq.sst * sd(mod.input2$SST, na.rm = TRUE) + mean(mod.input2$SST, na.rm = TRUE),
+           id = id1[i])
+
+  sst.res[[i]] <- sst.pred
+}
+
+sst.res.df<- bind_rows(sst.res)
+
+# Plot relationship
+ggplot(data = sst.res.df, aes(x = sst)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako", guide = "none") +
+  scale_fill_viridis_d("ID", option = "mako", guide = "none") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time (min)") +
+  theme_bw()
+
+ggplot(data = sst.res.df, aes(x = sst)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako", guide = "none") +
+  scale_fill_viridis_d("ID", option = "mako", guide = "none") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time (min)") +
+  theme_bw() +
+  ylim(0,240)
+```
+
+
+
+### Estimated time surfaces of focal individuals
+
+Since there are 49 sets of green turtle tracks from this analysis with potential predictions for each of the months they were tracked, it is more reasonable to share a subset of these predictions that are representative of different movement patterns in the dataset. Therefore monthly estimates of time surfaces (i.e., the time expected to cross a given pixel given the values of bathymetric depth, chlorophyll-a, and sea surface temperature) have been produced for four individuals: IDs 142713, 159783, 181796, and 181800. Since the step length ($D_i$) is required to calculate these estimates, the median step length per ID was used to calculate their respective monthly time surfaces.
+
+
+```{r}
+#| label: generate-time-preds
+
+## Iterate predictions over IDs
+
+focal.ids <- c(142713, 181800, 159783, 181796)
+time.pred.list <- list()
+
+for (i in 1:length(focal.ids)) {
+
+  #define dat range for ID
+  date.range <- dat %>%
+    filter(id == focal.ids[i]) %>%
+    mutate(month.year = as_date(month.year)) %>%
+    dplyr::pull(month.year) %>%
+    unique() %>%
+    as.character()
+
+  #define median step length
+  med.dist <- median(mod.input2[mod.input2$id == focal.ids[i],]$dist)
+
+
+  #subset environ rasters and scale values
+  bathym <- ((cov_list$bathym - mean(mod.input2$bathym)) / sd(mod.input2$bathym))
+  chla <- ((cov_list$Chla[[date.range]] - mean(mod.input2$Chla, na.rm = TRUE)) / sd(mod.input2$Chla, na.rm = TRUE))
+  sst <- ((cov_list$SST[[date.range]] - mean(mod.input2$SST, na.rm = TRUE)) / sd(mod.input2$SST, na.rm = TRUE))
+
+
+  #calculate time
+  linfunc <- median(b0_id[,which(id1 == focal.ids[i])]) + bathym * median(bBathym) + chla * median(bChla) +
+    sst * median(bSST)
+  mu <- med.dist * exp(linfunc)
+  names(mu) <- date.range
+
+
+  # Convert to data.frame and add additional vars
+  time.pred <- as.data.frame(mu, xy = TRUE) %>%
+    pivot_longer(cols = -c(x, y), names_to = 'month.year', values_to = "time") %>%
+    mutate(id = focal.ids[i])
+
+  time.pred.list[[i]] <- time.pred
+}
+
+time.pred.df <- bind_rows(time.pred.list)
+
+```
+
+
+```{r}
+#| label: plot-time-surfs
+#| fig-cap:
+#|  - "Predicted time surfaces for the months that PTT 142713 was tracked along the eastern Yucatan peninsula. The track (blue) is broken up by month to show where the individual was moving during the month that these estimates were prodcued."
+#|  - "Predicted time surfaces for the months that PTT 159783 was tracked along the western coast of Florida near Crystal River. The track (blue) is broken up by month to show where the individual was moving during the month that these estimates were prodcued."
+#|  - "Predicted time surfaces for the months that PTT 181796 was tracked along the northern coast of Florida near Apalachicola Bay. The track (purple) is broken up by month to show where the individual was moving during the month that these estimates were prodcued."
+#|  - "Predicted time surfaces for the months that PTT 181800 was tracked across the Gulf of Mexico. The track (chartreuse) is broken up by month to show where the individual was moving during the month that these estimates were prodcued."
+
+### Viz time surfaces for some IDs ###
+
+
+#142713
+track.142713 <- dat %>%
+  filter(id == 142713)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 142713), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.142713, aes(x, y, group = rep), color = 'dodgerblue4', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 142713") +
+  theme(panel.grid = element_blank(),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.142713$x) - 10000, max(track.142713$x) + 10000),
+         ylim = c(min(track.142713$y) - 10000, max(track.142713$y) + 10000)) +
+  scale_x_continuous(breaks = c(-86.9,-86.7)) +
+  facet_wrap(~ month.year)
+
+
+#159783
+track.159783 <- dat %>%
+  filter(id == 159783)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 159783), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.159783, aes(x, y, group = rep), color = 'dodgerblue', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 159783") +
+  theme(panel.grid = element_blank(),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.159783$x) - 10000, max(track.159783$x) + 10000),
+           ylim = c(min(track.159783$y) - 10000, max(track.159783$y) + 10000)) +
+  facet_wrap(~ month.year)
+
+
+#1818796
+track.181796 <- dat %>%
+  filter(id == 181796)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 181796), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.181796, aes(x, y, group = rep), color = 'purple', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 181796") +
+  theme(panel.grid = element_blank(),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.181796$x) - 10000, max(track.181796$x) + 10000),
+           ylim = c(min(track.181796$y) - 10000, max(track.181796$y) + 10000)) +
+  scale_x_continuous(breaks = c(-85, -84)) +
+  facet_wrap(~ month.year)
+
+
+#181800
+track.181800 <- dat %>%
+  filter(id == 181800)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 181800), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.181800, aes(x, y, group = rep), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 181800") +
+  theme(panel.grid = element_blank(),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.181800$x) - 10000, max(track.181800$x) + 10000),
+           ylim = c(min(track.181800$y) - 10000, max(track.181800$y) + 10000)) +
+  scale_x_continuous(breaks = c(-88, -86)) +
+  facet_wrap(~ month.year, nrow = 1)
+
+```
+

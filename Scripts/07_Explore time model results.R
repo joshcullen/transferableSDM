@@ -3,13 +3,13 @@
 
 library(tidyverse)
 library(lubridate)
-library(furrr)
-library(tictoc)
 library(rstan)
 library(MCMCvis)
 library(bayesplot)
 library(arrow)
 library(terra)
+library(sfarrow)
+library(sf)
 
 
 ### Load model fit, model input, and tracks ###
@@ -17,6 +17,9 @@ library(terra)
 mod <- readRDS('Data_products/Time_model_intercept_stanfit.rds')
 mod.input <- read_parquet("Processed_data/Input for time model.parquet")
 dat <- read_csv('Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv')
+
+gom <- sfarrow::st_read_parquet("Environ_data/GoM_land.parquet") %>%
+  st_transform(3395)
 
 
 ### Load environmental raster layers to make predictions of time to cross pixel ###
@@ -76,7 +79,6 @@ mod.input <- mod.input %>%
 # Remove all observations w/ missing bathym values (since NA values were assigned to land)
 mod.input2 <- mod.input %>%
   drop_na(bathym)
-# mod.input2 <- mod.input
 
 
 # Center and scale covariates
@@ -147,11 +149,11 @@ mcmc_intervals(mod, pars = "mu_b", regex_pars = "^b\\[", prob = 0.5, prob_outer 
 n <- 100
 id1 <- unique(mod.input2$id)
 dist1 <- median(mod.input2$dist)  #median step length is ~400 m
-b0 <- extract(mod, pars = 'b0_bar')$b0_bar
-b0_id <- extract(mod, pars = 'b0_id')$b0_id
-bBathym <- extract(mod, pars = 'bBathym')$bBathym
-bChla <- extract(mod, pars = 'bChla')$bChla
-bSST <- extract(mod, pars = 'bSST')$bSST
+b0 <- rstan::extract(mod, pars = 'b0_bar')$b0_bar
+b0_id <- rstan::extract(mod, pars = 'b0_id')$b0_id
+bBathym <- rstan::extract(mod, pars = 'bBathym')$bBathym
+bChla <- rstan::extract(mod, pars = 'bChla')$bChla
+bSST <- rstan::extract(mod, pars = 'bSST')$bSST
 
 
 
@@ -201,6 +203,18 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18))
+
+ggplot(data = bathym.res.df, aes(x = bathy)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako") +
+  scale_fill_viridis_d("ID", option = "mako") +
+  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 400 m (min)") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 18)) +
+  xlim(-500,0) +
+  ylim(0,240)
 
 
 
@@ -253,6 +267,17 @@ ggplot(data = chla.res.df, aes(x = chla)) +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18))
 
+ggplot(data = chla.res.df, aes(x = chla)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako") +
+  scale_fill_viridis_d("ID", option = "mako") +
+  labs(x = 'Chlorophyll-a concentration (mg m^-3 d^-1)', y = "Time to traverse 400 m (min)") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 18)) +
+  xlim(0,20) +
+  ylim(0,240)
 
 
 
@@ -306,6 +331,16 @@ ggplot(data = sst.res.df, aes(x = sst)) +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18))
 
+ggplot(data = sst.res.df, aes(x = sst)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako") +
+  scale_fill_viridis_d("ID", option = "mako") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 400 m (min)") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 18)) +
+  ylim(0,240)
 
 
 
@@ -346,21 +381,139 @@ ggplot(data = dat %>% filter(id == 181796), aes(x, y, color = rep, group = rep))
 
 
 
-## 142713
+## Iterate predictions over IDs
 
-date.range <- dat %>%
-  filter(id == 142713) %>%
-  mutate(month.year = as_date(month.year)) %>%
-  dplyr::pull(month.year) %>%
-  range()
+focal.ids <- c(142713, 181800, 159783, 181796)
+# bBathym.quant <- quantile(bBathym, c(0.025, 0.5, 0.975))
+time.pred.list <- list()
 
-plot(cov_list$Chla$`2016-07-01`)
-plot(cov_list$Chla$`2016-08-01`)
-plot(cov_list$Chla$`2016-09-01`)
+for (i in 1:length(focal.ids)) {
 
-plot(cov_list$SST$`2016-07-01`)
-plot(cov_list$SST$`2016-08-01`)
-plot(cov_list$SST$`2016-09-01`)
+  #define dat range for ID
+  date.range <- dat %>%
+    filter(id == focal.ids[i]) %>%
+    mutate(month.year = as_date(month.year)) %>%
+    dplyr::pull(month.year) %>%
+    unique() %>%
+    as.character()
+
+  #define median step length
+  med.dist <- median(mod.input2[mod.input2$id == focal.ids[i],]$dist)
 
 
-## Need to pick back up from here and rescale rasters before calculating time to traverse each pixel for PTT 142713
+  #subset environ rasters and scale values
+  bathym <- ((cov_list$bathym - mean(mod.input2$bathym)) / sd(mod.input2$bathym))
+  chla <- ((cov_list$Chla[[date.range]] - mean(mod.input2$Chla, na.rm = TRUE)) / sd(mod.input2$Chla, na.rm = TRUE))
+  sst <- ((cov_list$SST[[date.range]] - mean(mod.input2$SST, na.rm = TRUE)) / sd(mod.input2$SST, na.rm = TRUE))
+
+
+  #calculate time
+  linfunc <- median(b0_id[,which(id1 == focal.ids[i])]) + bathym * median(bBathym) + chla * median(bChla) +
+    sst * median(bSST)
+  mu <- med.dist * exp(linfunc)
+  names(mu) <- date.range
+
+
+  # Convert to data.frame and add additional vars
+  time.pred <- as.data.frame(mu, xy = TRUE) %>%
+    pivot_longer(cols = -c(x, y), names_to = 'month.year', values_to = "time") %>%
+    mutate(id = focal.ids[i])
+
+  time.pred.list[[i]] <- time.pred
+}
+
+time.pred.df <- bind_rows(time.pred.list)
+
+
+
+track.142713 <- dat %>%
+  filter(id == 142713)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 142713), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.142713, aes(x, y, group = rep), color = 'dodgerblue4', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 142713") +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(size = 18),
+        axis.text = element_text(size = 14),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.142713$x) - 10000, max(track.142713$x) + 10000),
+         ylim = c(min(track.142713$y) - 10000, max(track.142713$y) + 10000)) +
+  scale_x_continuous(breaks = c(-86.9,-86.7)) +
+  facet_wrap(~ month.year)
+
+
+
+track.181800 <- dat %>%
+  filter(id == 181800)
+unique(track.181800$month.year)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 181800), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.181800, aes(x, y, group = rep), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 181800") +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(size = 18),
+        axis.text = element_text(size = 14),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.181800$x) - 10000, max(track.181800$x) + 10000),
+           ylim = c(min(track.181800$y) - 10000, max(track.181800$y) + 10000)) +
+  scale_x_continuous(breaks = c(-88, -86)) +
+  facet_wrap(~ month.year)
+
+
+
+track.159783 <- dat %>%
+  filter(id == 159783)
+unique(track.159783$month.year)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 159783), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.159783, aes(x, y, group = rep), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 159783") +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(size = 18),
+        axis.text = element_text(size = 14),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.159783$x) - 10000, max(track.159783$x) + 10000),
+           ylim = c(min(track.159783$y) - 10000, max(track.159783$y) + 10000)) +
+  # scale_x_continuous(breaks = c(-88, -86)) +
+  facet_wrap(~ month.year)
+
+
+
+track.181796 <- dat %>%
+  filter(id == 181796)
+unique(track.181796$month.year)
+
+ggplot() +
+  geom_raster(data = time.pred.df %>%
+                filter(id == 181796), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  geom_sf(data = gom) +
+  geom_path(data = track.181796, aes(x, y, group = rep), color = 'purple', size = 0.25, alpha = 0.25) +
+  theme_bw() +
+  labs(x = "Longitude", y = "Latitude", title = "PTT 181796") +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(size = 18),
+        axis.text = element_text(size = 14),
+        strip.text = element_text(size = 12, face = "bold")) +
+  coord_sf(xlim = c(min(track.181796$x) - 10000, max(track.181796$x) + 10000),
+           ylim = c(min(track.181796$y) - 10000, max(track.181796$y) + 10000)) +
+  scale_x_continuous(breaks = c(-85, -84)) +
+  facet_wrap(~ month.year)
+
+
+
