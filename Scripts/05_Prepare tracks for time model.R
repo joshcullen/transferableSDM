@@ -66,6 +66,7 @@ dat.filt <- dat.filt %>%
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
 files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
 cov_list <- sapply(files, rast)
@@ -79,14 +80,17 @@ for (var in c('Chla', 'Kd490', 'SST')) {
 }
 
 
+## Set all positive bathymetric values (i.e., elevation) as NA
+cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
+
+
 ## Transform raster layers to match coarsest spatial resolution (i.e., Chla/Kd490)
 for (var in c("bathym", "SST")) {
   cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "bilinear")
 }
 
 
-## Set all positive bathymetric values (i.e., elevation) as NA
-cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
+
 
 
 ## Transform CRS to match tracks
