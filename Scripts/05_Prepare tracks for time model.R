@@ -29,7 +29,7 @@ dat <- dat %>%
 # Calculate step lengths, turning angles, NSD, and dt
 tic()
 dat<- prep_data(dat = dat, coord.names = c('x','y'), id = "rep")
-toc()  # takes 5.3 min to run
+toc()  # takes 2.5 min to run
 
 dat$speed <- dat$step / dat$dt
 
@@ -86,7 +86,7 @@ cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
 ## Transform raster layers to match coarsest spatial resolution (i.e., Chla/Kd490)
 for (var in c("bathym", "SST")) {
-  cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "bilinear")
+  cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "average")
 }
 
 
@@ -109,7 +109,7 @@ dat.filt <- dat.filt %>%
 plan(multisession, workers = availableCores() - 2)
 path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Chla','Kd490','SST'),
                        ind = "month.year", imputed = TRUE)
-#takes 13.5 hrs to run on desktop (18)
+#takes 14 hrs to run on desktop (18 cores)
 plan(sequential)
 
 
@@ -117,11 +117,11 @@ plan(sequential)
 path1 <- cbind(path, dat.filt[,c("strata","obs")])
 
 
-# save(dat, dat.filt, cov_list, path, file = "Data_products/Extracted environ covars.RData")
+save(dat, dat.filt, cov_list, path, file = "Data_products/Extracted environ covars.RData")
 
 
 nrow(drop_na(path1, bathym, Chla, Kd490, SST)) / nrow(path1)
-## 76% of observed and available steps have complete data
+## 97.6% of observed and available steps have complete data
 
 
 

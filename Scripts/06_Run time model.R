@@ -27,9 +27,9 @@ dat <- dat %>%
   filter(obs == 1)
 
 # Remove all observations w/ missing bathym values (since NA values were assigned to land)
-dat2 <- dat %>%
-  drop_na(bathym)
-# dat2 <- dat
+# dat2 <- dat %>%
+#   drop_na(bathym)
+dat2 <- dat  #all points moved off land; NAs represent missing depths or interpolation close to land
 
 
 # Center and scale covariates
@@ -57,17 +57,14 @@ cor(dat2[,c('bathym.s','chla.s','kd490.s','sst.s')] %>%
 ggplot(dat, aes(bathym, dt)) +
   geom_point() +
   theme_bw()
-# will benefit from inclusion of a quadratic term
 
 ggplot(dat, aes(Chla, dt)) +
   geom_point() +
   theme_bw()
-# will benefit from inclusion of quadratic term
 
 ggplot(dat, aes(SST, dt, color = id)) +
   geom_point() +
   theme_bw()
-# will benefit from inclusion of quadratic term (especially varying by ID)
 
 
 ### Run time model w/ JAGS ###
@@ -219,15 +216,15 @@ dat2$id <- factor(dat2$id) %>%  #need to convert to integer for Stan
   as.numeric()
 
 table(dat2$id)
-# PTT 162055 has only 13 obs remaining
+
 
 dat3 <- dat2 #%>%
-  # slice_sample(n = 0.25*nrow(dat2)) %>%
+  # slice_sample(n = 0.01*nrow(dat2)) %>%
   # arrange(id, date)
 
 # Define objects pertaining to imputation of missing covars
-# bathym_missidx <- which(is.na(dat3$bathym))
-# n_bathym_miss <- length(bathym_missidx)
+bathym_missidx <- which(is.na(dat3$bathym))
+n_bathym_miss <- length(bathym_missidx)
 chla_missidx <- which(is.na(dat3$chla))
 n_chla_miss <- length(chla_missidx)
 sst_missidx <- which(is.na(dat3$sst))
@@ -244,8 +241,8 @@ dat.list <- list(
   bathym = scale(dat3$bathym)[,1],
   chla = scale(dat3$chla)[,1],
   sst = scale(dat3$sst)[,1],
-  # n_bathym_miss = n_bathym_miss,
-  # bathym_missidx = bathym_missidx,
+  n_bathym_miss = n_bathym_miss,
+  bathym_missidx = bathym_missidx,
   n_chla_miss = n_chla_miss,
   chla_missidx = chla_missidx,
   n_sst_miss = n_sst_miss,
@@ -253,7 +250,7 @@ dat.list <- list(
   )
 
 # Replace missing covar values w/ Inf
-# dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
+dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
 dat.list$chla <- ifelse(is.na(dat.list$chla), Inf, dat.list$chla)
 dat.list$sst <- ifelse(is.na(dat.list$sst), Inf, dat.list$sst)
 
@@ -265,8 +262,8 @@ data {
   int nID;                                // number of unique IDs
   int n_chla_miss;                        // number of missing Chla vals
   int chla_missidx[n_chla_miss];          // index for missing Chla vals
-  //int n_bathym_miss;                      // number of missing bathymetry vals
-  //int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
+  int n_bathym_miss;                      // number of missing bathymetry vals
+  int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
   int n_sst_miss;                         // number of missing SST vals
   int sst_missidx[n_sst_miss];            // index for missing SST vals
   vector[N] dt;                           // time interval (min)
@@ -290,7 +287,7 @@ parameters {
     real<lower=0> sd_b0;
 
     vector[n_chla_miss] chla_miss;
-    //vector[n_bathym_miss] bathym_miss;
+    vector[n_bathym_miss] bathym_miss;
     vector[n_sst_miss] sst_miss;
 
     //real nu_chla;
@@ -306,15 +303,15 @@ model {
   vector[N] mu;
   vector[N] a;
   vector[N] chla_merge;
-  //vector[N] bathym_merge;
+  vector[N] bathym_merge;
   vector[N] sst_merge;
 
   chla_merge = chla;
-  //bathym_merge = bathym;
+  bathym_merge = bathym;
   sst_merge = sst;
 
   chla_merge[chla_missidx] = chla_miss;
-  //bathym_merge[bathym_missidx] = bathym_miss;
+  bathym_merge[bathym_missidx] = bathym_miss;
   sst_merge[sst_missidx] = sst_miss;
 
 
@@ -329,14 +326,14 @@ model {
   mu_b ~ normal(0, 0.5);
   b ~ normal(mu_b, 0.5);
   [bBathym, bChla, bSST] ~ normal(0, 1);
-  target += normal_lpdf(chla_merge | 0, 1);
-  //target += normal_lpdf(bathym_merge | nu_bathym, sigma_bathym);
-  target += normal_lpdf(sst_merge | 0, 1);
+  chla_merge ~ normal(0, 1);
+  bathym_merge ~ normal(0, 1);
+  sst_merge ~ normal(0, 1);
 
 
   for (i in 1:N) {
     // mean of gamma distribution
-    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym[i] + bChla*chla_merge[i] + bSST*sst_merge[i]);
+    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym_merge[i] + bChla*chla_merge[i] + bSST*sst_merge[i]);
 
     // calculate the corresponding a parameter
     a[i] = mu[i] * b[ID[i]];
@@ -352,7 +349,7 @@ mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 5000, 
 
 params <- c('mu_b','b','b0_id','bBathym','bChla','bSST','b0_bar','sd_b0')
 print(mod1, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
-# print(mod1, digits_summary = 3, pars = 'bathym_miss', probs = c(0.025, 0.5, 0.975))
+print(mod1, digits_summary = 3, pars = 'bathym_miss', probs = c(0.025, 0.5, 0.975))
 print(mod1, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
 print(mod1, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
 
