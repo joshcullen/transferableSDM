@@ -72,10 +72,10 @@ files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 cov_list <- sapply(files, rast)
 cov_list
 
-names(cov_list) <- c('bathym', 'Chla', 'Kd490', 'SST')
+names(cov_list) <- c('bathym', 'Kd490', 'NPP', 'SST')
 
-# Change names for NPP and SST to match Kd490 (YYYY-MM-01)
-for (var in c('Chla', 'Kd490', 'SST')) {
+# Change names for dynamic layers to match YYYY-MM-01 format
+for (var in c('Kd490', 'NPP', 'SST')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
 }
 
@@ -84,9 +84,9 @@ for (var in c('Chla', 'Kd490', 'SST')) {
 cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
 
-## Transform raster layers to match coarsest spatial resolution (i.e., Chla/Kd490)
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
 for (var in c("bathym", "SST")) {
-  cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "average")
+  cov_list[[var]] <- resample(cov_list[[var]], cov_list$NPP, method = "average")
 }
 
 
@@ -107,7 +107,7 @@ dat.filt <- dat.filt %>%
 
 #for running in parallel; define number of cores to use
 plan(multisession, workers = availableCores() - 2)
-path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Chla','Kd490','SST'),
+path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Kd490','NPP','SST'),
                        ind = "month.year", imputed = TRUE)
 #takes 14 hrs to run on desktop (18 cores)
 plan(sequential)

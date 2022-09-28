@@ -46,7 +46,14 @@ array2rast <- function(lon, lat, var, time, extent) {
 }
 
 #---------------------------
+# Create a LINESTRING per row given start and end points
+#must be labeled x1, y1, x2, y2
 
+make_line <- function(x1, y1, x2, y2) {
+  st_linestring(matrix(c(x1, x2, y1, y2), 2, 2))
+}
+
+#---------------------------
 
 extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names, ind, imputed, p) {
   ## data = data frame containing at least the id, coordinates (x,y), date-time (date), and
@@ -101,23 +108,27 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
     lev<- layers[[which_cat]]@data@attributes[[1]][,1]
   }
 
-  # extr.covar<- data.frame()
-  extr.covar<- matrix(NA, nrow = nrow(tmp) - 1, ncol = 6 + length(layers)) %>%
-    data.frame()
-  colnames(extr.covar) <- c("n", "dist", "dt", "id", "date", "state", names(layers))
+  #Turn dataset into rows of individual LINESTRINGs (in EPSG:3395)
+  segment <- tmp %>%
+    select(x1, y1, x2, y2) %>%
+    pmap(make_line) %>%
+    st_as_sfc(crs = 3395) %>%
+    {tibble(month.year = tmp$month.year,
+            strata = tmp$strata,
+            obs = tmp$obs,
+            geometry = .)} %>%
+    st_sf()
 
   #Extract values from each line segment
-  for (j in 1:nrow(tmp)) {
+  for (j in 1:n_distinct(segment$month.year)) {
     # print(j)
-    segment<- tmp[j, c("x1","y1","x2","y2")] %>%
-      unlist() %>%
-      matrix(nrow = 2, ncol = 2, byrow = TRUE) %>%
-      st_linestring() %>%
-      st_sfc(crs = 'EPSG:3395')
+
+    #create subsetted data.frame of original given selected month.year
+    tmp.sub <- tmp[tmp[[ind]] == unique(segment[[ind]])[j],]
 
 
     # Create time-matched raster stack
-    time.ind <- map(layers[dyn_names], ~which(names(.x) == tmp[[ind]][j]))
+    time.ind <- map(layers[dyn_names], ~which(names(.x) == unique(segment[[ind]])[j]))
     layers.tmp <- layers
 
     # Replace missing raster for time interval w/ NA-filled raster
@@ -132,57 +143,37 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
     layers.tmp <- rast(layers.tmp)
 
 
-    # .layers.tmp <- terra::wrap(layers.tmp)
-    # .segment <- terra::wrap(terra::vect(segment))
-    tmp1<- terra::extract(layers.tmp, terra::vect(segment), along = TRUE,
-                          cells = FALSE) #%>%
-      # purrr::map(., ~matrix(., ncol = nlyr(layers.tmp))) %>%
-      # purrr::pluck(1) %>%
-      # data.frame() %>%
-      # purrr::set_names(names(layers))
-
-    #subset to only include time-matched vars (by some indicator variable)
-    # if (!is.null(ind)) {
-    #
-    #   cond<- tmp[j-1, ind]
-    #   cond2<- levels(cond)[which(cond != levels(cond))]
-    #   tmp1<- tmp1[,!stringr::str_detect(names(tmp1), paste(cond2, collapse="|")), drop=F]
-    #
-    #   ind1<- stringr::str_which(names(tmp1), as.character(cond))
-    #   names(tmp1)[ind1]<- dyn_names
-    #
-    # }
+    tmp1<- terra::extract(layers.tmp, terra::vect(segment[segment[[ind]] == unique(segment[[ind]])[j],]),
+                          along = TRUE, cells = FALSE)
 
 
-    #calculate segment means if continuous and proportions spent in each class if categorical
-    if (is.null(which_cat)) {
-      covar.means<- data.frame(t(colMeans(tmp1, na.rm = TRUE)))
-    } else {
-      covar.means<- data.frame(t(colMeans(tmp1[,names(tmp1) != which_cat, drop = FALSE])))
-      cat<- factor(tmp1[,which_cat], levels = lev)
-      cat<- data.frame(unclass(t(table(cat)/length(cat))))
-
-      covar.means<- cbind(covar.means, cat)  #Merge continuous and categorical vars
-    }
 
 
-    tmp2<- cbind(n = nrow(tmp1), dist = tmp$step[j], covar.means) %>%
-      dplyr::mutate(dt = as.numeric(tmp$dt[j]),
+    # aggregate data per step and calculate mean values
+    tmp2 <- tmp1 %>%
+      group_by(ID) %>%
+      summarize(across(names(layers.tmp), mean, na.rm = TRUE)) %>%
+      dplyr::mutate(n = as.vector(table(tmp1$ID)),
+                    dist = tmp.sub$step,
+                    .before = everything()) %>%
+      dplyr::mutate(dt = as.numeric(tmp.sub$dt),
                     id = unique(data$id),
-                    date = tmp$date[j],
-                    state = ifelse(!is.null(state.col), tmp[j,state.col], NA),
+                    date = tmp.sub$date,
+                    state = ifelse(!is.null(state.col), tmp.sub[,state.col], NA),
                     .after = dist) %>%
       dplyr::select(-ID)
-    # tmp2<- tmp2[,!apply(is.na(tmp2), 2, any)]
 
-    # extr.covar<- rbind(extr.covar, tmp2)
-    extr.covar[j,] <- tmp2
-    # rm(.segment)
-    # rm(.layers.tmp)
+
+    if (j == 1) {
+      extr.covar <- tmp2
+    } else {
+      extr.covar<- rbind(extr.covar, tmp2)
+    }
+
   }
 
-  extr.covar <- extr.covar %>%
-    mutate(date = as_datetime(date))
+  # extr.covar <- extr.covar %>%
+  #   mutate(date = as_datetime(date))
 
   p()  #plot progress bar
   extr.covar

@@ -16,7 +16,7 @@ source("Scripts/helper functions.R")
 
 
 ## Load processed tracks
-turts <- read.csv("Processed_data/Processed_Cm_Tracks_SSM_2hr.csv") %>%
+turts <- read.csv("Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.csv") %>%
   mutate(datetime = as_datetime(datetime))
 
 # Remove any observations before 2012-01-02; first available data for VIIRS Kd(PAR)
@@ -208,35 +208,56 @@ ggplot() +
 
 
 
-#####################
-### Chlorophyll a ###
-#####################
+################################
+### Net primary productivity ###
+################################
 
-## Plot Chla basemap based on defined bbox for particular month-year
+## Plot NPP basemap based on defined bbox for particular month-year
 
 xpos <- ext(bbox.gom)[1:2]
 ypos <- ext(bbox.gom)[3:4]
 tpos <- range(turts.gom$datetime) %>%
   as_date() %>%
   as.character()
-chlaInfo <- rerddap::info('erdVH2018chlamday')
-chlaInfo$alldata$NC_GLOBAL[42,]
+
+nppInfo <- rerddap::info('erdMH1ppmday')
+nppInfo$alldata$NC_GLOBAL[37,]  #actually 0.0415 deg
 
 tic()
-chla.bbox <- rxtracto_3D(chlaInfo, parameter = 'chla', xcoord = xpos, ycoord = ypos, tcoord = tpos)
+npp.bbox <- rxtracto_3D(nppInfo, parameter = 'productivity', xcoord = xpos, ycoord = ypos, tcoord = tpos,
+                        zcoord = 0)
 toc()
-# takes 11 sec to run
+# takes 25 sec
 
 
-# plotBBox(chla.bbox, plotColor = 'algae')
+# Download 8-day composite for missing monthly August data
+nppInfo.aug <- rerddap::info('erdMH1pp8day')
+nppInfo.aug$alldata$NC_GLOBAL[38,]  #actually 0.0415 deg
+
+tic()
+npp.bbox.aug <- rxtracto_3D(nppInfo.aug, parameter = 'productivity', xcoord = xpos, ycoord = ypos,
+                            tcoord = c("2020-08-01",'2020-08-31'), zcoord = 0)
+toc()
+# takes 11 sec
 
 
-# Create {terra} SpatRaster for export and data.frame to plot raster in ggplot
-chla.rast <- array2rast(lon = chla.bbox$longitude, lat = chla.bbox$latitude, var = chla.bbox$chla,
-                       time = chla.bbox$time, extent = ext(bbox.gom))
 
-chla.rast.df <- as.data.frame(chla.rast[[1:12]], xy = TRUE, na.rm = FALSE) %>%  #select 1st 12 layers as example for viz
-  pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "chla") %>%
+# Create {terra} SpatRaster for export and merge mean August NPP w/ rest of dataset
+npp.rast <- array2rast(lon = npp.bbox$longitude, lat = npp.bbox$latitude, var = npp.bbox$productivity,
+                       time = npp.bbox$time, extent = ext(bbox.gom))
+npp.rast.aug <- array2rast(lon = npp.bbox.aug$longitude, lat = npp.bbox.aug$latitude,
+                           var = npp.bbox.aug$productivity, time = npp.bbox.aug$time, extent = ext(bbox.gom)) %>%
+  mean(na.rm = TRUE)
+names(npp.rast.aug) <- "2020-08-16"
+
+npp.rast <- c(npp.rast, npp.rast.aug)
+npp.rast <- npp.rast[[c(1:74,77,75:76)]]  #reorder so in chronological order
+
+
+
+# Create data.frame to plot raster in ggplot
+npp.rast.df <- as.data.frame(npp.rast[[66:77]], xy = TRUE, na.rm = FALSE) %>%  #select last 12 layers as example for viz
+  pivot_longer(cols = -c("x","y"), names_to = "date", values_to = "npp") %>%
   arrange(date)
 
 
@@ -247,7 +268,7 @@ turts.gom.l <- turts.gom %>%
   st_cast("MULTILINESTRING")
 
 ggplot() +
-  geom_raster(data = chla.rast.df, aes(x, y, fill = chla)) +
+  geom_raster(data = npp.rast.df, aes(x, y, fill = npp)) +
   scale_fill_cmocean(name = "algae") +
   geom_sf(data = turts.gom.l, aes(color = factor(ptt))) +
   scale_color_viridis_d(guide = "none") +
@@ -259,9 +280,9 @@ ggplot() +
   facet_wrap(~date)
 
 
-### Export Chla rasters as GeoTIFF (w/ WGS84 CRS; EPSG:4326)
+### Export NPP rasters as GeoTIFF (w/ WGS84 CRS; EPSG:4326)
 
-# writeRaster(chla.rast, "Environ_data/GoM Chla.tif")
+# writeRaster(npp.rast, "Environ_data/GoM NPP.tif")
 
 
 
