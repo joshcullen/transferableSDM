@@ -36,103 +36,49 @@ dat2 <- dat  #all points moved off land; NAs represent missing depths or interpo
 dat2 <- dat2 %>%
   mutate(bathym.s = scale(bathym) %>%
            as.vector(),
-         chla.s = scale(Chla) %>%
-           as.vector(),
          kd490.s = scale(Kd490) %>%
+           as.vector(),
+         npp.s = scale(NPP) %>%
            as.vector(),
          sst.s = scale(SST) %>%
            as.vector())
 
 
 # Check correlation among covars
-cor(dat2[,c('bathym.s','chla.s','kd490.s','sst.s')] %>%
+cor(dat2[,c('bathym.s','kd490.s','npp.s','sst.s')] %>%
       drop_na())
-# PerformanceAnalytics::chart.Correlation(dat2[,c('bathym.s','chla.s','kd490.s','sst.s')])
-#strong corr (0.99) between Chla and Kd490; omit Kd490 from subsequent analyses
+dat2 %>%
+  drop_na(bathym, Kd490, NPP, SST) %>%
+  slice_sample(n = 50000) %>%
+  dplyr::select(bathym.s, kd490.s, npp.s, sst.s) %>%
+  pairs()
+#strongest corr is between NPP and Kd490 (0.59); leaving all vars in for subsequent analyses
 
 
 
 ## Explore relationship between dt and each of the covars
 
-ggplot(dat, aes(bathym, dt)) +
+ggplot(dat2 %>%
+         slice_sample(n = 500000), aes(bathym, dt)) +
   geom_point() +
   theme_bw()
 
-ggplot(dat, aes(Chla, dt)) +
+ggplot(dat2 %>%
+         slice_sample(n = 500000), aes(Kd490, dt)) +
   geom_point() +
   theme_bw()
 
-ggplot(dat, aes(SST, dt, color = id)) +
+ggplot(dat2 %>%
+         slice_sample(n = 500000), aes(NPP, dt)) +
+  geom_point() +
+  theme_bw()
+
+ggplot(dat2 %>%
+         slice_sample(n = 500000), aes(SST, dt, color = id)) +
   geom_point() +
   theme_bw()
 
 
-### Run time model w/ JAGS ###
-
-model <- function(){
-
-  #likelihood
-  for (i in 1:nobs){
-    #mean of gamma distribution
-    mu[i] <- dist[i] * exp(b0 + b1*bathym[i] + b2*chla[i] + b3*sst[i])
-    # b[i] <- exp(g0+g1*Miss[i])
-    #calculate the corresponding a[i] parameter
-    a[i] <- mu[i] * b
-    #likelihood
-    dt[i] ~ dgamma(a[i], b)
-  }
-
-
-  #priors
-  b0 ~ dnorm(0,0.01)
-  b1 ~ dnorm(0,1)
-  b2 ~ dnorm(0,1)
-  b3 ~ dnorm(0,1)
-
-  b ~ dexp(1)
-  # g0 ~ dnorm(0,0.01)
-  # g1 ~ dnorm(0,0.01)
-}
-
-# data
-nobs <- nrow(dat2)
-dt <- dat2$dt
-dist <- dat2$dist
-bathym <- dat2$bathym.s
-chla <- dat2$chla.s
-sst <- dat2$sst.s
-dat.list <- list(nobs=nobs, dt=dt, dist=dist, bathym=bathym, chla=chla, sst=sst)
-
-
-#set parameters to track
-params <- c('b','b0','b1','b2','b3')
-
-
-
-## run model
-
-n.iter <- 5000  #number of iterations per chain
-n.thin <- 10  #how to thin MCMC results
-n.burnin <- n.iter / 2  #number of iterations to discard as burn-in
-n.chains <- 3  #number of MCMC chains
-
-
-tic()
-res <- jags.parallel(model.file = model, parameters.to.save = params, data = dat.list,
-                    n.chains = 3, n.burnin = 2500, n.iter = 5000,
-                    n.thin = 10, DIC = TRUE, jags.seed = 123)
-toc()
-# takes 45 min to run 5000 iterations
-
-
-res
-
-MCMCsummary(res)
-MCMCtrace(res, ind = TRUE, iter = 750, pdf = FALSE)
-par(mfrow=c(1,1))
-MCMCplot(res, excl = "deviance")
-
-res.summ<- res$BUGSoutput$summary
 
 
 ##############################
@@ -225,9 +171,11 @@ dat3 <- dat2 #%>%
 # Define objects pertaining to imputation of missing covars
 bathym_missidx <- which(is.na(dat3$bathym))
 n_bathym_miss <- length(bathym_missidx)
-chla_missidx <- which(is.na(dat3$chla))
-n_chla_miss <- length(chla_missidx)
-sst_missidx <- which(is.na(dat3$sst))
+k490_missidx <- which(is.na(dat3$Kd490))
+n_k490_miss <- length(k490_missidx)
+npp_missidx <- which(is.na(dat3$NPP))
+n_npp_miss <- length(npp_missidx)
+sst_missidx <- which(is.na(dat3$SST))
 n_sst_miss <- length(sst_missidx)
 
 
@@ -239,19 +187,23 @@ dat.list <- list(
   dt = dat3$dt,
   dist = dat3$dist,
   bathym = scale(dat3$bathym)[,1],
-  chla = scale(dat3$chla)[,1],
-  sst = scale(dat3$sst)[,1],
+  k490 = scale(dat3$Kd490)[,1],
+  npp = scale(dat3$NPP)[,1],
+  sst = scale(dat3$SST)[,1],
   n_bathym_miss = n_bathym_miss,
   bathym_missidx = bathym_missidx,
-  n_chla_miss = n_chla_miss,
-  chla_missidx = chla_missidx,
+  n_k490_miss = n_k490_miss,
+  k490_missidx = k490_missidx,
+  n_npp_miss = n_npp_miss,
+  npp_missidx = npp_missidx,
   n_sst_miss = n_sst_miss,
   sst_missidx = sst_missidx
   )
 
 # Replace missing covar values w/ Inf
 dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
-dat.list$chla <- ifelse(is.na(dat.list$chla), Inf, dat.list$chla)
+dat.list$k490 <- ifelse(is.na(dat.list$k490), Inf, dat.list$k490)
+dat.list$npp <- ifelse(is.na(dat.list$npp), Inf, dat.list$npp)
 dat.list$sst <- ifelse(is.na(dat.list$sst), Inf, dat.list$sst)
 
 
@@ -260,16 +212,19 @@ data {
   int N;                                  // sample size
   int ID[N];                              // ID label for each step
   int nID;                                // number of unique IDs
-  int n_chla_miss;                        // number of missing Chla vals
-  int chla_missidx[n_chla_miss];          // index for missing Chla vals
   int n_bathym_miss;                      // number of missing bathymetry vals
   int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
+  int n_k490_miss;                        // number of missing K490 vals
+  int k490_missidx[n_k490_miss];          // index for missing K490 vals
+  int n_npp_miss;                         // number of missing NPP vals
+  int npp_missidx[n_npp_miss];            // index for missing NPP vals
   int n_sst_miss;                         // number of missing SST vals
   int sst_missidx[n_sst_miss];            // index for missing SST vals
   vector[N] dt;                           // time interval (min)
   vector[N] dist;                         // Distance traveled for given step (m)
   vector[N] bathym;                       // Bathymetric depth (m)
-  vector[N] chla;                         // Chlorophyll a concentration (mg m^-3 d^-1)
+  vector[N] k490;                         // Light attenuation coefficient at 490 nm (units)
+  vector[N] npp;                          // Net primary productivity (units)
   vector[N] sst;                          // Sea surface temperature (C)
 
 }
@@ -280,38 +235,48 @@ parameters {
     vector<lower=0>[nID] b;
     vector[nID] b0_id;
     real bBathym;
-    real bChla;
+    real bK490;
+    real bNPP;
     real bSST;
 
     real b0_bar;
     real<lower=0> sd_b0;
 
-    vector[n_chla_miss] chla_miss;
     vector[n_bathym_miss] bathym_miss;
+    vector[n_k490_miss] k490_miss;
+    vector[n_npp_miss] npp_miss;
     vector[n_sst_miss] sst_miss;
 
-    //real nu_chla;
-    //real nu_bathym;
-    //real nu_sst;
-    //real<lower=0> sigma_chla;
-    //real<lower=0> sigma_bathym;
-    //real<lower=0> sigma_sst;
+    //real<lower=0> sigma_k490;
+    //real<lower=0> sigma_npp;
+
+    //real a_k490;
+    //real a_npp;
+    //real bBk490;
+    //real bBk490_2;
+    //real bKnpp;
+    //real bBnpp;
 }
 
 
 model {
   vector[N] mu;
   vector[N] a;
-  vector[N] chla_merge;
   vector[N] bathym_merge;
+  vector[N] k490_merge;
+  vector[N] npp_merge;
   vector[N] sst_merge;
+  //vector[N] nu_k490;
+  //vector[N] nu_npp;
 
-  chla_merge = chla;
   bathym_merge = bathym;
+  k490_merge = k490;
+  npp_merge = npp;
   sst_merge = sst;
 
-  chla_merge[chla_missidx] = chla_miss;
   bathym_merge[bathym_missidx] = bathym_miss;
+  k490_merge[k490_missidx] = k490_miss;
+  npp_merge[npp_missidx] = npp_miss;
   sst_merge[sst_missidx] = sst_miss;
 
 
@@ -321,19 +286,31 @@ model {
   b0_bar ~ normal(0,1);
   sd_b0 ~ normal(0,1);
 
-  //[sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,1);
-  //[nu_chla, nu_bathym, nu_sst] ~ normal(0, 0.5);
   mu_b ~ normal(0, 0.5);
   b ~ normal(mu_b, 0.5);
-  [bBathym, bChla, bSST] ~ normal(0, 1);
-  chla_merge ~ normal(0, 1);
+
+  [bBathym, bK490, bNPP, bSST] ~ normal(0, 1);
+
   bathym_merge ~ normal(0, 1);
+  //k490_merge ~ normal(nu_k490, sigma_k490);
+  //npp_merge ~ normal(nu_npp, sigma_npp);
+  k490_merge ~ normal(0, 1);
+  npp_merge ~ normal(0, 1);
   sst_merge ~ normal(0, 1);
+
+  //nu_k490 = a_k490 + bBk490*bathym_merge + bBk490_2*square(bathym_merge);  // mean of Kd490 is quadratic function of bathym
+  //nu_npp = a_npp + bKnpp*k490_merge + bBnpp*bathym_merge;  //mean of NPP is function of bathym and Kd490
+  //sigma_k490 ~ normal(0,1);
+  //sigma_npp ~ normal(0,1);
+
+  //[bBk490, bBk490_2, bKnpp, bBnpp] ~ normal(0, 0.5);
+  //[a_k490, a_npp] ~ normal(0, 1);
+
 
 
   for (i in 1:N) {
     // mean of gamma distribution
-    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym_merge[i] + bChla*chla_merge[i] + bSST*sst_merge[i]);
+    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym_merge[i] + bK490*k490_merge[i] + bNPP*npp_merge[i] + bSST*sst_merge[i]);
 
     // calculate the corresponding a parameter
     a[i] = mu[i] * b[ID[i]];
@@ -344,13 +321,14 @@ model {
 }
 '
 
-mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 5000, warmup = 1000, seed = 8675309)
-# took 50.5 hrs to run 5000 iter for 100% of data
+mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 3000, warmup = 1000, seed = 8675309)
+# took 100 hrs to run 3000 iter for 100% of data
 
-params <- c('mu_b','b','b0_id','bBathym','bChla','bSST','b0_bar','sd_b0')
+params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')
 print(mod1, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
 print(mod1, digits_summary = 3, pars = 'bathym_miss', probs = c(0.025, 0.5, 0.975))
-print(mod1, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
+print(mod1, digits_summary = 3, pars = 'k490_miss', probs = c(0.025, 0.5, 0.975))
+print(mod1, digits_summary = 3, pars = 'npp_miss', probs = c(0.025, 0.5, 0.975))
 print(mod1, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
 
 MCMCtrace(mod1, ind = TRUE, iter = 4000, pdf = FALSE, params = params)

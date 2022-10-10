@@ -109,7 +109,7 @@ dat.filt <- dat.filt %>%
 plan(multisession, workers = availableCores() - 2)
 path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Kd490','NPP','SST'),
                        ind = "month.year", imputed = TRUE)
-#takes 14 hrs to run on desktop (18 cores)
+#takes 4 hrs to run on desktop (18 cores)
 plan(sequential)
 
 
@@ -120,8 +120,8 @@ path1 <- cbind(path, dat.filt[,c("strata","obs")])
 save(dat, dat.filt, cov_list, path, file = "Data_products/Extracted environ covars.RData")
 
 
-nrow(drop_na(path1, bathym, Chla, Kd490, SST)) / nrow(path1)
-## 97.6% of observed and available steps have complete data
+nrow(drop_na(path1, bathym, Kd490, NPP, SST)) / nrow(path1)
+## 71.4% of observed and available steps have complete data
 
 
 
