@@ -32,23 +32,22 @@ files <- files[!grepl(pattern = "parquet", files)]  #remove any parquet files
 cov_list <- sapply(files, rast)
 cov_list
 
-names(cov_list) <- c('bathym', 'Chla', 'Kd490', 'SST')
+names(cov_list) <- c('bathym', 'Kd490', 'NPP', 'SST')
 
-# Change names for NPP and SST to match Kd490 (YYYY-MM-01)
-for (var in c('Chla', 'Kd490', 'SST')) {
+# Change names for dynamic layers to match YYYY-MM-01 format
+for (var in c('Kd490', 'NPP', 'SST')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
-}
-
-
-## Transform raster layers to match coarsest spatial resolution (i.e., Chla/Kd490)
-for (var in c("bathym", "SST")) {
-  cov_list[[var]] <- resample(cov_list[[var]], cov_list$Chla, method = "bilinear")
 }
 
 
 ## Set all positive bathymetric values (i.e., elevation) as NA
 cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
+
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
+for (var in c("bathym", "SST")) {
+  cov_list[[var]] <- resample(cov_list[[var]], cov_list$NPP, method = "average")
+}
 
 ## Transform CRS to match tracks
 cov_list <- map(cov_list, terra::project, 'EPSG:3395')
@@ -78,16 +77,16 @@ mod.input <- mod.input %>%
 
 # Remove all observations w/ missing bathym values (since NA values were assigned to land)
 mod.input2 <- mod.input %>%
-  drop_na(bathym)
+  drop_na(bathym, Kd490, NPP, SST)
 
 
 # Center and scale covariates
 mod.input2 <- mod.input2 %>%
   mutate(bathym.s = scale(bathym) %>%
            as.vector(),
-         chla.s = scale(Chla) %>%
-           as.vector(),
          kd490.s = scale(Kd490) %>%
+           as.vector(),
+         npp.s = scale(NPP) %>%
            as.vector(),
          sst.s = scale(SST) %>%
            as.vector())
@@ -98,21 +97,23 @@ mod.input2 <- mod.input2 %>%
 
 
 ### Explore model diagnostics and convergence ###
-params <- c('mu_b','b','b0_id','bBathym','bChla','bSST','b0_bar','sd_b0')
+params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')
 print(mod, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
-print(mod, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
-print(mod, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
 
-MCMCtrace(mod, ind = TRUE, iter = 4000, pdf = FALSE, params = params)
+MCMCtrace(mod, ind = TRUE, iter = 2000, pdf = FALSE, params = params)
 par(mfrow=c(1,1))
 MCMCplot(mod, params = params)
 
 bayesplot::mcmc_neff(neff_ratio(mod, pars = params)) +
   bayesplot::yaxis_text(hjust = 0)
-bayesplot::mcmc_rhat(rhat(mod, pars = 'chla_miss')) +
+bayesplot::mcmc_rhat(rhat(mod, pars = params)) +
   bayesplot::yaxis_text(hjust = 0)
-bayesplot::mcmc_rhat(rhat(mod, pars = 'sst_miss')) +
-  bayesplot::yaxis_text(hjust = 0)
+# bayesplot::mcmc_rhat(rhat(mod, pars = 'chla_miss')) +
+#   bayesplot::yaxis_text(hjust = 0)
+# bayesplot::mcmc_rhat(rhat(mod, pars = 'sst_miss')) +
+#   bayesplot::yaxis_text(hjust = 0)
 
 
 
@@ -122,7 +123,7 @@ bayesplot::mcmc_rhat(rhat(mod, pars = 'sst_miss')) +
 ### Viz distributions of parameters ###
 
 # Posterior distribs of main coeffs
-mcmc_areas(mod, pars = c("bBathym","bChla","bSST"), prob = 0.5, prob_outer = 1) +
+mcmc_areas(mod, pars = c("bBathym","bK490","bNPP","bSST"), prob = 0.5, prob_outer = 1) +
   yaxis_text(size = 12) +
   xaxis_text(size = 12) +
   ggtitle("Posterior distributions of coefficients for environmental variables") +
@@ -152,7 +153,8 @@ dist1 <- median(mod.input2$dist)  #median step length is ~400 m
 b0 <- rstan::extract(mod, pars = 'b0_bar')$b0_bar
 b0_id <- rstan::extract(mod, pars = 'b0_id')$b0_id
 bBathym <- rstan::extract(mod, pars = 'bBathym')$bBathym
-bChla <- rstan::extract(mod, pars = 'bChla')$bChla
+bK490 <- rstan::extract(mod, pars = 'bK490')$bK490
+bNPP <- rstan::extract(mod, pars = 'bNPP')$bNPP
 bSST <- rstan::extract(mod, pars = 'bSST')$bSST
 
 
@@ -175,7 +177,7 @@ for (i in 1:length(id1)) {
   # Create object to store results
   bathy.pred <- matrix(NA, n, 3)
 
-  # Make predictions (while holding Chla and SST at 0)
+  # Make predictions (while holding K490, NPP, and SST at 0)
   for (j in 1:n) {
     linear.func <- b0_id[,i] + bBathym * seq.bathym[j]
     mu <- dist1 * exp(linear.func)
@@ -202,7 +204,8 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
   labs(x = 'Bathymetric depth (m)', y = "Time to traverse 400 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
-        axis.text = element_text(size = 18))
+        axis.text = element_text(size = 18),
+        legend.position = "none")
 
 ggplot(data = bathym.res.df, aes(x = bathy)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
@@ -219,9 +222,9 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
 
 
 
-## Chlorophyll-a
+## K490
 
-chla.res<- list()
+k490.res<- list()
 
 for (i in 1:length(id1)) {
 
@@ -230,54 +233,119 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(chla.s) %>%
+    dplyr::select(kd490.s) %>%
     range(na.rm = TRUE)
-  seq.chla<- seq(rango1[1], rango1[2], length.out = n)
+  seq.k490<- seq(rango1[1], rango1[2], length.out = n)
 
 
   # Create object to store results
-  chla.pred <- matrix(NA, n, 3)
+  k490.pred <- matrix(NA, n, 3)
 
-  # Make predictions (while holding bathym and SST at 0)
+  # Make predictions (while holding bathym, NPP, and SST at 0)
   for (j in 1:n) {
-    linear.func <- b0_id[,i] + bChla * seq.chla[j]
+    linear.func <- b0_id[,i] + bK490 * seq.k490[j]
     mu <- dist1 * exp(linear.func)
-    chla.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
+    k490.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
   }
 
   # Convert to data.frame and add additional vars
-  chla.pred <- data.frame(chla.pred) %>%
+  k490.pred <- data.frame(k490.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(chla = seq.chla * sd(mod.input2$Chla, na.rm = TRUE) + mean(mod.input2$Chla, na.rm = TRUE),
+    mutate(k490 = seq.k490 * sd(mod.input2$Kd490, na.rm = TRUE) + mean(mod.input2$Kd490, na.rm = TRUE),
            id = id1[i])
 
-  chla.res[[i]] <- chla.pred
+  k490.res[[i]] <- k490.pred
 }
 
-chla.res.df<- bind_rows(chla.res)
+k490.res.df<- bind_rows(k490.res)
 
 # Plot relationship
-ggplot(data = chla.res.df, aes(x = chla)) +
+ggplot(data = k490.res.df, aes(x = k490)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Chlorophyll-a concentration (mg m^-3 d^-1)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 400 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
-        axis.text = element_text(size = 18))
+        axis.text = element_text(size = 18),
+        legend.position = "none")
 
-ggplot(data = chla.res.df, aes(x = chla)) +
+ggplot(data = k490.res.df, aes(x = k490)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Chlorophyll-a concentration (mg m^-3 d^-1)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 400 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
-  xlim(0,20) +
+  xlim(0,1.5) +
   ylim(0,240)
+
+
+
+
+## NPP
+
+npp.res<- list()
+
+for (i in 1:length(id1)) {
+
+  tmp<- mod.input2 %>%
+    filter(id == id1[i])
+
+  #Generate sequence along bathymetry
+  rango1<- tmp %>%
+    dplyr::select(npp.s) %>%
+    range(na.rm = TRUE)
+  seq.npp<- seq(rango1[1], rango1[2], length.out = n)
+
+
+  # Create object to store results
+  npp.pred <- matrix(NA, n, 3)
+
+  # Make predictions (while holding bathym, NPP, and SST at 0)
+  for (j in 1:n) {
+    linear.func <- b0_id[,i] + bNPP * seq.npp[j]
+    mu <- dist1 * exp(linear.func)
+    npp.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
+  }
+
+  # Convert to data.frame and add additional vars
+  npp.pred <- data.frame(npp.pred) %>%
+    rename(lower = X1, med = X2, upper = X3) %>%
+    mutate(npp = seq.npp * sd(mod.input2$NPP, na.rm = TRUE) + mean(mod.input2$NPP, na.rm = TRUE),
+           id = id1[i])
+
+  npp.res[[i]] <- npp.pred
+}
+
+npp.res.df<- bind_rows(npp.res)
+
+# Plot relationship
+ggplot(data = npp.res.df, aes(x = npp)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako") +
+  scale_fill_viridis_d("ID", option = "mako") +
+  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 400 m (min)") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 18),
+        legend.position = "none")
+
+# ggplot(data = npp.res.df, aes(x = npp)) +
+#   geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+#   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+#   scale_color_viridis_d("ID", option = "mako") +
+#   scale_fill_viridis_d("ID", option = "mako") +
+#   labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 400 m (min)") +
+#   theme_bw() +
+#   theme(axis.title = element_text(size = 18),
+#         axis.text = element_text(size = 18)) +
+#   xlim(0,1.5) +
+#   ylim(0,240)
 
 
 
@@ -329,7 +397,8 @@ ggplot(data = sst.res.df, aes(x = sst)) +
   labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 400 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
-        axis.text = element_text(size = 18))
+        axis.text = element_text(size = 18),
+        legend.position = "none")
 
 ggplot(data = sst.res.df, aes(x = sst)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
@@ -403,13 +472,14 @@ for (i in 1:length(focal.ids)) {
 
   #subset environ rasters and scale values
   bathym <- ((cov_list$bathym - mean(mod.input2$bathym)) / sd(mod.input2$bathym))
-  chla <- ((cov_list$Chla[[date.range]] - mean(mod.input2$Chla, na.rm = TRUE)) / sd(mod.input2$Chla, na.rm = TRUE))
+  k490 <- ((cov_list$Kd490[[date.range]] - mean(mod.input2$Kd490, na.rm = TRUE)) / sd(mod.input2$Kd490, na.rm = TRUE))
+  npp <- ((cov_list$NPP[[date.range]] - mean(mod.input2$NPP, na.rm = TRUE)) / sd(mod.input2$NPP, na.rm = TRUE))
   sst <- ((cov_list$SST[[date.range]] - mean(mod.input2$SST, na.rm = TRUE)) / sd(mod.input2$SST, na.rm = TRUE))
 
 
   #calculate time
-  linfunc <- median(b0_id[,which(id1 == focal.ids[i])]) + bathym * median(bBathym) + chla * median(bChla) +
-    sst * median(bSST)
+  linfunc <- median(b0_id[,which(id1 == focal.ids[i])]) + bathym * median(bBathym) + k490 * median(bK490) +
+    npp * median(bNPP) + sst * median(bSST)
   mu <- med.dist * exp(linfunc)
   names(mu) <- date.range
 
@@ -467,7 +537,7 @@ ggplot() +
   coord_sf(xlim = c(min(track.181800$x) - 10000, max(track.181800$x) + 10000),
            ylim = c(min(track.181800$y) - 10000, max(track.181800$y) + 10000)) +
   scale_x_continuous(breaks = c(-88, -86)) +
-  facet_wrap(~ month.year)
+  facet_wrap(~ month.year, nrow = 1)
 
 
 

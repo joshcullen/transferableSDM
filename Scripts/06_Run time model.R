@@ -33,15 +33,15 @@ dat2 <- dat  #all points moved off land; NAs represent missing depths or interpo
 
 
 # Center and scale covariates
-dat2 <- dat2 %>%
-  mutate(bathym.s = scale(bathym) %>%
-           as.vector(),
-         kd490.s = scale(Kd490) %>%
-           as.vector(),
-         npp.s = scale(NPP) %>%
-           as.vector(),
-         sst.s = scale(SST) %>%
-           as.vector())
+# dat2 <- dat2 %>%
+#   mutate(bathym.s = scale(bathym) %>%
+#            as.vector(),
+#          kd490.s = scale(Kd490) %>%
+#            as.vector(),
+#          npp.s = scale(NPP) %>%
+#            as.vector(),
+#          sst.s = scale(SST) %>%
+#            as.vector())
 
 
 # Check correlation among covars
@@ -157,26 +157,27 @@ table(tmp$id)
 
 ## Run model
 
-# Do this step if not running the prior predictive simulation
-dat2$id <- factor(dat2$id) %>%  #need to convert to integer for Stan
-  as.numeric()
-
-table(dat2$id)
-
-
-dat3 <- dat2 #%>%
+dat3 <- dat2 %>%
+  drop_na(bathym, Kd490, NPP, SST)
   # slice_sample(n = 0.01*nrow(dat2)) %>%
   # arrange(id, date)
 
+# Do this step if not running the prior predictive simulation
+dat3$id <- factor(dat3$id) %>%  #need to convert to integer for Stan
+  as.numeric()
+
+table(dat3$id)
+
+
 # Define objects pertaining to imputation of missing covars
-bathym_missidx <- which(is.na(dat3$bathym))
-n_bathym_miss <- length(bathym_missidx)
-k490_missidx <- which(is.na(dat3$Kd490))
-n_k490_miss <- length(k490_missidx)
-npp_missidx <- which(is.na(dat3$NPP))
-n_npp_miss <- length(npp_missidx)
-sst_missidx <- which(is.na(dat3$SST))
-n_sst_miss <- length(sst_missidx)
+# bathym_missidx <- which(is.na(dat3$bathym))
+# n_bathym_miss <- length(bathym_missidx)
+# k490_missidx <- which(is.na(dat3$Kd490))
+# n_k490_miss <- length(k490_missidx)
+# npp_missidx <- which(is.na(dat3$NPP))
+# n_npp_miss <- length(npp_missidx)
+# sst_missidx <- which(is.na(dat3$SST))
+# n_sst_miss <- length(sst_missidx)
 
 
 # data
@@ -189,22 +190,22 @@ dat.list <- list(
   bathym = scale(dat3$bathym)[,1],
   k490 = scale(dat3$Kd490)[,1],
   npp = scale(dat3$NPP)[,1],
-  sst = scale(dat3$SST)[,1],
-  n_bathym_miss = n_bathym_miss,
-  bathym_missidx = bathym_missidx,
-  n_k490_miss = n_k490_miss,
-  k490_missidx = k490_missidx,
-  n_npp_miss = n_npp_miss,
-  npp_missidx = npp_missidx,
-  n_sst_miss = n_sst_miss,
-  sst_missidx = sst_missidx
+  sst = scale(dat3$SST)[,1]#,
+  # n_bathym_miss = n_bathym_miss,
+  # bathym_missidx = bathym_missidx,
+  # n_k490_miss = n_k490_miss,
+  # k490_missidx = k490_missidx,
+  # n_npp_miss = n_npp_miss,
+  # npp_missidx = npp_missidx,
+  # n_sst_miss = n_sst_miss,
+  # sst_missidx = sst_missidx
   )
 
 # Replace missing covar values w/ Inf
-dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
-dat.list$k490 <- ifelse(is.na(dat.list$k490), Inf, dat.list$k490)
-dat.list$npp <- ifelse(is.na(dat.list$npp), Inf, dat.list$npp)
-dat.list$sst <- ifelse(is.na(dat.list$sst), Inf, dat.list$sst)
+# dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
+# dat.list$k490 <- ifelse(is.na(dat.list$k490), Inf, dat.list$k490)
+# dat.list$npp <- ifelse(is.na(dat.list$npp), Inf, dat.list$npp)
+# dat.list$sst <- ifelse(is.na(dat.list$sst), Inf, dat.list$sst)
 
 
 stan.model <- '
@@ -212,14 +213,14 @@ data {
   int N;                                  // sample size
   int ID[N];                              // ID label for each step
   int nID;                                // number of unique IDs
-  int n_bathym_miss;                      // number of missing bathymetry vals
-  int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
-  int n_k490_miss;                        // number of missing K490 vals
-  int k490_missidx[n_k490_miss];          // index for missing K490 vals
-  int n_npp_miss;                         // number of missing NPP vals
-  int npp_missidx[n_npp_miss];            // index for missing NPP vals
-  int n_sst_miss;                         // number of missing SST vals
-  int sst_missidx[n_sst_miss];            // index for missing SST vals
+  //int n_bathym_miss;                      // number of missing bathymetry vals
+  //int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
+  //int n_k490_miss;                        // number of missing K490 vals
+  //int k490_missidx[n_k490_miss];          // index for missing K490 vals
+  //int n_npp_miss;                         // number of missing NPP vals
+  //int npp_missidx[n_npp_miss];            // index for missing NPP vals
+  //int n_sst_miss;                         // number of missing SST vals
+  //int sst_missidx[n_sst_miss];            // index for missing SST vals
   vector[N] dt;                           // time interval (min)
   vector[N] dist;                         // Distance traveled for given step (m)
   vector[N] bathym;                       // Bathymetric depth (m)
@@ -242,10 +243,10 @@ parameters {
     real b0_bar;
     real<lower=0> sd_b0;
 
-    vector[n_bathym_miss] bathym_miss;
-    vector[n_k490_miss] k490_miss;
-    vector[n_npp_miss] npp_miss;
-    vector[n_sst_miss] sst_miss;
+    //vector[n_bathym_miss] bathym_miss;
+    //vector[n_k490_miss] k490_miss;
+    //vector[n_npp_miss] npp_miss;
+    //vector[n_sst_miss] sst_miss;
 
     //real<lower=0> sigma_k490;
     //real<lower=0> sigma_npp;
@@ -262,22 +263,22 @@ parameters {
 model {
   vector[N] mu;
   vector[N] a;
-  vector[N] bathym_merge;
-  vector[N] k490_merge;
-  vector[N] npp_merge;
-  vector[N] sst_merge;
+  //vector[N] bathym_merge;
+  //vector[N] k490_merge;
+  //vector[N] npp_merge;
+  //vector[N] sst_merge;
   //vector[N] nu_k490;
   //vector[N] nu_npp;
 
-  bathym_merge = bathym;
-  k490_merge = k490;
-  npp_merge = npp;
-  sst_merge = sst;
+  //bathym_merge = bathym;
+  //k490_merge = k490;
+  //npp_merge = npp;
+  //sst_merge = sst;
 
-  bathym_merge[bathym_missidx] = bathym_miss;
-  k490_merge[k490_missidx] = k490_miss;
-  npp_merge[npp_missidx] = npp_miss;
-  sst_merge[sst_missidx] = sst_miss;
+  //bathym_merge[bathym_missidx] = bathym_miss;
+  //k490_merge[k490_missidx] = k490_miss;
+  //npp_merge[npp_missidx] = npp_miss;
+  //sst_merge[sst_missidx] = sst_miss;
 
 
   // priors
@@ -291,12 +292,12 @@ model {
 
   [bBathym, bK490, bNPP, bSST] ~ normal(0, 1);
 
-  bathym_merge ~ normal(0, 1);
+  //bathym_merge ~ normal(0, 1);
   //k490_merge ~ normal(nu_k490, sigma_k490);
   //npp_merge ~ normal(nu_npp, sigma_npp);
-  k490_merge ~ normal(0, 1);
-  npp_merge ~ normal(0, 1);
-  sst_merge ~ normal(0, 1);
+  //k490_merge ~ normal(0, 1);
+  //npp_merge ~ normal(0, 1);
+  //sst_merge ~ normal(0, 1);
 
   //nu_k490 = a_k490 + bBk490*bathym_merge + bBk490_2*square(bathym_merge);  // mean of Kd490 is quadratic function of bathym
   //nu_npp = a_npp + bKnpp*k490_merge + bBnpp*bathym_merge;  //mean of NPP is function of bathym and Kd490
@@ -310,7 +311,7 @@ model {
 
   for (i in 1:N) {
     // mean of gamma distribution
-    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym_merge[i] + bK490*k490_merge[i] + bNPP*npp_merge[i] + bSST*sst_merge[i]);
+    mu[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym[i] + bK490*k490[i] + bNPP*npp[i] + bSST*sst[i]);
 
     // calculate the corresponding a parameter
     a[i] = mu[i] * b[ID[i]];
@@ -322,16 +323,16 @@ model {
 '
 
 mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 3000, warmup = 1000, seed = 8675309)
-# took 100 hrs to run 3000 iter for 100% of data
+# took 20 hrs to run 3000 iter for 100% of data
 
 params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')
 print(mod1, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
-print(mod1, digits_summary = 3, pars = 'bathym_miss', probs = c(0.025, 0.5, 0.975))
-print(mod1, digits_summary = 3, pars = 'k490_miss', probs = c(0.025, 0.5, 0.975))
-print(mod1, digits_summary = 3, pars = 'npp_miss', probs = c(0.025, 0.5, 0.975))
-print(mod1, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod1, digits_summary = 3, pars = 'bathym_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod1, digits_summary = 3, pars = 'k490_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod1, digits_summary = 3, pars = 'npp_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod1, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
 
-MCMCtrace(mod1, ind = TRUE, iter = 4000, pdf = FALSE, params = params)
+MCMCtrace(mod1, ind = TRUE, iter = 2000, pdf = FALSE, params = params)
 par(mfrow=c(1,1))
 MCMCplot(mod1, params = params)
 
@@ -345,21 +346,25 @@ saveRDS(mod1, "Data_products/Time_model_intercept_stanfit.rds")
 #posterior prediction
 y_hat <- matrix(NA, nrow = 100, ncol = nrow(dat3))
 
-bathym = dat.list$bathym
+bathym <- dat.list$bathym
+k490 <- dat.list$k490
+npp <- dat.list$npp
+sst <- dat.list$sst
 # bathym_merge[bathym_missidx] = extract(mod1, par = 'bathym_miss')$bathym_miss %>% colMeans()
-chla_merge = dat.list$chla
-chla_merge[chla_missidx] = extract(mod1, par = 'chla_miss')$chla_miss %>% colMeans()
-sst_merge = dat.list$sst
-sst_merge[sst_missidx] = extract(mod1, par = 'sst_miss')$sst_miss %>% colMeans()
+# chla_merge = dat.list$chla
+# chla_merge[chla_missidx] = extract(mod1, par = 'chla_miss')$chla_miss %>% colMeans()
+# sst_merge = dat.list$sst
+# sst_merge[sst_missidx] = extract(mod1, par = 'sst_miss')$sst_miss %>% colMeans()
 b0_hat <- extract(mod1, par = 'b0_id')$b0_id
 bBathym_hat <- extract(mod1, par = 'bBathym')$bBathym
-bChla_hat <- extract(mod1, par = 'bChla')$bChla
+bK490_hat <- extract(mod1, par = 'bK490')$bK490
+bNPP_hat <- extract(mod1, par = 'bNPP')$bNPP
 bSST_hat <- extract(mod1, par = 'bSST')$bSST
 b_hat <- extract(mod1, par = 'b')$b
 
 for (i in 1:nrow(y_hat)) {
   print(i)
-  mu <- dat3$dist * exp(b0_hat[i,dat3$id] + bBathym_hat[i]*bathym + bChla_hat[i]*chla_merge + bSST_hat[i]*sst_merge)
+  mu <- dat3$dist * exp(b0_hat[i,dat3$id] + bBathym_hat[i]*bathym + bK490_hat[i]*k490 + bNPP_hat[i]*npp + bSST_hat[i]*sst)
   y_hat[i,] <- mu
 }
 
