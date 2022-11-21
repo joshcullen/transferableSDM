@@ -17,19 +17,20 @@ source('Scripts/helper functions.R')
 ### Import imputed turtle tracks ###
 ####################################
 
-dat <- vroom('Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv', delim = ",")
+dat <- vroom('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.csv', delim = ",")
 dat <- dat %>%
   mutate(month.year = as_date(datetime),
          .after = 'datetime') %>%
   mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  dplyr::select(-c(x,y)) %>%
   rename(x = mu.x, y = mu.y, date = datetime, id = ptt)
 
 
 
 # Calculate step lengths, turning angles, NSD, and dt
 tic()
-dat<- prep_data(dat = dat, coord.names = c('x','y'), id = "rep")
-toc()  # takes 2.5 min to run
+dat<- prep_data(dat = dat, coord.names = c('x','y'), id = "id")
+toc()  # takes 4.5 sec to run
 
 dat$speed <- dat$step / dat$dt
 
@@ -37,8 +38,11 @@ dat$speed <- dat$step / dat$dt
 # Check speed for any outliers
 round(quantile(dat$speed, c(0.01, 0.25, 0.5, 0.75, 0.95, 0.99, 1), na.rm = TRUE), 2)
 any(dat$step == 0, na.rm = TRUE)
+sum(dat$step == 0, na.rm = TRUE)  #only 4 obs
 
-## There are some extremely fast outliers (9146 m/s) that need to be removed before subsequent analysis
+## Replace steps lengths == 0 w/ small, but positive, number
+dat$step[which(dat$step == 0)] <- 1e-9
+dat$speed <- dat$step / dat$dt
 
 
 # Create 4 available steps per observed step
@@ -51,9 +55,10 @@ dat.filt <- dat %>%
   filter(!is.na(step))
 
 
-# Remove any observations w/ speeds faster than 3 m/s (approx 99th quantile and filter used in CTCRW model)
+# Remove any observations w/ speeds faster than 3 m/s
 dat.filt <- dat.filt %>%
   filter(speed <= 3)
+
 
 
 
@@ -102,14 +107,13 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 ########################################################
 
 dat.filt <- dat.filt %>%
-  # rename(id = ptt) %>%
-  filter(id != 104833)
+  filter(id != 104833)  #no data available for Kd490 and NPP in 2011
 
 #for running in parallel; define number of cores to use
 plan(multisession, workers = availableCores() - 2)
 path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Kd490','NPP','SST'),
-                       ind = "month.year", imputed = TRUE)
-#takes 4 hrs to run on desktop (18 cores)
+                       ind = "month.year", imputed = FALSE)
+#takes 2 min to run on desktop (18 cores)
 plan(sequential)
 
 
@@ -117,11 +121,11 @@ plan(sequential)
 path1 <- cbind(path, dat.filt[,c("strata","obs")])
 
 
-save(dat, dat.filt, cov_list, path, file = "Data_products/Extracted environ covars.RData")
+save(dat, dat.filt, cov_list, path1, file = "Data_products/Extracted environ covars.RData")
 
 
 nrow(drop_na(path1, bathym, Kd490, NPP, SST)) / nrow(path1)
-## 71.4% of observed and available steps have complete data
+## 68.3% of observed and available steps have complete data
 
 
 

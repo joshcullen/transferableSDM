@@ -181,34 +181,34 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
 
 #----------------------------
 extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_names = NULL,
-                          ind, imputed = TRUE) {
+                          ind, imputed = FALSE) {
   ## data must be a data frame with "id" column, coords labeled "x" and "y" and datetime as POSIXct labeled "date"; optionally can have column that specifies behavioral state; if imputed = TRUE, a column named "rep" must be included to distinguish among imputations
 
   message("Prepping data for extraction...")
   tictoc::tic()
 
   dat.list <- bayesmove::df_to_list(data, "id")
-  dat.list.rep <- map(dat.list, ~bayesmove::df_to_list(., ind = "rep"))
+  # dat.list.rep <- map(dat.list, ~bayesmove::df_to_list(., ind = "rep"))
 
   ## Make raster data (stored in `layers`) usable in parallel
   .layers <- map(layers, terra::wrap)
 
   ## Create empty list to store results
-  path.list <- vector("list", length = length(dat.list)) %>%
-    purrr::set_names(names(dat.list))
+  # path.list <- vector("list", length = length(dat.list)) %>%
+  #   purrr::set_names(names(dat.list))
 
 
   ## Analyze across IDs using for-loop
-  for (i in 1:length(dat.list.rep)) {
+  # for (i in 1:length(dat.list)) {
 
-    message("Extracting environmental values for PTT ", names(dat.list.rep)[i], "...")
+    message("Extracting environmental values for PTTs...")
 
     progressr::with_progress({
       #set up progress bar
-      p<- progressr::progressor(steps = length(dat.list.rep[[i]]))
+      p<- progressr::progressor(steps = length(dat.list))
 
       # tictoc::tic()
-      path <- furrr::future_map(dat.list.rep[[i]],
+      path <- furrr::future_map(dat.list,
                                 ~extract.covars.internal(data = .x, layers = map(.layers, terra::rast),
                                                          state.col = state.col,
                                                          which_cat = which_cat,
@@ -218,17 +218,17 @@ extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_
       # tictoc::toc()
     })
 
-    path <- dplyr::bind_rows(path, .id = "rep")
-    path.list[[i]] <- path
-  }
+    path <- dplyr::bind_rows(path, .id = "id")
+    # path.list[[i]] <- path
+  # }
 
-  message("Exporting extracted values...")
+  # message("Exporting extracted values...")
 
-  path.out <- dplyr::bind_rows(path.list)
+  # path.out <- dplyr::bind_rows(path.list)
   tictoc::toc()
 
 
-  return(path.out)
+  return(path)
 }
 
 
@@ -241,7 +241,7 @@ add_avail_steps <- function(data) {
 
   data2 <- data %>%
     rename(x1 = x, y1 = y) %>%
-    split(.$rep) %>%
+    split(.$id) %>%
     map(., ~{.x %>%
         mutate(x2 = c(x1[-1], NA),
                y2 = c(y1[-1], NA),

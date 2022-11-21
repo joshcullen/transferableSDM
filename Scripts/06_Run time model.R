@@ -45,38 +45,15 @@ dat2 <- dat  #all points moved off land; NAs represent missing depths or interpo
 
 
 # Check correlation among covars
-cor(dat2[,c('bathym.s','kd490.s','npp.s','sst.s')] %>%
+cor(dat2[,c('bathym','Kd490','NPP','SST')] %>%
       drop_na())
 dat2 %>%
   drop_na(bathym, Kd490, NPP, SST) %>%
-  slice_sample(n = 50000) %>%
-  dplyr::select(bathym.s, kd490.s, npp.s, sst.s) %>%
+  # slice_sample(n = 50000) %>%
+  dplyr::select(bathym, Kd490, NPP, SST) %>%
   pairs()
-#strongest corr is between NPP and Kd490 (0.59); leaving all vars in for subsequent analyses
+#strongest corr is between NPP and Kd490 (0.57); leaving all vars in for subsequent analyses
 
-
-
-## Explore relationship between dt and each of the covars
-
-ggplot(dat2 %>%
-         slice_sample(n = 500000), aes(bathym, dt)) +
-  geom_point() +
-  theme_bw()
-
-ggplot(dat2 %>%
-         slice_sample(n = 500000), aes(Kd490, dt)) +
-  geom_point() +
-  theme_bw()
-
-ggplot(dat2 %>%
-         slice_sample(n = 500000), aes(NPP, dt)) +
-  geom_point() +
-  theme_bw()
-
-ggplot(dat2 %>%
-         slice_sample(n = 500000), aes(SST, dt, color = id)) +
-  geom_point() +
-  theme_bw()
 
 
 
@@ -320,10 +297,21 @@ model {
     dt[i] ~ gamma(a[i], b[ID[i]]);
   }
 }
+
+
+
+generated quantities {
+  vector[N] y_hat;
+
+  // mean of gamma distribution
+  for (i in 1:N){
+    y_hat[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym[i] + bK490*k490[i] + bNPP*npp[i] + bSST*sst[i]);
+  }
+}
 '
 
-mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 3000, warmup = 1000, seed = 8675309)
-# took 20 hrs to run 3000 iter for 100% of data
+mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 8675309)
+# took 15 min to run 2000 iter for 100% of remaining data
 
 params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')
 print(mod1, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
@@ -383,63 +371,46 @@ ppc_dens_overlay(dat.list$dt, y_hat) +
 ### Run model w/ varying intercept and slopes ###
 #################################################
 
-# Do this step if not running the prior predictive simulation
-dat2$id <- factor(dat2$id) %>%  #need to convert to integer for Stan
-  as.numeric()
-
-dat3 <- dat2 #%>%
-  # slice_sample(n = 0.05*nrow(dat2)) %>%
-  # arrange(id, date)
-
-# Define objects pertaining to imputation of missing covars
-# bathym_missidx <- which(is.na(dat3$bathym))
-# n_bathym_miss <- length(bathym_missidx)
-chla_missidx <- which(is.na(dat3$chla))
-n_chla_miss <- length(chla_missidx)
-sst_missidx <- which(is.na(dat3$sst))
-n_sst_miss <- length(sst_missidx)
-
-
 # data
 dat.list <- list(
   N = nrow(dat3),
+  K = 5,  #intercept and 4 environ covariates
   ID = dat3$id,
   nID = n_distinct(dat3$id),
   dt = dat3$dt,
   dist = dat3$dist,
-  bathym = dat3$bathym.s,
-  chla = dat3$chla.s,
-  sst = dat3$sst.s,
+  bathym = scale(dat3$bathym)[,1],
+  k490 = scale(dat3$Kd490)[,1],
+  npp = scale(dat3$NPP)[,1],
+  sst = scale(dat3$SST)[,1]#,
   # n_bathym_miss = n_bathym_miss,
   # bathym_missidx = bathym_missidx,
-  n_chla_miss = n_chla_miss,
-  chla_missidx = chla_missidx,
-  n_sst_miss = n_sst_miss,
-  sst_missidx = sst_missidx
+  # n_k490_miss = n_k490_miss,
+  # k490_missidx = k490_missidx,
+  # n_npp_miss = n_npp_miss,
+  # npp_missidx = npp_missidx,
+  # n_sst_miss = n_sst_miss,
+  # sst_missidx = sst_missidx
 )
 
 # Replace missing covar values w/ Inf
 # dat.list$bathym <- ifelse(is.na(dat.list$bathym), Inf, dat.list$bathym)
-dat.list$chla <- ifelse(is.na(dat.list$chla), Inf, dat.list$chla)
-dat.list$sst <- ifelse(is.na(dat.list$sst), Inf, dat.list$sst)
-
+# dat.list$k490 <- ifelse(is.na(dat.list$k490), Inf, dat.list$k490)
+# dat.list$npp <- ifelse(is.na(dat.list$npp), Inf, dat.list$npp)
+# dat.list$sst <- ifelse(is.na(dat.list$sst), Inf, dat.list$sst)
 
 
 stan.model <- '
 data {
   int N;                                  // sample size
+  int K;                                  // number of terms in linear model
   int ID[N];                              // ID label for each step
   int nID;                                // number of unique IDs
-  int n_chla_miss;                        // number of missing Chla vals
-  int chla_missidx[n_chla_miss];          // index for missing Chla vals
-  //int n_bathym_miss;                      // number of missing bathymetry vals
-  //int bathym_missidx[n_bathym_miss];      // index for missing bathymetry vals
-  int n_sst_miss;                         // number of missing SST vals
-  int sst_missidx[n_sst_miss];            // index for missing SST vals
   vector[N] dt;                           // time interval (min)
   vector[N] dist;                         // Distance traveled for given step (m)
   vector[N] bathym;                       // Bathymetric depth (m)
-  vector[N] chla;                         // Chlorophyll a concentration (mg m^-3 d^-1)
+  vector[N] k490;                         // Light attenuation coefficient at 490 nm (units)
+  vector[N] npp;                          // Net primary productivity (units)
   vector[N] sst;                          // Sea surface temperature (C)
 
 }
@@ -448,84 +419,79 @@ data {
 parameters {
     real<lower=0> mu_b;
     vector<lower=0>[nID] b;
-    matrix[nID,4] betas;
-    vector[4] mu_betas;
-    corr_matrix[4] L_Rho;
-    vector<lower=0>[4] sigma;
+    //vector[nID] b0_id;
+    //real bBathym;
+    //real bK490;
+    //real bNPP;
+    //real bSST;
 
-    vector[n_chla_miss] chla_miss;
-    //vector[n_bathym_miss] bathym_miss;
-    vector[n_sst_miss] sst_miss;
+    //real b0_bar;
+    //real<lower=0> sd_b0;
 
-    //real nu_chla;
-    //real nu_bathym;
-    //real nu_sst;
-    //real<lower=0> sigma_chla;
-    //real<lower=0> sigma_bathym;
-    //real<lower=0> sigma_sst;
+  vector[K] mu_betas;                    // Population means of coefficients
+  vector<lower=0>[K] tau;                // Population scales (SDs)
+  cholesky_factor_corr[K] L;             // Population correlations
+  vector[K] betas[nID];                  // Coeffs per individual (int and slopes)
 }
 
 
 model {
   vector[N] mu;
-  real a[N];
-  vector[N] chla_merge;
-  //vector[N] bathym_merge;
-  vector[N] sst_merge;
-
-  chla_merge = chla;
-  //bathym_merge = bathym;
-  sst_merge = sst;
-
-  chla_merge[chla_missidx] = chla_miss;
-  //bathym_merge[bathym_missidx] = bathym_miss;
-  sst_merge[sst_missidx] = sst_miss;
-
-
-
+  vector[N] a;
 
   // priors
-  mu_betas ~ normal(0,0.5);
-  sigma ~ normal(0,0.5);
-  L_Rho ~ lkj_corr(2);
+  //b0_id ~ normal(b0_bar, sd_b0);
 
-  for (j in 1:nID) {
-    betas[j,] ~ multi_normal(mu_betas, quad_form_diag(L_Rho, sigma));
-  }
-
+  //b0_bar ~ normal(0,1);
+  //sd_b0 ~ normal(0,1);
 
   mu_b ~ normal(0, 0.5);
   b ~ normal(mu_b, 0.5);
-  //[sigma_chla, sigma_bathym, sigma_sst] ~ normal(0,1);
-  //[nu_chla, nu_bathym, nu_sst] ~ normal(0, 0.5);
-  //target += normal_lpdf(bathym_merge | 0, 1);
-  target += normal_lpdf(chla_merge | 0, 1);
-  target += normal_lpdf(sst_merge | 0, 1);
+
+  //[bBathym, bK490, bNPP, bSST] ~ normal(0, 1);
+
+  mu_betas ~ normal(0, 1);
+  tau ~ normal(0, 1);
+  L ~ lkj_corr_cholesky(4);
+
+  // Estimate means per ID
+  betas ~ multi_normal_cholesky(mu_betas, diag_pre_multiply(tau, L));
 
 
-  for (i in 1:N){
+  for (i in 1:N) {
     // mean of gamma distribution
-    mu[i] = dist[i] * exp(betas[ID[i],1] + betas[ID[i],2]*bathym[i] + betas[ID[i],3]*chla_merge[i] + betas[ID[i],4]*sst_merge[i]);
+    mu[i] = dist[i] * exp(betas[ID[i],1] + betas[ID[i],2]*bathym[i] + betas[ID[i],3]*k490[i] + betas[ID[i],4]*npp[i] + betas[ID[i],5]*sst[i]);
 
-    // calculate the corresponding a[i] parameter
+    // calculate the corresponding a parameter
     a[i] = mu[i] * b[ID[i]];
 
     // likelihood
     dt[i] ~ gamma(a[i], b[ID[i]]);
   }
 }
+
+
+
+//generated quantities {
+  //vector[N] y_hat;
+
+  // mean of gamma distribution
+  //for (i in 1:N){
+    //y_hat[i] = dist[i] * exp(b0_id[ID[i]] + bBathym*bathym[i] + bK490*k490[i] + bNPP*npp[i] + bSST*sst[i]);
+  //}
+//}
 '
 
 
 mod2 <- rstan::stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000,
-                    seed = 8675309, refresh = 100)
-#took 14 days to run 2000 iter for full dataset
+                    seed = 8675309, refresh = 100, control = list(max_treedepth = 15))
+#took 9.5 hrs to run 2000 iter for full dataset
 
-params <- c('mu_b','b','mu_betas','sigma','L_Rho')
+params <- c('mu_b','b','mu_betas','tau','L')
 print(mod2, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
 print(mod2, digits_summary = 3, pars = 'betas', probs = c(0.025, 0.5, 0.975))
-print(mod2, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
-print(mod2, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod2, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
+# print(mod2, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
 
 MCMCtrace(mod2, ind = TRUE, iter = 1000, pdf = FALSE, params = params)
 par(mfrow=c(1,1))
@@ -534,9 +500,18 @@ MCMCplot(mod2, params = params)
 
 bayesplot::mcmc_neff(neff_ratio(mod2, pars = params)) +
   bayesplot::yaxis_text(hjust = 0)
+bayesplot::mcmc_rhat(rhat(mod2, pars = params)) +
+  bayesplot::yaxis_text(hjust = 0)
+bayesplot::mcmc_neff(neff_ratio(mod2, pars = 'betas')) +
+  bayesplot::yaxis_text(hjust = 0)
 bayesplot::mcmc_rhat(rhat(mod2, pars = 'betas')) +
   bayesplot::yaxis_text(hjust = 0)
 
 
 ## Save stanfit object
 saveRDS(mod2, "Data_products/Time_model_intercept-slopes_stanfit.rds")
+
+
+
+
+### NEED TO CREATE LOG-LIK PARAMS IN GENERATED QUANTITIES BLOCKS IF WANTING USE USE INFORMATION CRITERIA (I.E., WAIC, LOO) TO PERFORM MODEL SELECTION
