@@ -20,9 +20,9 @@ rstan_options(auto_write = TRUE)
 
 ### Load model fit, model input, and tracks ###
 
-mod <- readRDS('Data_products/Time_model_intercept_stanfit.rds')
+mod <- readRDS('Data_products/Time_model_intercept-slopes_stanfit.rds')
 mod.input <- read_parquet("Processed_data/Input for time model.parquet")
-dat <- read_csv('Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv')
+dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.csv')
 
 
 
@@ -32,19 +32,13 @@ dat <- read_csv('Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv')
 # Change time step from secs to mins
 mod.input$dt <- mod.input$dt/60
 
-# Remove all observations w/ missing bathym values (since NA values were assigned to land)
+# Remove all observations w/ missing values
 mod.input2 <- mod.input %>%
   drop_na(bathym, Kd490, NPP, SST) %>%
   mutate(id1 = as.numeric(factor(id)), .after = id)
 
-# Add quadratic terms for covariates
-mod.input2 <- mod.input2 %>%
-  mutate(bathym.2 = bathym^2,
-         Kd490.2 = Kd490^2,
-         NPP.2 = NPP^2,
-         SST.2 = SST^2)
 
-# Center and scale covariates
+# Center and scale covariates; Add quadratic terms for covariates
 mod.input2 <- mod.input2 %>%
   mutate(bathym.s = scale(bathym) %>%
            as.vector(),
@@ -53,15 +47,12 @@ mod.input2 <- mod.input2 %>%
          npp.s = scale(NPP) %>%
            as.vector(),
          sst.s = scale(SST) %>%
-           as.vector(),
-         bathym.2.s = scale(bathym.2) %>%
-           as.vector(),
-         kd490.2.s = scale(Kd490.2) %>%
-           as.vector(),
-         npp.2.s = scale(NPP.2) %>%
-           as.vector(),
-         sst.2.s = scale(SST.2) %>%
-           as.vector())
+           as.vector()) %>%
+  mutate(bathym.2.s = bathym.s^2,
+         kd490.2.s = kd490.s^2,
+         npp.2.s = npp.s^2,
+         sst.2.s = sst.s^2)
+
 
 
 # Only keep strata that have at least 1 used and 1 available step (since only complete cases analyzed)
@@ -84,8 +75,7 @@ calc_time_probs <- function(mod, dat, covar.names, p) {
   dat <- data.frame(dat)
 
   #calculate probabilities
-  betas <- rstan::extract(mod, pars = c('b0_id','bBathym','bK490','bNPP','bSST')) %>%
-    bind_cols()
+  betas <- rstan::extract(mod, pars = 'betas')$betas
   b <- rstan::extract(mod, pars = 'b')$b
   strat <- unique(dat$strata)
   prob.all <- vector("list", length(strat))
@@ -96,7 +86,7 @@ calc_time_probs <- function(mod, dat, covar.names, p) {
     #get parameters
     id1 <- dat[dat$strata == strat[i], "id1"][1]
     dist1 <- dat[dat$strata == strat[i], "dist"][1]
-    betas1 <- cbind(betas$b0_id[,id1], betas[,-1])
+    betas1 <- betas[,id1,]
     b1 <- b[,id1]
 
     #define design vector
@@ -136,14 +126,14 @@ res <- future_map(mod.input.list,
                   ~calc_time_probs(mod = mod, dat = ., covar.names = c('bathym.s','kd490.s','npp.s','sst.s'), p = p),
                   .options = furrr_options(seed = 2022))
 })
-toc()  #took 73 min to run
+toc()  #took 103 sec to run
 
 plan(sequential)
 
 
 mod.input3$time.prob <- unlist(res)
 # mod.input3$time.prob <- ifelse(mod.input3$time.prob == 0, 1e-99, mod.input3$time.prob)
-
+summary(mod.input3$time.prob)
 
 
 ########################################################
@@ -170,7 +160,7 @@ mod.input4 <- mod.input3 %>%
       ungroup()
     }) %>%
   bind_rows()
-toc()  #took 16.5 min
+toc()  #took 33 sec
 
 plan(sequential)
 
@@ -192,7 +182,7 @@ mod.input5 <- mod.input5 %>%
   filter(!strata %in% ind)  #remove any steps w/ time gaps > 12 hrs
 
 #get names of covariates
-covar.names <- c('bathym.s','bathym.2.s','kd490.s','kd490.2.s','npp.s','npp.2.s','sst.s','sst.2.s')
+covar.names <- c('bathym.s','kd490.s','npp.s','sst.s')
 
 
 dat.list <- list(
@@ -263,12 +253,14 @@ model {
 // priors
   //betas ~ normal(0, 1);
   mu ~ normal(0, 1);
-  tau ~ normal(0, 2);
-  L ~ lkj_corr_cholesky(K);
+  tau ~ normal(0, 1);
+  L ~ lkj_corr_cholesky(4);
 
   // Estimate means per ID
   betas ~ multi_normal_cholesky(mu, diag_pre_multiply(tau, L));
-
+  //for (i in 1:nID) {
+  //   betas[i] ~ normal(mu, sigma);
+  // }
 
 
 // model
@@ -304,7 +296,8 @@ model {
 '
 
 
-mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 8675309)
+mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 8675309,
+             refresh = 100)
 # took 4.8 hrs to run 2000 iter for full dataset
 
 # params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')

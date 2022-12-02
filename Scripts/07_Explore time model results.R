@@ -14,9 +14,9 @@ library(sf)
 
 ### Load model fit, model input, and tracks ###
 
-mod <- readRDS('Data_products/Time_model_intercept_stanfit.rds')
+mod <- readRDS('Data_products/Time_model_intercept-slopes_stanfit.rds')
 mod.input <- read_parquet("Processed_data/Input for time model.parquet")
-dat <- read_csv('Processed_data/Imputed_GoM_Cm_Tracks_SSM_2hr.csv')
+dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.csv')
 
 gom <- sfarrow::st_read_parquet("Environ_data/GoM_land.parquet") %>%
   st_transform(3395)
@@ -62,6 +62,7 @@ dat <- dat %>%
   mutate(month.year = as_date(datetime),
          .after = 'datetime') %>%
   mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  dplyr::select(-c(x,y)) %>%
   rename(x = mu.x, y = mu.y, date = datetime, id = ptt)
 
 
@@ -75,7 +76,7 @@ mod.input$dt <- mod.input$dt/60
 mod.input <- mod.input %>%
   filter(obs == 1)
 
-# Remove all observations w/ missing bathym values (since NA values were assigned to land)
+# Remove all observations w/ missing values (since not imputed)
 mod.input2 <- mod.input %>%
   drop_na(bathym, Kd490, NPP, SST)
 
@@ -97,10 +98,10 @@ mod.input2 <- mod.input2 %>%
 
 
 ### Explore model diagnostics and convergence ###
-params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')
+params <- c('mu_b','b','mu_betas','tau','L')
 print(mod, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))
-# print(mod, digits_summary = 3, pars = 'chla_miss', probs = c(0.025, 0.5, 0.975))
-# print(mod, digits_summary = 3, pars = 'sst_miss', probs = c(0.025, 0.5, 0.975))
+print(mod, digits_summary = 3, pars = 'betas', probs = c(0.025, 0.5, 0.975))
+
 
 MCMCtrace(mod, ind = TRUE, iter = 2000, pdf = FALSE, params = params)
 par(mfrow=c(1,1))
@@ -110,10 +111,6 @@ bayesplot::mcmc_neff(neff_ratio(mod, pars = params)) +
   bayesplot::yaxis_text(hjust = 0)
 bayesplot::mcmc_rhat(rhat(mod, pars = params)) +
   bayesplot::yaxis_text(hjust = 0)
-# bayesplot::mcmc_rhat(rhat(mod, pars = 'chla_miss')) +
-#   bayesplot::yaxis_text(hjust = 0)
-# bayesplot::mcmc_rhat(rhat(mod, pars = 'sst_miss')) +
-#   bayesplot::yaxis_text(hjust = 0)
 
 
 
@@ -123,18 +120,18 @@ bayesplot::mcmc_rhat(rhat(mod, pars = params)) +
 ### Viz distributions of parameters ###
 
 # Posterior distribs of main coeffs
-mcmc_areas(mod, pars = c("bBathym","bK490","bNPP","bSST"), prob = 0.5, prob_outer = 1) +
+mcmc_areas(mod, regex_pars = 'betas', prob = 0.5, prob_outer = 1) +
   yaxis_text(size = 12) +
   xaxis_text(size = 12) +
   ggtitle("Posterior distributions of coefficients for environmental variables") +
   theme(plot.title = element_text(size = 20))
 
 # Posterior distribs of intercept (including pop mean and sd)
-mcmc_intervals(mod, regex_pars = "b0", prob = 0.5, prob_outer = 0.95) +
-  yaxis_text(size = 12) +
-  xaxis_text(size = 12) +
-  ggtitle("Posterior distributions of intercept for model") +
-  theme(plot.title = element_text(size = 20))
+# mcmc_intervals(mod, regex_pars = "b0", prob = 0.5, prob_outer = 0.95) +
+#   yaxis_text(size = 12) +
+#   xaxis_text(size = 12) +
+#   ggtitle("Posterior distributions of intercept for model") +
+#   theme(plot.title = element_text(size = 20))
 
 # Posterior distribs of rate ('b') params for gamma distribution (including pop mean)
 mcmc_intervals(mod, pars = "mu_b", regex_pars = "^b\\[", prob = 0.5, prob_outer = 0.95) +
@@ -149,13 +146,12 @@ mcmc_intervals(mod, pars = "mu_b", regex_pars = "^b\\[", prob = 0.5, prob_outer 
 
 n <- 100
 id1 <- unique(mod.input2$id)
-dist1 <- median(mod.input2$dist)  #median step length is ~400 m
-b0 <- rstan::extract(mod, pars = 'b0_bar')$b0_bar
-b0_id <- rstan::extract(mod, pars = 'b0_id')$b0_id
-bBathym <- rstan::extract(mod, pars = 'bBathym')$bBathym
-bK490 <- rstan::extract(mod, pars = 'bK490')$bK490
-bNPP <- rstan::extract(mod, pars = 'bNPP')$bNPP
-bSST <- rstan::extract(mod, pars = 'bSST')$bSST
+dist1 <- median(mod.input2$dist)  #median step length is ~287 m
+b0 <- rstan::extract(mod, pars = 'betas')$betas[,,1]
+bBathym <- rstan::extract(mod, pars = 'betas')$betas[,,2]
+bK490 <- rstan::extract(mod, pars = 'betas')$betas[,,3]
+bNPP <- rstan::extract(mod, pars = 'betas')$betas[,,4]
+bSST <- rstan::extract(mod, pars = 'betas')$betas[,,5]
 
 
 
@@ -179,7 +175,7 @@ for (i in 1:length(id1)) {
 
   # Make predictions (while holding K490, NPP, and SST at 0)
   for (j in 1:n) {
-    linear.func <- b0_id[,i] + bBathym * seq.bathym[j]
+    linear.func <- b0[,i] + bBathym[,i] * seq.bathym[j]
     mu <- dist1 * exp(linear.func)
     bathy.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
   }
@@ -201,7 +197,7 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 287 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -212,7 +208,7 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 287 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
@@ -243,7 +239,7 @@ for (i in 1:length(id1)) {
 
   # Make predictions (while holding bathym, NPP, and SST at 0)
   for (j in 1:n) {
-    linear.func <- b0_id[,i] + bK490 * seq.k490[j]
+    linear.func <- b0[,i] + bK490[,i] * seq.k490[j]
     mu <- dist1 * exp(linear.func)
     k490.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
   }
@@ -265,7 +261,7 @@ ggplot(data = k490.res.df, aes(x = k490)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'K490 (1/m)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 287 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -276,7 +272,7 @@ ggplot(data = k490.res.df, aes(x = k490)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'K490 (1/m)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 287 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
@@ -307,7 +303,7 @@ for (i in 1:length(id1)) {
 
   # Make predictions (while holding bathym, NPP, and SST at 0)
   for (j in 1:n) {
-    linear.func <- b0_id[,i] + bNPP * seq.npp[j]
+    linear.func <- b0[,i] + bNPP[,i] * seq.npp[j]
     mu <- dist1 * exp(linear.func)
     npp.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
   }
@@ -329,23 +325,23 @@ ggplot(data = npp.res.df, aes(x = npp)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 287 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
         legend.position = "none")
 
-# ggplot(data = npp.res.df, aes(x = npp)) +
-#   geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-#   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
-#   scale_color_viridis_d("ID", option = "mako") +
-#   scale_fill_viridis_d("ID", option = "mako") +
-#   labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 400 m (min)") +
-#   theme_bw() +
-#   theme(axis.title = element_text(size = 18),
-#         axis.text = element_text(size = 18)) +
-#   xlim(0,1.5) +
-#   ylim(0,240)
+ggplot(data = npp.res.df, aes(x = npp)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
+  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  scale_color_viridis_d("ID", option = "mako") +
+  scale_fill_viridis_d("ID", option = "mako") +
+  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 287 m (min)") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 18)) +
+  xlim(0,10000) +
+  ylim(0,1000)
 
 
 
@@ -372,7 +368,7 @@ for (i in 1:length(id1)) {
 
   # Make predictions (while holding bathym and SST at 0)
   for (j in 1:n) {
-    linear.func <- b0_id[,i] + bSST * seq.sst[j]
+    linear.func <- b0[,i] + bSST[,i] * seq.sst[j]
     mu <- dist1 * exp(linear.func)
     sst.pred[j,] <- quantile(mu, c(0.025, 0.5, 0.975))
   }
@@ -394,7 +390,7 @@ ggplot(data = sst.res.df, aes(x = sst)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 287 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -405,7 +401,7 @@ ggplot(data = sst.res.df, aes(x = sst)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 400 m (min)") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 287 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
@@ -420,30 +416,30 @@ ggplot(data = sst.res.df, aes(x = sst)) +
 
 # Inspect map to determine which IDs to highlight
 
-ggplot(data = dat, aes(x, y, color = factor(id), group = rep)) +
+ggplot(data = dat, aes(x, y, color = factor(id), group = id)) +
   geom_path(size = 0.25, alpha = 0.7) +
   theme_bw()
 
 
-ggplot(data = dat %>% filter(id == 142713), aes(x, y, color = rep, group = rep)) +
+ggplot(data = dat %>% filter(id == 142713), aes(x, y, color = id, group = id)) +
   geom_path(size = 0.25, alpha = 0.7) +
   theme_bw() +
   coord_equal()
 
 
-ggplot(data = dat %>% filter(id == 181800), aes(x, y, color = rep, group = rep)) +
+ggplot(data = dat %>% filter(id == 181800), aes(x, y, color = id, group = id)) +
   geom_path(size = 0.25, alpha = 0.7) +
   theme_bw() +
   coord_equal()
 
 
-ggplot(data = dat %>% filter(id == 159783), aes(x, y, color = rep, group = rep)) +
+ggplot(data = dat %>% filter(id == 159783), aes(x, y, color = id, group = id)) +
   geom_path(size = 0.25, alpha = 0.7) +
   theme_bw() +
   coord_equal()
 
 
-ggplot(data = dat %>% filter(id == 181796), aes(x, y, color = rep, group = rep)) +
+ggplot(data = dat %>% filter(id == 181796), aes(x, y, color = id, group = id)) +
   geom_path(size = 0.25, alpha = 0.7) +
   theme_bw() +
   coord_equal()
@@ -467,7 +463,7 @@ for (i in 1:length(focal.ids)) {
     as.character()
 
   #define median step length
-  med.dist <- median(mod.input2[mod.input2$id == focal.ids[i],]$dist)
+  med.dist <- median(mod.input2[mod.input2$id == focal.ids[i],]$dist, na.rm = TRUE)
 
 
   #subset environ rasters and scale values
@@ -478,8 +474,9 @@ for (i in 1:length(focal.ids)) {
 
 
   #calculate time
-  linfunc <- median(b0_id[,which(id1 == focal.ids[i])]) + bathym * median(bBathym) + k490 * median(bK490) +
-    npp * median(bNPP) + sst * median(bSST)
+  ind <- which(id1 == focal.ids[i])
+  linfunc <- median(b0[,ind]) + bathym * median(bBathym[,ind]) + k490 * median(bK490[,ind]) +
+    npp * median(bNPP[,ind]) + sst * median(bSST[,ind])
   mu <- med.dist * exp(linfunc)
   names(mu) <- date.range
 
@@ -504,7 +501,7 @@ ggplot() +
                 filter(id == 142713), aes(x, y, fill = time)) +
   scale_fill_viridis_c("Time (min)", option = 'inferno') +
   geom_sf(data = gom) +
-  geom_path(data = track.142713, aes(x, y, group = rep), color = 'dodgerblue4', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.142713, aes(x, y, group = id), color = 'dodgerblue4', size = 0.25, alpha = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 142713") +
   theme(panel.grid = element_blank(),
@@ -527,7 +524,7 @@ ggplot() +
                 filter(id == 181800), aes(x, y, fill = time)) +
   scale_fill_viridis_c("Time (min)", option = 'inferno') +
   geom_sf(data = gom) +
-  geom_path(data = track.181800, aes(x, y, group = rep), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.181800, aes(x, y, group = id), color = 'chartreuse', size = 0.25, alpha = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 181800") +
   theme(panel.grid = element_blank(),
@@ -550,7 +547,7 @@ ggplot() +
                 filter(id == 159783), aes(x, y, fill = time)) +
   scale_fill_viridis_c("Time (min)", option = 'inferno') +
   geom_sf(data = gom) +
-  geom_path(data = track.159783, aes(x, y, group = rep), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.159783, aes(x, y, group = id), color = 'chartreuse', size = 0.25, alpha = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 159783") +
   theme(panel.grid = element_blank(),
@@ -573,7 +570,7 @@ ggplot() +
                 filter(id == 181796), aes(x, y, fill = time)) +
   scale_fill_viridis_c("Time (min)", option = 'inferno') +
   geom_sf(data = gom) +
-  geom_path(data = track.181796, aes(x, y, group = rep), color = 'purple', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.181796, aes(x, y, group = id), color = 'chartreuse', size = 0.25, alpha = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 181796") +
   theme(panel.grid = element_blank(),
