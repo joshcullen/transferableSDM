@@ -13,8 +13,7 @@ library(plotly)
 
 
 ## Load turtle data
-dat<- read.csv("Raw_data/Master Sat Tag Dataset.csv") %>%
-  mutate(Date = as_datetime(Date))
+dat<- read_csv("Raw_data/Master Sat Tag Dataset.csv")
 
 deploy <- read.csv("Raw_data/Turtle deploy metadata.csv") %>%
   mutate(Deploy_Date = parse_date_time(Deploy_Date, orders = "mdyHM", truncated = 2))
@@ -262,33 +261,34 @@ plotly::ggplotly(
 ###############
 
 deploy.fuentes.fdn <- deploy %>%
-  filter(str_detect(PTT, '^205')) %>%
+  filter(str_detect(PTT, '^205|^195')) %>%
   split(.$PTT)
 
 fuentes.fdn<- dat2 %>%
   filter(Source == 'Fuentes' & Region == 'Brazil' & Age == 'Adult') %>%
   split(.$Ptt) %>%
+  keep(names(.) %in% names(deploy.fuentes.fdn)) %>%
   map2(.x = ., .y = deploy.fuentes.fdn,
        ~{.x %>%
            filter(., date >= .y$Deploy_Date)}) %>%
   bind_rows()
 
+fuentes.fdn <- rbind(fuentes.fdn,
+                     dat2 %>%
+                       filter(Source == 'Fuentes' & Region == 'Brazil' & Age == 'Adult') %>%
+                       filter(!Ptt %in% names(deploy.fuentes.fdn)))
+
 ggplot() +
   geom_sf(data = brazil) +
   geom_path(data = fuentes.fdn, aes(Longitude, Latitude, color = factor(Ptt))) +
   theme_bw() +
-  coord_sf(xlim = c(-40, -32), ylim = c(-7, -1))
+  coord_sf(xlim = c(-42, -32), ylim = c(-8, -1))
 
 # Check if data have been sufficiently filtered
 fuentes.fdn %>%
   rename(id = Ptt, x = Longitude, y = Latitude) %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
-
-
-# don't need to remove any (pre-deployment) locations
-
-#original has length 24162; filtered by deploy date has same length
 
 
 
@@ -343,7 +343,7 @@ fuentes.par2 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
-#original has length of 7530; filtered by deploy date has same length
+#original has length of 7543; filtered by deploy date has length of 7530
 
 
 
@@ -402,7 +402,7 @@ domit.par2 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
-#original has length 7573; filtered by deploy date has length 7488
+#original has length 7514; filtered by deploy date has length 7488
 
 
 

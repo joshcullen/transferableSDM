@@ -55,7 +55,7 @@ make_line <- function(x1, y1, x2, y2) {
 
 #---------------------------
 
-extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names, ind, imputed, p) {
+extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names, ind, along, imputed, p) {
   ## data = data frame containing at least the id, coordinates (x,y), date-time (date), and
   ##      step length (step); if imputations are also included per id, then the column labeling the separate imputations (rep) should also be included
   ## layers = a raster object (Raster, RasterStack, RasterBrick) object containing environ covars
@@ -71,33 +71,34 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
 
 
   #Subset and prep data
-  if (is.null(data$dt) & imputed == FALSE) {
+  # if (is.null(data$dt) & imputed == FALSE) {
+  #
+  #   tmp<- data %>%
+  #     # dplyr::filter(id == ind[i]) %>%
+  #     dplyr::mutate(dt = difftime(date, dplyr::lag(date, 1), units = "secs")) %>%
+  #     dplyr::mutate_at("dt", {. %>%
+  #         as.numeric() %>%
+  #         round()})
+  #   tmp$dt<- c(purrr::discard(tmp$dt, is.na), NA)
+  #
+  # } else if (is.null(data$dt) & imputed == TRUE) {
+  #
+  #   tmp<- data %>%
+  #     split(.$rep) %>%
+  #     map(., {. %>%
+  #         dplyr::mutate(dt = difftime(date, dplyr::lag(date, 1), units = "secs")) %>%
+  #         dplyr::mutate(dt = dt %>%
+  #                         as.numeric() %>%
+  #                         round())
+  #     }) %>%
+  #     bind_rows()
+  #   tmp$dt<- c(purrr::discard(tmp$dt, is.na), NA)
+  #
+  # } else {
+  #   tmp <- data
+  # }
 
-    tmp<- data %>%
-      # dplyr::filter(id == ind[i]) %>%
-      dplyr::mutate(dt = difftime(date, dplyr::lag(date, 1), units = "secs")) %>%
-      dplyr::mutate_at("dt", {. %>%
-          as.numeric() %>%
-          round()})
-    tmp$dt<- c(purrr::discard(tmp$dt, is.na), NA)
-
-  } else if (is.null(data$dt) & imputed == TRUE) {
-
-    tmp<- data %>%
-      split(.$rep) %>%
-      map(., {. %>%
-          dplyr::mutate(dt = difftime(date, dplyr::lag(date, 1), units = "secs")) %>%
-          dplyr::mutate(dt = dt %>%
-                          as.numeric() %>%
-                          round())
-      }) %>%
-      bind_rows()
-    tmp$dt<- c(purrr::discard(tmp$dt, is.na), NA)
-
-  } else {
-    tmp <- data
-  }
-
+  tmp <- data
 
   # if (!is.null(dyn_names) & !is.factor(tmp[,ind])) stop("The `ind` column must be a factor.")
 
@@ -109,6 +110,9 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
   }
 
   #Turn dataset into rows of individual LINESTRINGs (in EPSG:3395)
+
+  if (along) {
+
   segment <- tmp %>%
     select(x1, y1, x2, y2) %>%
     pmap(make_line) %>%
@@ -144,7 +148,7 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
 
 
     tmp1<- terra::extract(layers.tmp, terra::vect(segment[segment[[ind]] == unique(segment[[ind]])[j],]),
-                          along = TRUE, cells = FALSE)
+                          along = along, cells = FALSE)
 
 
 
@@ -171,6 +175,74 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
     }
 
   }
+  } else if (!along) {
+
+    # Extract environ covariate values by points (in EPSG:3395 proj)
+    pts <- tmp %>%
+      # select(x1, y1, x2, y2) %>%
+      # pmap(make_line) %>%
+      # st_as_sfc(crs = 3395) %>%
+      # {tibble(month.year = tmp$month.year,
+      #         strata = tmp$strata,
+      #         obs = tmp$obs,
+      #         geometry = .)} %>%
+      # st_sf()
+      sf::st_as_sf(., coords = c('x2','y2'), crs = 3395)
+
+    #Extract values from each line segment
+    for (j in 1:n_distinct(pts[[ind]])) {
+      # print(j)
+
+      #create subsetted data.frame of original given selected month.year
+      tmp.sub <- tmp[tmp[[ind]] == unique(pts[[ind]])[j],]
+
+
+      # Create time-matched raster stack
+      time.ind <- map(layers[dyn_names], ~which(names(.x) == unique(pts[[ind]])[j]))
+      layers.tmp <- layers
+
+      # Replace missing raster for time interval w/ NA-filled raster
+      if (length(time.ind) != length(unlist(time.ind))) {
+        cond <- which(map(time.ind, length) == 0)
+        time.ind[cond] <- 1
+        layers.tmp[[names(cond)]] <- layers.tmp[[names(cond)]][[1]]
+        terra::values(layers.tmp[[names(cond)]]) <- NA
+      }
+
+      layers.tmp[dyn_names] <- map2(layers.tmp[dyn_names], time.ind, ~{.x[[.y]]})
+      layers.tmp <- rast(layers.tmp)
+
+
+      tmp1<- terra::extract(layers.tmp, terra::vect(pts[pts[[ind]] == unique(pts[[ind]])[j],]),
+                            along = along, cells = FALSE)
+
+
+
+
+      # add extracted covariates to original dataset
+      tmp2 <- tmp1 %>%
+        # group_by(ID) %>%
+        # summarize(across(names(layers.tmp), mean, na.rm = TRUE)) %>%
+        # dplyr::mutate(n = as.vector(table(tmp1$ID)),
+        #               dist = tmp.sub$step,
+        #               .before = everything()) %>%
+        # dplyr::mutate(dt = as.numeric(tmp.sub$dt),
+        #               id = unique(data$id),
+        #               date = tmp.sub$date,
+        #               state = ifelse(!is.null(state.col), tmp.sub[,state.col], NA),
+        #               .after = dist) %>%
+        dplyr::select(-ID) %>%
+        cbind(tmp.sub, .)
+
+
+
+      if (j == 1) {
+        extr.covar <- tmp2
+      } else {
+        extr.covar <- rbind(extr.covar, tmp2)
+      }
+    }
+  }
 
   # extr.covar <- extr.covar %>%
   #   mutate(date = as_datetime(date))
@@ -180,7 +252,7 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
 }
 
 #----------------------------
-extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_names = NULL,
+extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_names = NULL, along = TRUE,
                           ind, imputed = FALSE) {
   ## data must be a data frame with "id" column, coords labeled "x" and "y" and datetime as POSIXct labeled "date"; optionally can have column that specifies behavioral state; if imputed = TRUE, a column named "rep" must be included to distinguish among imputations
 
@@ -212,7 +284,7 @@ extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_
                                 ~extract.covars.internal(data = .x, layers = map(.layers, terra::rast),
                                                          state.col = state.col,
                                                          which_cat = which_cat,
-                                                         dyn_names = dyn_names, ind = ind,
+                                                         dyn_names = dyn_names, ind = ind, along = along,
                                                          imputed = imputed, p = p),
                                 .options = furrr_options(seed = TRUE))
       # tictoc::toc()
@@ -290,3 +362,102 @@ add_avail_steps <- function(data) {
   return(data3)
 
 }
+
+#----------------------------
+
+### Function to test different sets of initial values in iterative manner
+run.HMMs.internal = function(data, K, Par0, state.names, p, seeds) {
+  #data = A data.frame that includes columns returned from momentuHMM::prepData()
+  #K = integer. The number of states to be estimated by the HMM
+  #Par0 = A named list that includes the initial parameters for each of the data streams as required for momentuHMM::fitHMM
+  #state.names = A vector of names (i.e., character strings) to be assigned to each state
+  #p = A function generated by progressr::progressor() to update progress bar
+  #seeds = integer. A random seed to be applied when running separate HMMs in parallel
+
+  set.seed(seeds)
+
+  # Step length
+  stepMean0 <- runif(K,
+                     min = Par0$step[1:K] / 2,
+                     max = Par0$step[1:K] * 2)
+  stepSD0 <- runif(K,
+                   min = Par0$step[(K+1):(K*2)] / 2,
+                   max = Par0$step[1:K] * 2)
+  whichzero_sl <- which(data$step == 0)
+  propzero_sl <- length(whichzero_sl)/nrow(data)
+  zeromass0_sl <- c(propzero_sl, rep(0, K-1))        #for zero distances by state
+
+
+
+  # Fit model
+  if(propzero_sl > 0) {  #don't include zero mass if no 0s present
+    stepPar0 <- c(stepMean0, stepSD0, zeromass0_sl)
+  } else {
+    stepPar0 <- c(stepMean0, stepSD0)
+  }
+
+  anglePar0 <- Par0$angle
+
+
+  hmm.res <- fitHMM(data = data, nbStates = K,
+                    Par0 = list(step = stepPar0, angle = anglePar0),
+                    dist = list(step = "gamma", angle = "wrpcauchy"),
+                    formula = ~ 1, stationary=TRUE, #stationary for a slightly better fit
+                    estAngleMean = list(angle=TRUE),
+                    stateNames = state.names
+  )
+
+  # Update progress bar
+  p()
+
+  return(hmm.res)
+}
+
+
+#-----------------------------------
+
+
+run.HMMs = function(data, K, Par0, state.names, niter) {
+  #data = A data.frame that includes columns returned from momentuHMM::prepData()
+  #K = integer. The number of states to be estimated by the HMM
+  #Par0 = A named list that includes the initial parameters for each of the data streams as required for momentuHMM::fitHMM
+  #state.names = A vector of names (i.e., character strings) to be assigned to each state
+  #niter = integer. The number of randomly perturbed initial values to use to determine the model w/ the global maximum likelihood
+
+  # Convert data.frame into list of identical elements to fit w/ different initial values
+  hmm.list <- lapply(1:niter, function(x) data)
+
+  # Fit model
+  plan(multisession, workers = availableCores() - 2)
+  seeds <- future.apply::future_lapply(seq_along(hmm.list), FUN = function(x) sample(1:1e6, 1),
+                                       future.chunk.size = Inf, future.seed = TRUE)  #set seed per list element
+
+  handlers(handler_progress(incomplete=".", complete="*", current="o", clear = FALSE))
+  progressr::with_progress({
+    #set up progress bar
+    p<- progressr::progressor(steps = length(hmm.list))
+
+    hmm.res <- furrr::future_map2(hmm.list, seeds,
+                                  ~run.HMMs.internal(data = .x,
+                                                     K = K,
+                                                     Par0 = Par0,
+                                                     state.names = state.names,
+                                                     p = p,
+                                                     seeds = .y),
+                                  .options = furrr_options(seed = TRUE))
+  })
+
+  plan(sequential)
+
+  # Extract likelihoods of fitted models
+  allnllk <- unlist(lapply(hmm.res, function(m) m$mod$minimum))
+
+  # Index of best fitting model (smallest negative log-likelihood)
+  whichbest <- which.min(allnllk)
+
+  # Best fitting model
+  res <- hmm.res[[whichbest]]
+
+  return(res)
+}
+

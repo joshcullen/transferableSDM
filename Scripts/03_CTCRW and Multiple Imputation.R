@@ -8,13 +8,15 @@ library(future)
 library(furrr)
 library(sf)
 library(ptolemy)
-library(crawlUtils)  #v0.1.07; needs to be used w/ crawl v2.2.1 otherwise it crashes
+library(crawl)
+library(crawlUtils)  #v0.1.21; needs to be used w/ crawl v2.2.1 otherwise it crashes
 library(trip)
 library(doRNG)  #only needed when running sourced function cu_crw_sample()
 library(tictoc)
 library(progressr)
 library(arrow)
 library(sfarrow)
+library(pathroutr)
 
 # load in modified {crawlUtils} functions (that I know work)
 source("Scripts/crawlUtils functions.R")
@@ -22,15 +24,14 @@ source("Scripts/crawlUtils functions.R")
 
 ### Load turtle track data ###
 
-dat<- read.csv("Processed_data/Prefiltered_Cm_Tracks.csv") %>%
-  mutate(date = as_datetime(date))
+dat<- read_csv("Processed_data/Prefiltered_Cm_Tracks.csv")
 
 
 
 ## Apply speed and distance-angle filter on tracks before analyzing w/ CTCRW SSM
 dat$keep <- trip(obj = dat %>%
                    relocate(any_of(c("Longitude", "Latitude", "date", "Ptt")), .before = 'Source'),
-                 TORnames = c("datetime", "Ptt")) %>%
+                 TORnames = c("date", "Ptt")) %>%
   sda(x = ., smax = 3 * 3600 / 1000, ang = c(15, 25), distlim = c(2.5, 5), pre = NULL)
 
 
@@ -162,9 +163,17 @@ qa_int_tbl <- dat.qa.tracks %>%
 ### GoM ###
 
 set.seed(123)
-dat.gom.tracks.crawl <- cu_add_argos_cols(dat.gom.tracks) %>%
-  mutate(type = case_when(type == "Argos_kf" ~ "Argos_ls",
-                          TRUE ~ type)) %>%
+dat.gom.tracks.crawl <- dat.gom.tracks %>%
+  mutate(error_semi_major_axis = case_when(error_semi_major_axis == 0 ~ NA_real_,
+                                           TRUE ~ error_semi_major_axis),
+         error_semi_minor_axis = case_when(error_semi_minor_axis == 0 ~ NA_real_,
+                                           TRUE ~ error_semi_minor_axis)) %>%
+  cu_add_argos_cols() %>%
+  mutate(x = st_coordinates(.$geometry)[,1],
+         y = st_coordinates(.$geometry)[,2]) %>%  #new version of crwMLE requires that x and y be specified as cols
+  as_tibble() %>%
+  # mutate(type = case_when(type == "Argos_kf" ~ "Argos_ls",
+  #                         TRUE ~ type)) %>%
   split(.$ptt)
 
 tic()
@@ -175,7 +184,13 @@ toc()  #takes 2 min
 
 
 ## Create Visibility Graph
-gom_vis_graph <- pathroutr::prt_visgraph(gom.sf)
+gom_vis_graph <- st_buffer(dat.gom.tracks, dist = 50000) %>%
+  st_union() %>%
+  st_convex_hull() %>%
+  st_intersection(gom.sf) %>%
+  st_collection_extract('POLYGON') %>%
+  st_sf() %>%
+  prt_visgraph()
 
 
 # Make predictions at 2 hr time interval
