@@ -6,17 +6,19 @@ library(lubridate)
 library(rstan)
 library(MCMCvis)
 library(bayesplot)
-library(arrow)
+# library(arrow)
 library(terra)
 library(sfarrow)
 library(sf)
+
+source('Scripts/helper functions.R')
 
 
 ### Load model fit, model input, and tracks ###
 
 mod <- readRDS('Data_products/Time_model_intercept-slopes_stanfit.rds')
-mod.input <- read_parquet("Processed_data/Input for time model.parquet")
-dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.csv')
+mod.input <- read_csv("Processed_data/Input for time model.csv")
+dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr_foieGras.csv')
 
 gom <- sfarrow::st_read_parquet("Environ_data/GoM_land.parquet") %>%
   st_transform(3395)
@@ -32,10 +34,10 @@ files <- files[!grepl(pattern = "parquet", files)]  #remove any parquet files
 cov_list <- sapply(files, rast)
 cov_list
 
-names(cov_list) <- c('bathym', 'Kd490', 'NPP', 'SST')
+names(cov_list) <- c('bathym', 'k490', 'npp', 'sst')
 
 # Change names for dynamic layers to match YYYY-MM-01 format
-for (var in c('Kd490', 'NPP', 'SST')) {
+for (var in c('k490', 'npp', 'sst')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
 }
 
@@ -45,12 +47,15 @@ cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
 
 ## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
-for (var in c("bathym", "SST")) {
-  cov_list[[var]] <- resample(cov_list[[var]], cov_list$NPP, method = "average")
+for (var in c("bathym", "sst")) {
+  cov_list[[var]] <- resample(cov_list[[var]], cov_list$npp, method = "average")
 }
+
 
 ## Transform CRS to match tracks
 cov_list <- map(cov_list, terra::project, 'EPSG:3395')
+
+
 
 ##--------------------------------------------------------
 
@@ -59,12 +64,8 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 
 ### Wrangle tracking data ###
 dat <- dat %>%
-  mutate(month.year = as_date(datetime),
-         .after = 'datetime') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
-  dplyr::select(-c(x,y)) %>%
-  rename(x = mu.x, y = mu.y, date = datetime, id = ptt)
-
+  mutate(month.year = as_date(date), .after = 'date') %>%
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01"))
 
 
 ### Wrangle model input to required format ###
@@ -73,24 +74,24 @@ dat <- dat %>%
 mod.input$dt <- mod.input$dt/60
 
 # Retain only observed steps
-mod.input <- mod.input %>%
-  filter(obs == 1)
+# mod.input <- mod.input %>%
+#   filter(obs == 1)
 
 # Remove all observations w/ missing values (since not imputed)
 mod.input2 <- mod.input %>%
-  drop_na(bathym, Kd490, NPP, SST)
+  drop_na(bathym, k490, npp, sst)
 
 
 # Center and scale covariates
-mod.input2 <- mod.input2 %>%
-  mutate(bathym.s = scale(bathym) %>%
-           as.vector(),
-         kd490.s = scale(Kd490) %>%
-           as.vector(),
-         npp.s = scale(NPP) %>%
-           as.vector(),
-         sst.s = scale(SST) %>%
-           as.vector())
+# mod.input2 <- mod.input2 %>%
+#   mutate(bathym.s = scale(bathym) %>%
+#            as.vector(),
+#          kd490.s = scale(Kd490) %>%
+#            as.vector(),
+#          npp.s = scale(NPP) %>%
+#            as.vector(),
+#          sst.s = scale(SST) %>%
+#            as.vector())
 
 
 
@@ -146,7 +147,7 @@ mcmc_intervals(mod, pars = "mu_b", regex_pars = "^b\\[", prob = 0.5, prob_outer 
 
 n <- 100
 id1 <- unique(mod.input2$id)
-dist1 <- median(mod.input2$dist)  #median step length is ~287 m
+dist1 <- median(mod.input2$dist)  #median step length is 474 m
 b0 <- rstan::extract(mod, pars = 'betas')$betas[,,1]
 bBathym <- rstan::extract(mod, pars = 'betas')$betas[,,2]
 bK490 <- rstan::extract(mod, pars = 'betas')$betas[,,3]
@@ -157,6 +158,8 @@ bSST <- rstan::extract(mod, pars = 'betas')$betas[,,5]
 
 ## Bathymetry
 bathym.res<- list()
+mu.bathym <- mean(terra::values(cov_list$bathym), na.rm = TRUE)
+sd.bathym <- sd(terra::values(cov_list$bathym), na.rm = TRUE)
 
 for (i in 1:length(id1)) {
 
@@ -165,7 +168,7 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(bathym.s) %>%
+    dplyr::select(bathym) %>%
     range()
   seq.bathym<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -183,7 +186,7 @@ for (i in 1:length(id1)) {
   # Convert to data.frame and add additional vars
   bathy.pred <- data.frame(bathy.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(bathy = seq.bathym * sd(mod.input2$bathym) + mean(mod.input2$bathym),
+    mutate(bathy = (seq.bathym * sd.bathym) + mu.bathym,
            id = id1[i])
 
   bathym.res[[i]] <- bathy.pred
@@ -193,11 +196,11 @@ bathym.res.df<- bind_rows(bathym.res)
 
 # Plot relationship
 ggplot(data = bathym.res.df, aes(x = bathy)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.3) +
+  geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -208,7 +211,7 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
@@ -229,7 +232,7 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(kd490.s) %>%
+    dplyr::select(k490) %>%
     range(na.rm = TRUE)
   seq.k490<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -247,7 +250,7 @@ for (i in 1:length(id1)) {
   # Convert to data.frame and add additional vars
   k490.pred <- data.frame(k490.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(k490 = seq.k490 * sd(mod.input2$Kd490, na.rm = TRUE) + mean(mod.input2$Kd490, na.rm = TRUE),
+    mutate(k490 = seq.k490 * sd(mod.input2$k490, na.rm = TRUE) + mean(mod.input2$k490, na.rm = TRUE),
            id = id1[i])
 
   k490.res[[i]] <- k490.pred
@@ -257,11 +260,11 @@ k490.res.df<- bind_rows(k490.res)
 
 # Plot relationship
 ggplot(data = k490.res.df, aes(x = k490)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.3) +
+  geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'K490 (1/m)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -272,7 +275,7 @@ ggplot(data = k490.res.df, aes(x = k490)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'K490 (1/m)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
@@ -293,7 +296,7 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(npp.s) %>%
+    dplyr::select(npp) %>%
     range(na.rm = TRUE)
   seq.npp<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -311,7 +314,7 @@ for (i in 1:length(id1)) {
   # Convert to data.frame and add additional vars
   npp.pred <- data.frame(npp.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(npp = seq.npp * sd(mod.input2$NPP, na.rm = TRUE) + mean(mod.input2$NPP, na.rm = TRUE),
+    mutate(npp = seq.npp * sd(mod.input2$npp, na.rm = TRUE) + mean(mod.input2$npp, na.rm = TRUE),
            id = id1[i])
 
   npp.res[[i]] <- npp.pred
@@ -321,11 +324,11 @@ npp.res.df<- bind_rows(npp.res)
 
 # Plot relationship
 ggplot(data = npp.res.df, aes(x = npp)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.3) +
+  geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -336,7 +339,7 @@ ggplot(data = npp.res.df, aes(x = npp)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
@@ -358,7 +361,7 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(sst.s) %>%
+    dplyr::select(sst) %>%
     range(na.rm = TRUE)
   seq.sst<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -376,7 +379,7 @@ for (i in 1:length(id1)) {
   # Convert to data.frame and add additional vars
   sst.pred <- data.frame(sst.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(sst = seq.sst * sd(mod.input2$SST, na.rm = TRUE) + mean(mod.input2$SST, na.rm = TRUE),
+    mutate(sst = seq.sst * sd(mod.input2$sst, na.rm = TRUE) + mean(mod.input2$sst, na.rm = TRUE),
            id = id1[i])
 
   sst.res[[i]] <- sst.pred
@@ -386,11 +389,11 @@ sst.res.df<- bind_rows(sst.res)
 
 # Plot relationship
 ggplot(data = sst.res.df, aes(x = sst)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.3) +
+  geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -401,7 +404,7 @@ ggplot(data = sst.res.df, aes(x = sst)) +
   geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 287 m (min)") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
@@ -468,9 +471,9 @@ for (i in 1:length(focal.ids)) {
 
   #subset environ rasters and scale values
   bathym <- ((cov_list$bathym - mean(mod.input2$bathym)) / sd(mod.input2$bathym))
-  k490 <- ((cov_list$Kd490[[date.range]] - mean(mod.input2$Kd490, na.rm = TRUE)) / sd(mod.input2$Kd490, na.rm = TRUE))
-  npp <- ((cov_list$NPP[[date.range]] - mean(mod.input2$NPP, na.rm = TRUE)) / sd(mod.input2$NPP, na.rm = TRUE))
-  sst <- ((cov_list$SST[[date.range]] - mean(mod.input2$SST, na.rm = TRUE)) / sd(mod.input2$SST, na.rm = TRUE))
+  k490 <- ((cov_list$k490[[date.range]] - mean(mod.input2$k490, na.rm = TRUE)) / sd(mod.input2$k490, na.rm = TRUE))
+  npp <- ((cov_list$npp[[date.range]] - mean(mod.input2$npp, na.rm = TRUE)) / sd(mod.input2$npp, na.rm = TRUE))
+  sst <- ((cov_list$sst[[date.range]] - mean(mod.input2$sst, na.rm = TRUE)) / sd(mod.input2$sst, na.rm = TRUE))
 
 
   #calculate time
@@ -499,7 +502,7 @@ track.142713 <- dat %>%
 ggplot() +
   geom_raster(data = time.pred.df %>%
                 filter(id == 142713), aes(x, y, fill = time)) +
-  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  scale_fill_viridis_c("Time (min)", option = 'inferno', limits = c(0,60)) +
   geom_sf(data = gom) +
   geom_path(data = track.142713, aes(x, y, group = id), color = 'dodgerblue4', size = 0.25, alpha = 0.25) +
   theme_bw() +

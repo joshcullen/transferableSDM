@@ -13,45 +13,39 @@ library(tictoc)
 
 source('Scripts/helper functions.R')
 
-####################################
-### Import imputed turtle tracks ###
-####################################
+############################
+### Import turtle tracks ###
+############################
 
-dat <- vroom('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr.csv', delim = ",")
+dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr_foieGras.csv')
+
 dat <- dat %>%
-  mutate(month.year = as_date(datetime),
-         .after = 'datetime') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
-  dplyr::select(-c(x,y)) %>%
-  rename(x = mu.x, y = mu.y, date = datetime, id = ptt)
+  mutate(month.year = as_date(date), .after = 'date') %>%
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01"))
 
 
 
 # Calculate step lengths, turning angles, NSD, and dt
-tic()
 dat<- prep_data(dat = dat, coord.names = c('x','y'), id = "id")
-toc()  # takes 4.5 sec to run
-
 dat$speed <- dat$step / dat$dt
 
 
 # Check speed for any outliers
 round(quantile(dat$speed, c(0.01, 0.25, 0.5, 0.75, 0.95, 0.99, 1), na.rm = TRUE), 2)
 any(dat$step == 0, na.rm = TRUE)
-sum(dat$step == 0, na.rm = TRUE)  #only 4 obs
-
-## Replace steps lengths == 0 w/ small, but positive, number
-dat$step[which(dat$step == 0)] <- 1e-9
-dat$speed <- dat$step / dat$dt
+sum(dat$step == 0, na.rm = TRUE)  #none
 
 
-# Create 4 available steps per observed step
-dat <- add_avail_steps(dat)
+# Create available steps per observed step
+set.seed(2022)
 
+plan(multisession, workers = availableCores() - 2)
+dat2 <- add_avail_steps(dat, nsteps = 15)
+plan(sequential)  #took 60 sec to run
 
 
 # Remove observations w/ NA step length (i.e., last obs of each PTT)
-dat.filt <- dat %>%
+dat.filt <- dat2 %>%
   filter(!is.na(step))
 
 
@@ -77,10 +71,10 @@ files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 cov_list <- sapply(files, rast)
 cov_list
 
-names(cov_list) <- c('bathym', 'Kd490', 'NPP', 'SST')
+names(cov_list) <- c('bathym', 'k490', 'npp', 'sst')
 
 # Change names for dynamic layers to match YYYY-MM-01 format
-for (var in c('Kd490', 'NPP', 'SST')) {
+for (var in c('k490', 'npp', 'sst')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
 }
 
@@ -90,12 +84,9 @@ cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
 
 ## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
-for (var in c("bathym", "SST")) {
-  cov_list[[var]] <- resample(cov_list[[var]], cov_list$NPP, method = "average")
+for (var in c("bathym", "sst")) {
+  cov_list[[var]] <- resample(cov_list[[var]], cov_list$npp, method = "average")
 }
-
-
-
 
 
 ## Transform CRS to match tracks
@@ -109,27 +100,29 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 dat.filt <- dat.filt %>%
   filter(id != 104833)  #no data available for Kd490 and NPP in 2011
 
-#for running in parallel; define number of cores to use
+# Extract avg covar values per used step (for time model)
 plan(multisession, workers = availableCores() - 2)
-path <- extract.covars(data = dat.filt, layers = cov_list, dyn_names = c('Kd490','NPP','SST'),
-                       ind = "month.year", imputed = FALSE)
-#takes 2 min to run on desktop (18 cores)
+obs.path <- extract.covars(data = dat.filt %>%
+                             filter(obs == 1), layers = cov_list, dyn_names = c('k490', 'npp', 'sst'),
+                       along = TRUE, ind = "month.year", imputed = FALSE)
+#takes 1.5 min to run on desktop (18 cores)
 plan(sequential)
 
 
 # add strata and obs columns
-path1 <- cbind(path, dat.filt[,c("strata","obs")])
+obs.path1 <- cbind(obs.path, dat.filt[dat.filt$obs == 1, c("strata","obs")])
 
 
-save(dat, dat.filt, cov_list, path1, file = "Data_products/Extracted environ covars.RData")
+# save(dat, dat.filt, cov_list, obs.path1, file = "Data_products/Extracted environ covars.RData")
 
 
-nrow(drop_na(path1, bathym, Kd490, NPP, SST)) / nrow(path1)
-## 68.3% of observed and available steps have complete data
+nrow(drop_na(obs.path1, bathym, k490, npp, sst)) / nrow(obs.path1)
+## 68.7% of observed and available steps have complete data
 
 
 
 
 ## Export data
-# vroom_write(path1, "Processed_data/Input for time model.csv", delim = ",")
+write_csv(obs.path1, "Processed_data/Input for time model.csv")
+write_csv(dat.filt, "Processed_data/Input for tSSF.csv")
 # arrow::write_parquet(path1, "Processed_data/Input for time model.parquet")

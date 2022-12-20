@@ -10,49 +10,47 @@ library(tictoc)
 library(rstan)
 library(MCMCvis)
 library(bayesplot)
-library(arrow)
+# library(arrow)
 
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 
 
 # dat <- vroom("Processed_data/Input for time model.csv", delim = ",")
-dat <- read_parquet("Processed_data/Input for time model.parquet")
+dat <- read_csv("Processed_data/Input for time model.csv")
+
+glimpse(dat)
+summary(dat)
+
 
 # Change time step from secs to mins
 dat$dt <- dat$dt/60
 
-# Retain only observed steps
-dat <- dat %>%
-  filter(obs == 1)
+# # Retain only observed steps
+# dat <- dat %>%
+#   filter(obs == 1)
 
-# Remove all observations w/ missing bathym values (since NA values were assigned to land)
-# dat2 <- dat %>%
-#   drop_na(bathym)
-dat2 <- dat  #all points moved off land; NAs represent missing depths or interpolation close to land
+# Remove all observations w/ missing values
+dat2 <- dat %>%
+  drop_na(bathym, k490, npp, sst)
+# dat2 <- dat  #all points moved off land; NAs represent missing depths or interpolation close to land
 
 
 # Center and scale covariates
-# dat2 <- dat2 %>%
-#   mutate(bathym.s = scale(bathym) %>%
-#            as.vector(),
-#          kd490.s = scale(Kd490) %>%
-#            as.vector(),
-#          npp.s = scale(NPP) %>%
-#            as.vector(),
-#          sst.s = scale(SST) %>%
-#            as.vector())
+dat2 <- dat2 %>%
+  mutate(bathym.s = scale(bathym) %>%
+           as.vector(),
+         k490.s = scale(k490) %>%
+           as.vector(),
+         npp.s = scale(npp) %>%
+           as.vector(),
+         sst.s = scale(sst) %>%
+           as.vector())
+
 
 
 # Check correlation among covars
-cor(dat2[,c('bathym','Kd490','NPP','SST')] %>%
-      drop_na())
-dat2 %>%
-  drop_na(bathym, Kd490, NPP, SST) %>%
-  # slice_sample(n = 50000) %>%
-  dplyr::select(bathym, Kd490, NPP, SST) %>%
-  pairs()
-#strongest corr is between NPP and Kd490 (0.57); leaving all vars in for subsequent analyses
+cor(dat2[,c('bathym','k490','npp','sst')]) #all corrs < 0.6
 
 
 
@@ -134,16 +132,16 @@ table(tmp$id)
 
 ## Run model
 
-dat3 <- dat2 %>%
-  drop_na(bathym, Kd490, NPP, SST)
+# dat3 <- dat2 %>%
+#   drop_na(bathym, Kd490, NPP, SST)
   # slice_sample(n = 0.01*nrow(dat2)) %>%
   # arrange(id, date)
 
 # Do this step if not running the prior predictive simulation
-dat3$id <- factor(dat3$id) %>%  #need to convert to integer for Stan
+dat2$id <- factor(dat2$id) %>%  #need to convert to integer for Stan
   as.numeric()
 
-table(dat3$id)
+table(dat2$id) #47 IDs remaining
 
 
 # Define objects pertaining to imputation of missing covars
@@ -159,15 +157,15 @@ table(dat3$id)
 
 # data
 dat.list <- list(
-  N = nrow(dat3),
-  ID = dat3$id,
-  nID = n_distinct(dat3$id),
-  dt = dat3$dt,
-  dist = dat3$dist,
-  bathym = scale(dat3$bathym)[,1],
-  k490 = scale(dat3$Kd490)[,1],
-  npp = scale(dat3$NPP)[,1],
-  sst = scale(dat3$SST)[,1]#,
+  N = nrow(dat2),
+  ID = dat2$id,
+  nID = n_distinct(dat2$id),
+  dt = dat2$dt,
+  dist = dat2$dist,
+  bathym = dat2$bathym,
+  k490 = dat2$k490,
+  npp = dat2$npp,
+  sst = dat2$sst#,
   # n_bathym_miss = n_bathym_miss,
   # bathym_missidx = bathym_missidx,
   # n_k490_miss = n_k490_miss,
@@ -373,16 +371,16 @@ ppc_dens_overlay(dat.list$dt, y_hat) +
 
 # data
 dat.list <- list(
-  N = nrow(dat3),
+  N = nrow(dat2),
   K = 5,  #intercept and 4 environ covariates
-  ID = dat3$id,
-  nID = n_distinct(dat3$id),
-  dt = dat3$dt,
-  dist = dat3$dist,
-  bathym = scale(dat3$bathym)[,1],
-  k490 = scale(dat3$Kd490)[,1],
-  npp = scale(dat3$NPP)[,1],
-  sst = scale(dat3$SST)[,1]#,
+  ID = dat2$id,
+  nID = n_distinct(dat2$id),
+  dt = dat2$dt,
+  dist = dat2$dist,
+  bathym = dat2$bathym.s,
+  k490 = dat2$k490.s,
+  npp = dat2$npp.s,
+  sst = dat2$sst.s#,
   # n_bathym_miss = n_bathym_miss,
   # bathym_missidx = bathym_missidx,
   # n_k490_miss = n_k490_miss,
@@ -485,7 +483,7 @@ model {
 
 mod2 <- rstan::stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000,
                     seed = 8675309, refresh = 100, control = list(max_treedepth = 15))
-#took 9.5 hrs to run 2000 iter for full dataset
+#took 8.9 hrs to run 2000 iter for full dataset
 
 params <- c('mu_b','b','mu_betas','tau','L')
 print(mod2, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))

@@ -306,10 +306,72 @@ extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_
 
 #----------------------------
 
-add_avail_steps <- function(data) {
+# Function to generate new coordinates for different forms of SSF
+
+
+avail_steps <- function(data, nsteps) {
+
+  # create list to store results for each strata
+  avail.list <- vector("list", nrow(data))
+
+
+  for (i in 1:nrow(data)) {
+
+    ## generate random steps and angles
+    rand.sl <- sample(data$step, size = nsteps)
+    rand.bearing <- runif(nsteps, min = 0, max = 2*pi)
+
+
+    if (i == 1) {  #add NA for turning angles during first step since not possible to calculate
+
+      tmp <- data %>%
+        slice(rep(i, each = nsteps)) %>%
+        mutate(x2 = x1 + (rand.sl * cos(rand.bearing)),
+               y2 = y1 + (rand.sl * sin(rand.bearing)),
+               step = rand.sl,
+               angle = NA,
+               obs = 0
+        )
+
+    } else {
+
+      coords_tmin1 <- data[i-1, c('x1','y1')]  #coordinates from previous used step
+
+      tmp <- data %>%
+        slice(rep(i, each = nsteps)) %>%
+        mutate(x2 = x1 + (rand.sl * cos(rand.bearing)),
+               y2 = y1 + (rand.sl * sin(rand.bearing)),
+               step = rand.sl,
+               obs = 0
+        )
+
+      # calculate turning angles using 3 sets of consecutive coordinates
+      ang <- atan2(tmp$y1 - coords_tmin1$y1, tmp$x1 - coords_tmin1$x1) -
+        atan2(tmp$y2 - tmp$y1, tmp$x2 - tmp$x1)
+      ang <- ifelse(ang > pi, ang - 2 * pi,
+                    ifelse(ang < -pi, 2 * pi + ang,
+                           ang))
+
+      tmp$angle <- ang
+    }
+
+    avail.list[[i]] <- tmp
+  }
+
+  avail <- bind_rows(avail.list)
+
+  return(avail)
+}
+
+
+#----------------------------
+
+add_avail_steps <- function(data, nsteps) {
   ## data = data.frame containing at least columns `id`, `x`, `y`, and `step`
-  ## this function creates a set of 4 available steps per observed step in the 4 cardinal directions
+  ## nsteps = integer. The number of random steps to characterize the available habitat. Step lengths drawn from empirical distrib and turning angles from uniform distrib
   ## observed and available steps are grouped together by added column `strata`
+
+  tictoc::tic()
 
   data2 <- data %>%
     rename(x1 = x, y1 = y) %>%
@@ -325,42 +387,40 @@ add_avail_steps <- function(data) {
   data2$obs <- 1
 
 
-  ## define available steps
-  avail.list <- vector("list", 4)
-  tmp <- data2
+  ## generate coordinates for available steps; also adds new values for steps and angles
+  dat.list <- split(data2, data2$id)
+  avail <- dat.list %>%
+    furrr::future_map(~avail_steps(data = ., nsteps = nsteps),
+                      .options = furrr_options(seed = TRUE)) %>%
+    bind_rows()
 
-  for (i in 1:4) {
 
-    if (i == 1) {
-      #step north
-      tmp$x2 <- tmp$x1
-      tmp$y2 <- tmp$y1 + tmp$step
-    } else if (i == 2) {
-      #step east
-      tmp$x2 <- tmp$x1 + tmp$step
-      tmp$y2 <- tmp$y1
-    } else if (i == 3) {
-      #step south
-      tmp$x2 <- tmp$x1
-      tmp$y2 <- tmp$y1 - tmp$step
-    } else {
-      #step west
-      tmp$x2 <- tmp$x1 - tmp$step
-      tmp$y2 <- tmp$y1
-    }
-
-    tmp$obs <- 0
-    avail.list[[i]] <- tmp
-  }
-
-  avail <- bind_rows(avail.list)
 
   #add available steps to observed steps
   data3 <- rbind(data2, avail) %>%
     arrange(strata)
 
+  tictoc::toc()
+
   return(data3)
 
+}
+
+#----------------------------
+
+# Center and scale across multiple layers (representing different time periods) for a given variable
+scale_across_covar <- function(layer) {
+
+  mean1 <- layer %>%
+    terra::values() %>%
+    mean(na.rm = TRUE)
+
+  sd1 <- layer %>%
+    terra::values() %>%
+    sd(na.rm = TRUE)
+
+
+  (layer - mean1) / sd1
 }
 
 #----------------------------
@@ -461,3 +521,43 @@ run.HMMs = function(data, K, Par0, state.names, niter) {
   return(res)
 }
 
+#-----------------------------------
+
+#' A function to obtain posterior means of marginals from an inla object
+#'
+#' This function allows you to get the posterior means of variances from a fitted inla object. This is useful because the output of inla is stored as precisions.
+#' @param r.out Fitted inla() object
+#' @keywords inla
+#' @export
+#' @examples
+#' inla_emarginal()
+
+inla_emarginal <- function(r.out){
+  results <- sapply(r.out$marginals.hyperpar,
+                    function(y)
+                      inla.emarginal(function(x) x, inla.tmarginal(function(x) 1/x, y)))
+
+  names(results) <- sapply(as.vector(as.character(names(results))), function(y) gsub("Precision", x=y, "Mean of variance"))
+  results
+}
+
+
+#-----------------------------------
+
+#' A function to obtain posterior modes of marginals from an inla object
+#'
+#' This function allows you to get the posterior mode of variances from a fitted inla object. This is useful because the output of inla is stored as precisions.
+#' @param r.out Fitted inla() object
+#' @keywords inla
+#' @export
+#' @examples
+#' inla_mmarginal()
+
+inla_mmarginal <- function(r.out){
+  results <- sapply(r.out$marginals.hyperpar,
+                    function(y)
+                      inla.mmarginal(inla.tmarginal(function(x) 1/x, y)))
+
+  names(results) <- sapply(as.vector(as.character(names(results))), function(y) gsub("Precision", x=y, "Mode of variance"))
+  results
+}
