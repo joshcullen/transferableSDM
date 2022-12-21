@@ -425,6 +425,57 @@ scale_across_covar <- function(layer) {
 
 #----------------------------
 
+### Calculate probabilities of used and available steps based on time model results ###
+calc_time_probs <- function(mod, dat, covar.names, p) {
+  # mod = the rstan model fit for the time model
+  # dat = the input for the time model that includes cols for id1, step, dt, strata, covars, and obs
+  # covar names = a vector of names (in proper order) for the covars on which to make predictions
+  # p = a stored 'progressr' object for creating progress bar
+
+  # message("Calculating probabilities from time model for PTT ", names(dat$id)[1], "...")
+
+  dat <- data.frame(dat)
+
+  #calculate probabilities
+  betas <- rstan::extract(mod, pars = 'betas')$betas
+  b <- rstan::extract(mod, pars = 'b')$b
+  strat <- unique(dat$strata)
+  prob.all <- vector("list", length(strat))
+
+  for (i in 1:length(strat)) {
+    # print(i)
+
+    #get parameters
+    id1 <- dat[dat$strata == strat[i], "id1"][1]
+    dist1 <- dat[dat$strata == strat[i], "step"][1]
+    betas1 <- betas[,id1,]
+    b1 <- b[,id1]
+
+    #define design vector
+    xmat <- as.matrix(cbind(1, dat[dat$strata == strat[i], covar.names]))
+    #calculate mean using linear algebra
+    mean1 <- dist1 * exp(xmat %*% t(betas1))
+    #calculate a and b parameters of gamma distribution
+    a1 <- b1 * t(mean1)
+
+    #calculate probabilities for the realized and potential steps
+    prob <- rep(NA, ncol(a1))
+    for (j in 1:ncol(a1)) {
+      #calculate posterior median of gamma density
+      prob[j] <- median(dgamma(dat[dat$strata == strat[i], "dt"][j], a1[,j], b1))
+    }
+
+    prob.all[[i]] <- prob
+  }
+
+  p()  #plot progress bar
+
+  prob.all <- unlist(prob.all)
+  return(prob.all)
+}
+
+#----------------------------
+
 ### Function to test different sets of initial values in iterative manner
 run.HMMs.internal = function(data, K, Par0, state.names, p, seeds) {
   #data = A data.frame that includes columns returned from momentuHMM::prepData()

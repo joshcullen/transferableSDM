@@ -83,15 +83,15 @@ mod.input2 <- mod.input %>%
 
 
 # Center and scale covariates
-# mod.input2 <- mod.input2 %>%
-#   mutate(bathym.s = scale(bathym) %>%
-#            as.vector(),
-#          kd490.s = scale(Kd490) %>%
-#            as.vector(),
-#          npp.s = scale(NPP) %>%
-#            as.vector(),
-#          sst.s = scale(SST) %>%
-#            as.vector())
+mod.input2 <- mod.input2 %>%
+  mutate(bathym.s = scale(bathym) %>%
+           as.vector(),
+         k490.s = scale(k490) %>%
+           as.vector(),
+         npp.s = scale(npp) %>%
+           as.vector(),
+         sst.s = scale(sst) %>%
+           as.vector())
 
 
 
@@ -157,18 +157,18 @@ bSST <- rstan::extract(mod, pars = 'betas')$betas[,,5]
 
 
 ## Bathymetry
-bathym.res<- list()
-mu.bathym <- mean(terra::values(cov_list$bathym), na.rm = TRUE)
-sd.bathym <- sd(terra::values(cov_list$bathym), na.rm = TRUE)
+bathym.res <- list()
+mu.bathym <- mean(mod.input2$bathym, na.rm = TRUE)
+sd.bathym <- sd(mod.input2$bathym, na.rm = TRUE)
 
 for (i in 1:length(id1)) {
 
-  tmp<- mod.input2 %>%
+  tmp <- mod.input2 %>%
     filter(id == id1[i])
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(bathym) %>%
+    dplyr::select(bathym.s) %>%
     range()
   seq.bathym<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -207,8 +207,8 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
         legend.position = "none")
 
 ggplot(data = bathym.res.df, aes(x = bathy)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.1) +
+  geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
   labs(x = 'Bathymetric depth (m)', y = "Time to traverse 474 m (min)") +
@@ -224,6 +224,8 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
 ## K490
 
 k490.res<- list()
+mu.k490 <- mean(mod.input2$k490, na.rm = TRUE)
+sd.k490 <- sd(mod.input2$k490, na.rm = TRUE)
 
 for (i in 1:length(id1)) {
 
@@ -232,7 +234,7 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(k490) %>%
+    dplyr::select(k490.s) %>%
     range(na.rm = TRUE)
   seq.k490<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -250,7 +252,7 @@ for (i in 1:length(id1)) {
   # Convert to data.frame and add additional vars
   k490.pred <- data.frame(k490.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(k490 = seq.k490 * sd(mod.input2$k490, na.rm = TRUE) + mean(mod.input2$k490, na.rm = TRUE),
+    mutate(k490 = (seq.k490 * sd.k490) + mu.k490,
            id = id1[i])
 
   k490.res[[i]] <- k490.pred
@@ -271,8 +273,8 @@ ggplot(data = k490.res.df, aes(x = k490)) +
         legend.position = "none")
 
 ggplot(data = k490.res.df, aes(x = k490)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.3) +
+  geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
   labs(x = 'K490 (1/m)', y = "Time to traverse 474 m (min)") +
@@ -280,7 +282,7 @@ ggplot(data = k490.res.df, aes(x = k490)) +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
   xlim(0,1.5) +
-  ylim(0,240)
+  ylim(0,360)
 
 
 
@@ -288,6 +290,8 @@ ggplot(data = k490.res.df, aes(x = k490)) +
 ## NPP
 
 npp.res<- list()
+mu.npp <- mean(mod.input2$npp, na.rm = TRUE)
+sd.npp <- sd(mod.input2$npp, na.rm = TRUE)
 
 for (i in 1:length(id1)) {
 
@@ -296,7 +300,7 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(npp) %>%
+    dplyr::select(npp.s) %>%
     range(na.rm = TRUE)
   seq.npp<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -314,7 +318,7 @@ for (i in 1:length(id1)) {
   # Convert to data.frame and add additional vars
   npp.pred <- data.frame(npp.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(npp = seq.npp * sd(mod.input2$npp, na.rm = TRUE) + mean(mod.input2$npp, na.rm = TRUE),
+    mutate(npp = (seq.npp * sd.npp) + mu.npp,
            id = id1[i])
 
   npp.res[[i]] <- npp.pred
@@ -335,8 +339,8 @@ ggplot(data = npp.res.df, aes(x = npp)) +
         legend.position = "none")
 
 ggplot(data = npp.res.df, aes(x = npp)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.3) +
+  geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
   labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 474 m (min)") +
@@ -353,6 +357,8 @@ ggplot(data = npp.res.df, aes(x = npp)) +
 ## Sea surface temperature
 
 sst.res<- list()
+mu.sst <- mean(mod.input2$sst, na.rm = TRUE)
+sd.sst <- sd(mod.input2$sst, na.rm = TRUE)
 
 for (i in 1:length(id1)) {
 
@@ -361,7 +367,7 @@ for (i in 1:length(id1)) {
 
   #Generate sequence along bathymetry
   rango1<- tmp %>%
-    dplyr::select(sst) %>%
+    dplyr::select(sst.s) %>%
     range(na.rm = TRUE)
   seq.sst<- seq(rango1[1], rango1[2], length.out = n)
 
@@ -379,7 +385,7 @@ for (i in 1:length(id1)) {
   # Convert to data.frame and add additional vars
   sst.pred <- data.frame(sst.pred) %>%
     rename(lower = X1, med = X2, upper = X3) %>%
-    mutate(sst = seq.sst * sd(mod.input2$sst, na.rm = TRUE) + mean(mod.input2$sst, na.rm = TRUE),
+    mutate(sst = (seq.sst * sd.sst) + mu.sst,
            id = id1[i])
 
   sst.res[[i]] <- sst.pred
@@ -400,15 +406,15 @@ ggplot(data = sst.res.df, aes(x = sst)) +
         legend.position = "none")
 
 ggplot(data = sst.res.df, aes(x = sst)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = id), alpha =  0.3) +
-  geom_line(aes(y = med, color = id), size = 1, alpha = 0.5) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = factor(id)), alpha =  0.3) +
+  geom_line(aes(y = med, color = factor(id)), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
   labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 474 m (min)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
-  ylim(0,240)
+  ylim(0,360)
 
 
 
@@ -470,10 +476,10 @@ for (i in 1:length(focal.ids)) {
 
 
   #subset environ rasters and scale values
-  bathym <- ((cov_list$bathym - mean(mod.input2$bathym)) / sd(mod.input2$bathym))
-  k490 <- ((cov_list$k490[[date.range]] - mean(mod.input2$k490, na.rm = TRUE)) / sd(mod.input2$k490, na.rm = TRUE))
-  npp <- ((cov_list$npp[[date.range]] - mean(mod.input2$npp, na.rm = TRUE)) / sd(mod.input2$npp, na.rm = TRUE))
-  sst <- ((cov_list$sst[[date.range]] - mean(mod.input2$sst, na.rm = TRUE)) / sd(mod.input2$sst, na.rm = TRUE))
+  bathym <- ((cov_list$bathym - mu.bathym) / sd.bathym)
+  k490 <- ((cov_list$k490[[date.range]] - mu.k490) / sd.k490)
+  npp <- ((cov_list$npp[[date.range]] - mu.npp) / sd.npp)
+  sst <- ((cov_list$sst[[date.range]] - mu.sst) / sd.sst)
 
 
   #calculate time
@@ -502,9 +508,9 @@ track.142713 <- dat %>%
 ggplot() +
   geom_raster(data = time.pred.df %>%
                 filter(id == 142713), aes(x, y, fill = time)) +
-  scale_fill_viridis_c("Time (min)", option = 'inferno', limits = c(0,60)) +
+  scale_fill_viridis_c("Time (min)", option = 'inferno', limits = c(0,240)) +
   geom_sf(data = gom) +
-  geom_path(data = track.142713, aes(x, y, group = id), color = 'dodgerblue4', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.142713, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 142713") +
   theme(panel.grid = element_blank(),
@@ -524,10 +530,10 @@ unique(track.181800$month.year)
 
 ggplot() +
   geom_raster(data = time.pred.df %>%
-                filter(id == 181800), aes(x, y, fill = time)) +
-  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+                filter(id == 181800), aes(x, y, fill = log10(time))) +
+  scale_fill_viridis_c("log_10(Time) (min)", option = 'inferno') +
   geom_sf(data = gom) +
-  geom_path(data = track.181800, aes(x, y, group = id), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.181800, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 181800") +
   theme(panel.grid = element_blank(),
@@ -550,7 +556,7 @@ ggplot() +
                 filter(id == 159783), aes(x, y, fill = time)) +
   scale_fill_viridis_c("Time (min)", option = 'inferno') +
   geom_sf(data = gom) +
-  geom_path(data = track.159783, aes(x, y, group = id), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.159783, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 159783") +
   theme(panel.grid = element_blank(),
@@ -573,7 +579,7 @@ ggplot() +
                 filter(id == 181796), aes(x, y, fill = time)) +
   scale_fill_viridis_c("Time (min)", option = 'inferno') +
   geom_sf(data = gom) +
-  geom_path(data = track.181796, aes(x, y, group = id), color = 'chartreuse', size = 0.25, alpha = 0.25) +
+  geom_path(data = track.181796, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
   theme_bw() +
   labs(x = "Longitude", y = "Latitude", title = "PTT 181796") +
   theme(panel.grid = element_blank(),
