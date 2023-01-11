@@ -89,12 +89,12 @@ for (var in c("bathym", "sst")) {
 }
 
 ## Center and scale (by 1 SD) all covar layers
-cov_list_s <- sapply(cov_list, scale_across_covar)
+# cov_list_s <- sapply(cov_list, scale_across_covar)
 
 
 ## Transform CRS to match tracks
 cov_list <- map(cov_list, terra::project, 'EPSG:3395')
-cov_list_s <- map(cov_list_s, terra::project, 'EPSG:3395')
+# cov_list_s <- map(cov_list_s, terra::project, 'EPSG:3395')
 
 
 
@@ -115,12 +115,21 @@ dat_ssf2 <- dat_ssf %>%
 
 
 plan(multisession, workers = availableCores() - 2)
-dat_ssf3 <- extract.covars(data = dat_ssf2, layers = cov_list_s, dyn_names = c('k490','npp','sst'),
+dat_ssf3 <- extract.covars(data = dat_ssf2, layers = cov_list, dyn_names = c('k490','npp','sst'),
                            along = FALSE, ind = 'month.year')
 # took 1.5 min to extract
 plan(sequential)
 
+
+# Scale environ vars (before removing obs w/ missing values)
 dat_ssf4 <- dat_ssf3 %>%
+  mutate(bathym.s = as.numeric(scale(bathym)),
+         k490.s = as.numeric(scale(k490)),
+         npp.s = as.numeric(scale(npp)),
+         sst.s = as.numeric(scale(sst)))
+
+
+dat_ssf4 <- dat_ssf4 %>%
   mutate(step = step / 1000) %>%  #convert from m to km so on similar scale to standardized covars
   mutate(cos_ta = cos(angle),
          log_sl = log(step)) %>%
@@ -150,31 +159,31 @@ dat_ssf5$id1 <- as.numeric(factor(dat_ssf5$id))
 dat_ssf5$id2 <- dat_ssf5$id1
 dat_ssf5$id3 <- dat_ssf5$id1
 dat_ssf5$id4 <- dat_ssf5$id1
-dat_ssf5$id5 <- dat_ssf5$id1
-dat_ssf5$id6 <- dat_ssf5$id1
-dat_ssf5$id7 <- dat_ssf5$id1
-dat_ssf5$id8 <- dat_ssf5$id1
+# dat_ssf5$id5 <- dat_ssf5$id1
+# dat_ssf5$id6 <- dat_ssf5$id1
+# dat_ssf5$id7 <- dat_ssf5$id1
+# dat_ssf5$id8 <- dat_ssf5$id1
 
 # Set the model formula as for the fixed-effects model, but now add four random slope terms, namely for bathymetry, k490, npp, and sst. The priors for precision of the four random slopes are PC(3,0.05), while the intercept variance is again fixed:
-iSSA.formula <- obs ~ -1 + bathym + I(bathym^2) + k490 + I(k490^2) + npp + I(npp^2) + sst + I(sst^2) +
+iSSA.formula <- obs ~ -1 + bathym.s + k490.s + npp.s + sst.s +
   step + log_sl + cos_ta +
   f(strata, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
-  f(id1, bathym, values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-  f(id2, I(bathym^2), values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-  f(id3, k490, values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-  f(id4, I(k490^2), values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-  f(id5, npp, values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-  f(id6, I(npp^2), values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-  f(id7, sst, values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-  f(id8, I(sst^2), values = unique(dat_ssf5$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
+  f(id1, bathym.s, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  # f(id2, I(bathym^2), values = unique(dat_ssf5$id1), model = "iid",
+  #   hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id2, k490.s, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  # f(id4, I(k490^2), values = unique(dat_ssf5$id1), model = "iid",
+  #   hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id3, npp.s, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  # f(id6, I(npp^2), values = unique(dat_ssf5$id1), model = "iid",
+  #   hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id4, sst.s, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) #+
+  # f(id8, I(sst^2), values = unique(dat_ssf5$id1), model = "iid",
+  #   hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
 
 # Fit the model
 tic()
@@ -185,7 +194,7 @@ fit.iSSA <- inla(iSSA.formula, family = "Poisson", data = dat_ssf5,
                   control.compute = list(waic = TRUE,
                                          dic = TRUE), verbose = FALSE
                   )
-toc()  # took 6 min to run
+toc()  # took 2 min to run
 
 summary(fit.iSSA)
 
@@ -203,21 +212,32 @@ ggplot(fixed.coeffs, aes(y = param)) +
 random.coeffs <- fit.iSSA$summary.random[-1] %>%
   bind_rows(.id = "param") %>%
   mutate(across(param, factor))
-levels(random.coeffs$param) <- fixed.coeffs$param[1:8]
+levels(random.coeffs$param) <- fixed.coeffs$param[1:4]
+
+# Add population means to random effects
+random.coeffs <- random.coeffs %>%
+  split(.$param) %>%
+  map2(.x = ., .y = fixed.coeffs$mean[1:4],
+       ~mutate(.x,
+               mean = mean + .y,
+               `0.025quant` = `0.025quant` + .y,
+               `0.975quant` = `0.975quant` + .y)) %>%
+  bind_rows()
 random.coeffs <- rbind(random.coeffs,
                        fixed.coeffs %>%
                          mutate(ID = "Pop", .before = mean) %>%
-                         relocate(param, .before = ID))
+                         relocate(param, .before = ID)) %>%
+  arrange(param)
 
 ggplot(random.coeffs) +
   geom_hline(yintercept = 0, linewidth = 0.75) +
   geom_linerange(aes(x = ID, ymin = `0.025quant`, ymax = `0.975quant`, color = param)) +
-  geom_point(aes(y = `0.5quant`, x = ID, color = param)) +
+  geom_point(aes(y = mean, x = ID, color = param)) +
   theme_bw() +
   facet_wrap(~ param, scales = "free")
 
 
-# Since variances are parameterized and treated as precisions, the summary of the respective posterior distributions is given for the precisions:
+# Since variances are parameterized and treated as precisions, the summary of the respective posterior distributions is given for the precisions
 fit.iSSA$summary.hyperpar
 
 
@@ -233,20 +253,212 @@ inla_mmarginal(fit.iSSA)
 ### Viz marginal effects plots per environ covar ###
 ####################################################
 
-fixed.coeffs <- fit.iSSA$summary.fixed[1:8,c("mean","0.025quant","0.975quant")]
-
-bathym.newdata <- data.frame(bathym = seq(min(dat_ssf5$bathym), max(dat_ssf5$bathym), length.out = 50),
-                             bathym_2 = seq(min(dat_ssf5$bathym), max(dat_ssf5$bathym), length.out = 50) ^ 2,
-                             k490 = 0,
-                             k490_2 = 0,
-                             npp = 0,
-                             npp_2 = 0,
-                             sst = 0,
-                             sst_2 = 0) %>%
+fixed.coeffs2 <- fit.iSSA$summary.fixed[1:4,c("mean","0.025quant","0.975quant")] %>%
   as.matrix()
 
-pred.bathym <- bathym.newdata %*% fixed.coeffs$mean
+random.coeffs2 <- random.coeffs %>%
+  filter(!param %in% c('step', 'log_sl', 'cos_ta')) %>%
+  dplyr::select(param, ID, mean, `0.025quant`, `0.975quant`)
 
 
-plot((bathym.newdata[,1] * sd(terra::values(cov_list$bathym), na.rm = T)) + mean(terra::values(cov_list$bathym), na.rm = T),
-     exp(pred.bathym), type = "l")
+### Bathymetry ###
+
+bathym.newdata <- data.frame(bathym = seq(min(dat_ssf5$bathym.s), max(dat_ssf5$bathym.s), length.out = 100),
+                             k490 = 0,
+                             npp = 0,
+                             sst = 0) %>%
+  as.matrix()
+
+
+## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+
+
+
+random.coeffs2 <- random.coeffs %>%
+  filter(!param %in% c('step', 'log_sl', 'cos_ta')) %>%
+  dplyr::select(param, ID, mean, `0.025quant`, `0.975quant`)
+
+pred.bathym <- vector("list", length = n_distinct(random.coeffs2$ID))
+names(pred.bathym) <- n_distinct(random.coeffs2$ID)
+
+for (i in 1:n_distinct(random.coeffs2$ID)) {
+
+  coeff1 <- random.coeffs2 %>%
+    filter(ID == unique(random.coeffs2$ID)[i]) %>%
+    dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+    as.matrix()
+
+  tmp <- bathym.newdata %*% coeff1 %>%
+    data.frame() %>%
+    mutate(bathym = (bathym.newdata[,1] * sd(dat_ssf3$bathym, na.rm = T)) + mean(dat_ssf3$bathym, na.rm = T))
+
+  pred.bathym[[i]] <- tmp
+}
+
+pred.bathym <- pred.bathym %>%
+  bind_rows(.id = "id")
+
+# Pop mean in black; ID by color
+ggplot() +
+  geom_line(data = pred.bathym %>%
+              filter(id != 48), aes(x = bathym, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_ribbon(data = pred.bathym %>%
+                filter(id == 48), aes(x = bathym, ymin = exp(X0.025quant), ymax = exp(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.bathym %>%
+              filter(id == 48), aes(x = bathym, y = exp(mean)), linewidth = 1.5) +
+  theme_bw() +
+  ylim(0,2)
+
+
+
+
+
+
+
+
+
+### K490 ###
+
+k490.newdata <- data.frame(bathym = 0,
+                           k490 = seq(min(dat_ssf5$k490.s), max(dat_ssf5$k490.s), length.out = 100),
+                           npp = 0,
+                           sst = 0) %>%
+  as.matrix()
+
+
+## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+
+
+
+pred.k490 <- vector("list", length = n_distinct(random.coeffs2$ID))
+names(pred.k490) <- unique(random.coeffs2$ID)
+
+for (i in 1:n_distinct(random.coeffs2$ID)) {
+
+  coeff1 <- random.coeffs2 %>%
+    filter(ID == unique(random.coeffs2$ID)[i]) %>%
+    dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+    as.matrix()
+
+  tmp <- k490.newdata %*% coeff1 %>%
+    data.frame() %>%
+    mutate(k490 = (k490.newdata[,2] * sd(dat_ssf3$k490, na.rm = T)) + mean(dat_ssf3$k490, na.rm = T))
+
+  pred.k490[[i]] <- tmp
+}
+
+pred.k490 <- pred.k490 %>%
+  bind_rows(.id = "id")
+
+# Pop mean in black; ID by color
+ggplot() +
+  geom_line(data = pred.k490 %>%
+              filter(id != "Pop"), aes(x = k490, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_ribbon(data = pred.k490 %>%
+                filter(id == "Pop"), aes(x = k490, ymin = exp(X0.025quant), ymax = exp(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.k490 %>%
+              filter(id == "Pop"), aes(x = k490, y = exp(mean)), linewidth = 1.5) +
+  theme_bw()
+
+
+
+
+
+
+
+
+
+### NPP ###
+
+npp.newdata <- data.frame(bathym = 0,
+                           k490 = 0,
+                           npp = seq(min(dat_ssf5$npp.s), max(dat_ssf5$npp.s), length.out = 100),
+                           sst = 0) %>%
+  as.matrix()
+
+
+## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+
+
+
+pred.npp <- vector("list", length = n_distinct(random.coeffs2$ID))
+names(pred.npp) <- unique(random.coeffs2$ID)
+
+for (i in 1:n_distinct(random.coeffs2$ID)) {
+
+  coeff1 <- random.coeffs2 %>%
+    filter(ID == unique(random.coeffs2$ID)[i]) %>%
+    dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+    as.matrix()
+
+  tmp <- npp.newdata %*% coeff1 %>%
+    data.frame() %>%
+    mutate(npp = (npp.newdata[,3] * sd(dat_ssf3$npp, na.rm = T)) + mean(dat_ssf3$npp, na.rm = T))
+
+  pred.npp[[i]] <- tmp
+}
+
+pred.npp <- pred.npp %>%
+  bind_rows(.id = "id")
+
+# Pop mean in black; ID by color
+ggplot() +
+  geom_line(data = pred.npp %>%
+              filter(id != "Pop"), aes(x = npp, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_ribbon(data = pred.npp %>%
+                filter(id == "Pop"), aes(x = npp, ymin = exp(X0.025quant), ymax = exp(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.npp %>%
+              filter(id == "Pop"), aes(x = npp, y = exp(mean)), linewidth = 1.5) +
+  theme_bw()
+
+
+
+
+
+
+
+
+
+### SST ###
+
+sst.newdata <- data.frame(bathym = 0,
+                          k490 = 0,
+                          npp = 0,
+                          sst = seq(min(dat_ssf5$sst.s), max(dat_ssf5$sst.s), length.out = 100)) %>%
+  as.matrix()
+
+
+## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+
+
+
+pred.sst <- vector("list", length = n_distinct(random.coeffs2$ID))
+names(pred.sst) <- unique(random.coeffs2$ID)
+
+for (i in 1:n_distinct(random.coeffs2$ID)) {
+
+  coeff1 <- random.coeffs2 %>%
+    filter(ID == unique(random.coeffs2$ID)[i]) %>%
+    dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+    as.matrix()
+
+  tmp <- sst.newdata %*% coeff1 %>%
+    data.frame() %>%
+    mutate(sst = (sst.newdata[,4] * sd(dat_ssf3$sst, na.rm = T)) + mean(dat_ssf3$sst, na.rm = T))
+
+  pred.sst[[i]] <- tmp
+}
+
+pred.sst <- pred.sst %>%
+  bind_rows(.id = "id")
+
+# Pop mean in black; ID by color
+ggplot() +
+  geom_line(data = pred.sst %>%
+              filter(id != "Pop"), aes(x = sst, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_ribbon(data = pred.sst %>%
+                filter(id == "Pop"), aes(x = sst, ymin = exp(X0.025quant), ymax = exp(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.sst %>%
+              filter(id == "Pop"), aes(x = sst, y = exp(mean)), linewidth = 1.5) +
+  theme_bw() +
+  ylim(0,20)

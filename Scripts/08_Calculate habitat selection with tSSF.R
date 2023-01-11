@@ -175,11 +175,11 @@ plan(sequential)
 
 
 
-tSSF.input5 <- tSSF.input4 %>%
+tSSF.input5 <- tSSF.input4 #%>%
   # slice(693391:693400) #%>%
   # slice(510301:510400)
   # slice(1:1000000)
-  filter(strata %in% sample(unique(tSSF.input4$strata), size = 1000, replace = FALSE))
+  # filter(strata %in% sample(unique(tSSF.input4$strata), size = 1000, replace = FALSE))
 
 # Remove obs w/ time gap > 12 hours
 # ind <- mod.input5 %>%
@@ -201,7 +201,7 @@ xmat <- tSSF.input5 %>%
   map(~{.x %>%
       dplyr::select(-step.id) %>%
       as.matrix()})
-xmat <- array(unlist(xmat), dim = c(1000, 4, max(tSSF.input3$step.id)))
+xmat <- array(unlist(xmat), dim = c(n_distinct(tSSF.input5$strata), 4, max(tSSF.input3$step.id)))
 
 pmov <- tSSF.input5 %>%
   dplyr::select(step.id, time.prob) %>%
@@ -209,7 +209,7 @@ pmov <- tSSF.input5 %>%
   map(~{.x %>%
       dplyr::select(-step.id) %>%
       as.matrix()})
-pmov <- array(unlist(pmov), dim = c(1000, 1, max(tSSF.input3$step.id)))
+pmov <- array(unlist(pmov), dim = c(n_distinct(tSSF.input5$strata), 1, max(tSSF.input3$step.id)))
 
 # Create list of data
 dat.list <- list(
@@ -334,7 +334,7 @@ model {
 
 
 mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 8675309,
-             refresh = 100)
+             refresh = 100, control = list(max_treedepth = 15))
 # took 4.8 hrs to run 2000 iter for full dataset
 # took 41 min for 1000 strata subset
 
