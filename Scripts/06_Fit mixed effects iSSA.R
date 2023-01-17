@@ -150,9 +150,9 @@ dat_ssf5 <- dat_ssf4 %>%
 cor(dat_ssf5[,c('bathym','k490','npp','sst')]) # all < 0.6
 
 
-######################
-### Fit iSSA model ###
-######################
+###########################
+### Fit GLMM iSSA model ###
+###########################
 
 # To fit the model with random slopes in INLA, we need to generate new (but identical) variables of individual ID (ID cannot be used multiple times in the model formula):
 dat_ssf5$id1 <- as.numeric(factor(dat_ssf5$id))
@@ -462,3 +462,227 @@ ggplot() +
               filter(id == "Pop"), aes(x = sst, y = exp(mean)), linewidth = 1.5) +
   theme_bw() +
   ylim(0,20)
+
+
+
+
+
+
+
+
+
+###########################
+### Fit GAMM iSSA model ###
+###########################
+library(splines)
+
+# To fit the model with random slopes in INLA, we need to generate new (but identical) variables of individual ID (ID cannot be used multiple times in the model formula):
+dat_ssf5$id1 <- as.numeric(factor(dat_ssf5$id))
+dat_ssf5$id2 <- dat_ssf5$id1
+dat_ssf5$id3 <- dat_ssf5$id1
+dat_ssf5$id4 <- dat_ssf5$id1
+dat_ssf5$id5 <- dat_ssf5$id1
+dat_ssf5$id6 <- dat_ssf5$id1
+# dat_ssf5$id7 <- dat_ssf5$id1
+# dat_ssf5$id8 <- dat_ssf5$id1
+
+
+# Add cubic splines as part of data matrix
+sst.splines <- ns(dat_ssf5$sst.s, df = 3)
+dimnames(sst.splines)[[2]] <- paste0("sst.s", 1:3)
+dat_ssf6 <- cbind(dat_ssf5, sst.splines)
+
+# Set the model formula as for the fixed-effects model, but now add four random slope terms, namely for bathymetry, k490, npp, and sst. The priors for precision of the four random slopes are PC(3,0.05), while the intercept variance is again fixed:
+iSSA.formula <- obs ~ -1 + bathym.s + k490.s + npp.s + sst.s1 + sst.s2 + sst.s3 +
+  step + log_sl + cos_ta +
+  f(strata, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
+  f(id1, bathym.s, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  f(id2, k490.s, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  f(id3, npp.s, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  # f(id4, sst.s, values = unique(dat_ssf5$id1), model = "iid",
+  #   hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) #+
+  f(id4, sst.s1, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  f(id5, sst.s2, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
+  f(id6, sst.s3, values = unique(dat_ssf5$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05))))
+
+# Fit the model
+tic()
+fit.iSSA.gamm <- inla(iSSA.formula, family = "Poisson", data = dat_ssf6,
+                      control.fixed = list(
+                        mean = 0,
+                        prec = list(default = 1e-4)),
+                      control.compute = list(waic = TRUE,
+                                             dic = TRUE), verbose = FALSE
+)
+toc()  # took 2 min to run
+
+summary(fit.iSSA.gamm)
+
+# The summary for the posterior distribution of the fixed effects:
+fixed.coeffs <- fit.iSSA.gamm$summary.fixed %>%
+  mutate(param = factor(rownames(.), levels = rownames(.)))
+
+ggplot(fixed.coeffs, aes(y = param)) +
+  geom_vline(xintercept = 0, linewidth = 0.75) +
+  geom_linerange(aes(xmin = `0.025quant`, xmax = `0.975quant`)) +
+  geom_point(aes(x = `0.5quant`)) +
+  theme_bw()
+
+
+
+random.coeffs <- fit.iSSA.gamm$summary.random[-1] %>%
+  bind_rows(.id = "param") %>%
+  mutate(across(param, factor))
+levels(random.coeffs$param) <- fixed.coeffs$param[1:6]
+
+
+
+
+# Add population means to random effects
+random.coeffs <- random.coeffs %>%
+  split(.$param) %>%
+  map2(.x = ., .y = fixed.coeffs$mean[1:6],
+       ~mutate(.x,
+               mean = mean + .y,
+               `0.025quant` = `0.025quant` + .y,
+               `0.975quant` = `0.975quant` + .y)) %>%
+  bind_rows()
+random.coeffs <- rbind(random.coeffs,
+                       fixed.coeffs %>%
+                         mutate(ID = "Pop", .before = mean) %>%
+                         relocate(param, .before = ID)) %>%
+  arrange(param)
+
+ggplot(random.coeffs) +
+  geom_hline(yintercept = 0, linewidth = 0.75) +
+  geom_linerange(aes(x = ID, ymin = `0.025quant`, ymax = `0.975quant`, color = param)) +
+  geom_point(aes(y = mean, x = ID, color = param)) +
+  theme_bw() +
+  facet_wrap(~ param, scales = "free")
+
+
+
+
+fixed.coeffs2 <- fit.iSSA.gamm$summary.fixed[1:6,c("mean","0.025quant","0.975quant")] %>%
+  as.matrix()
+
+random.coeffs2 <- random.coeffs %>%
+  filter(!param %in% c('step', 'log_sl', 'cos_ta')) %>%
+  dplyr::select(param, ID, mean, `0.025quant`, `0.975quant`)
+
+
+### SST ###
+
+# bathym.newdata <- data.frame(bathym = seq(min(dat_ssf5$bathym.s), max(dat_ssf5$bathym.s), length.out = 100),
+#                              k490 = 0,
+#                              npp = 0,
+#                              sst = 0) %>%
+#   as.matrix()
+sst.newdata <- data.frame(bathym = 0,
+                          k490 = 0,
+                          npp = 0,
+                          sst1 = seq(min(dat_ssf6$sst.s1), max(dat_ssf6$sst.s1), length.out = 100),
+                          sst2 = seq(min(dat_ssf6$sst.s2), max(dat_ssf6$sst.s2), length.out = 100),
+                          sst3 = seq(min(dat_ssf6$sst.s3), max(dat_ssf6$sst.s3), length.out = 100)) %>%
+  as.matrix()
+
+## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+
+
+
+
+pred.sst <- vector("list", length = n_distinct(random.coeffs2$ID))
+names(pred.sst) <- n_distinct(random.coeffs2$ID)
+
+for (i in 1:n_distinct(random.coeffs2$ID)) {
+
+  coeff1 <- random.coeffs2 %>%
+    filter(ID == unique(random.coeffs2$ID)[i]) %>%
+    dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+    as.matrix()
+
+  # tmp <- sst.newdata %*% coeff1 %>%
+  #   data.frame() %>%
+  #   mutate(sst = (sst.newdata[,1] * sd(dat_ssf3$sst, na.rm = T)) + mean(dat_ssf3$sst, na.rm = T))
+  tmp <- sst.newdata %*% fixed.coeffs2 %>%
+    data.frame() %>%
+    mutate(sst = (seq(min(dat_ssf6$sst.s), max(dat_ssf6$sst.s), length.out = 100) * sd(dat_ssf3$sst, na.rm = T)) + mean(dat_ssf3$sst, na.rm = T))
+
+  pred.sst[[i]] <- tmp
+}
+
+pred.sst <- pred.sst %>%
+  bind_rows(.id = "id")
+
+# Pop mean in black; ID by color
+ggplot() +
+  # geom_line(data = pred.sst %>%
+  #             filter(id != 48), aes(x = sst, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  # geom_ribbon(data = pred.sst %>%
+  #               filter(id == 48), aes(x = sst, ymin = exp(X0.025quant), ymax = exp(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.sst %>%
+              filter(id == 48), aes(x = sst, y = exp(mean)), linewidth = 1.5) +
+  theme_bw() +
+  ylim(0,10)
+
+
+ggplot(tmp) +
+  geom_line(aes(x = sst, y = exp(mean)), linewidth = 0.75) +
+  # geom_ribbon(aes(x = sst, ymin = exp(X0.025quant), ymax = exp(X0.975quant)), alpha = 0.4) +
+  theme_bw() +
+  ylim(0,1e50)
+
+ggplot(tmp) +
+  geom_line(aes(x = sst, y = mean), linewidth = 0.75) +
+  geom_ribbon(aes(x = sst, ymin = X0.025quant, ymax = X0.975quant), alpha = 0.4) +
+  theme_bw()
+
+
+
+
+
+
+
+
+
+#-----------------------------
+
+library(brms)
+library(mgcv)
+
+dat.test <- dat_ssf5 %>%
+  group_by(strata) %>%
+  drop_na(cos_ta) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+
+brms.mod <- brm(bf(obs ~ -1 + s(bathym.s) + s(k490.s) + s(npp.s) + s(sst.s) +
+                  step + log_sl + cos_ta + s(strata, bs = "re")), data = dat_ssf5, family = poisson(),
+                control=list(adapt_delta=0.99, max_treedepth=15), cores = 4, seed = 123, refresh = 100)
+
+
+library(mgcv)
+
+# Example data
+set.seed(123)
+n <- 100
+x1 <- rnorm(n)
+x2 <- rnorm(n)
+y <- x1 + sin(x2) + rnorm(n)
+
+foo <- data.frame(y = y, x1 = x1, x2 = x2)
+
+# Fit the GAM with random effects on the slopes
+gam.model <- gam(obs ~ -1 + s(bathym.s, k = 3) + s(k490.s, k = 3) + s(npp.s, k = 3) + s(sst.s, k = 3) +
+                   step + log_sl + cos_ta + s(strata, bs = "re"), data = dat_ssf5, family = "poisson", fit = FALSE)
+
+
+# Fit the model using INLA
+inla.model <- inla(gam.model, data = dat_ssf5, control.predictor = list(compute = TRUE))

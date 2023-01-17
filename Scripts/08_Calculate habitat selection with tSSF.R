@@ -180,6 +180,7 @@ tSSF.input5 <- tSSF.input4 #%>%
   # slice(510301:510400)
   # slice(1:1000000)
   # filter(strata %in% sample(unique(tSSF.input4$strata), size = 1000, replace = FALSE))
+  # filter(id %in% c(128352, 142659, 159781, 181796, 181800))
 
 # Remove obs w/ time gap > 12 hours
 # ind <- mod.input5 %>%
@@ -269,10 +270,19 @@ data {
 parameters {
   //vector[K] betas;
   vector[K] mu;                          // Population means of slopes
-  vector<lower=0>[K] tau;                // Population scales (SDs)
-  cholesky_factor_corr[K] L;             // Population correlations
-  vector[K] betas[nID];                  // Slopes per individual
+  vector<lower=0>[K] sigma;              // Population SDs
+  //vector<lower=0>[K] tau;                // Population scales (SDs)
+  //cholesky_factor_corr[K] L;             // Population correlations
+  //vector[K] betas[nID];                  // Slopes per individual
+  vector[K] eta[nID];                    // Non-centered slopes per individual
+}
 
+transformed parameters {
+  vector[K] betas[nID];
+
+  for (i in 1:nID) {
+    betas[i] = mu + eta[i] .* sigma;
+  }
 }
 
 
@@ -282,17 +292,22 @@ model {
     //vector[N] p_avail2;                   // Vector to store probs for second available step
     //vector[N] p_avail3;                   // Vector to store probs for third available step
     //vector[N] p_avail4;                   // Vector to store probs for fourth available step
-    vector[nstep] prob[N];                 // Matrix to store joint probabilities of time model and SSF
+    vector[nstep] prob[N];                // Matrix to store joint probabilities of time model and SSF
     vector[N] pi;                         // Vector to store tSSF probs
 
 // priors
   //betas ~ normal(0, 1);
   mu ~ normal(0, 1);
-  tau ~ normal(0, 1);
-  L ~ lkj_corr_cholesky(4);
+  sigma ~ normal(0, 2);
+  //tau ~ normal(0, 1);
+  //L ~ lkj_corr_cholesky(4);
+
+for (i in 1:nID) {
+  eta[i] ~ normal(0, 1);
+}
 
   // Estimate means per ID
-  betas ~ multi_normal_cholesky(mu, diag_pre_multiply(tau, L));
+  //betas ~ multi_normal_cholesky(mu, diag_pre_multiply(tau, L));
   //for (i in 1:nID) {
   //   betas[i] ~ normal(mu, sigma);
   // }
@@ -333,10 +348,9 @@ model {
 "
 
 
-mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 8675309,
-             refresh = 100, control = list(max_treedepth = 15))
-# took 4.8 hrs to run 2000 iter for full dataset
-# took 41 min for 1000 strata subset
+mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 2023,
+             refresh = 100, control = list(adapt_delta = 0.99))
+# took 2.5 hrs to run 2000 iter for full dataset
 
 # params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')
 print(mod1, digits_summary = 3, probs = c(0.025, 0.5, 0.975))
@@ -346,10 +360,12 @@ bayesplot::mcmc_neff(neff_ratio(mod1)) +
   bayesplot::yaxis_text(hjust = 0)
 bayesplot::mcmc_rhat(rhat(mod1)) +
   bayesplot::yaxis_text(hjust = 0)
-MCMCtrace(mod1, ind = TRUE, iter = 1000, pdf = FALSE, params = c('mu','tau'))
+MCMCtrace(mod1, ind = TRUE, iter = 1000, pdf = FALSE, params = c('mu','sigma'))
+MCMCtrace(mod1, ind = TRUE, iter = 1000, pdf = FALSE, params = c('eta'))
 par(mfrow=c(1,1))
 
+pairs(mod1, pars = c('mu[1]','sigma[1]','eta[1,1]','betas[1,1]'))
 
 
 ## Save stanfit object
-saveRDS(mod1, "Data_products/tSSF_model_GLM_stanfit.rds")
+saveRDS(mod1, "Data_products/tSSF_model_GLMM_stanfit.rds")
