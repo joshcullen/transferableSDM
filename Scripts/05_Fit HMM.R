@@ -4,7 +4,7 @@
 
 library(tidyverse)
 library(lubridate)
-library(momentuHMM)
+library(momentuHMM)  #v2.0.0
 library(tictoc)
 library(future)
 library(furrr)
@@ -19,9 +19,9 @@ source('Scripts/helper functions.R')
 #################
 
 
-dat_gom <- read_csv("Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr_foiegras.csv")
-dat_br <- read_csv("Processed_data/Processed_Brazil_Cm_Tracks_SSM_2hr_foiegras.csv")
-dat_qa <- read_csv("Processed_data/Processed_Qatar_Cm_Tracks_SSM_2hr_foiegras.csv")
+dat_gom <- read_csv("Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv")
+dat_br <- read_csv("Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv")
+dat_qa <- read_csv("Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv")
 
 glimpse(dat_gom)
 glimpse(dat_br)
@@ -47,7 +47,7 @@ dat <- dat %>%
 
 # Remove any bouts that have large (i.e., 7-day) gaps
 dat2 <- dat %>%
-  filter(!is.na(bout))
+  drop_na(x, y)
 
 
 
@@ -66,7 +66,7 @@ ggplot(dat, aes(date, step)) +
 # Pre-define possible states to determine 'good' initial values
 dat <- dat %>%
   mutate(phase = case_when(step > 1000 ~ 'Migratory',
-                           TRUE ~ 'ARS'))
+                           TRUE ~ 'Resident'))
 
 
 ggplot(dat, aes(step, fill = phase)) +
@@ -90,10 +90,10 @@ dat %>%
 
 # initial step length distribution (natural scale parameters); gamma distribution
 sum(dat$step == 0)  #Check to see if I need to account for zero mass
-stepPar0 <- c(50, 1000, 100, 1000)  #(mu_1, mu_2, sd_1, sd_2)
+stepPar0 <- c(350, 3500, 250, 3500)  #(mu_1, mu_2, sd_1, sd_2)
 
 # initial turning angle distribution (natural scale parameters); wrapped Cauchy distribution
-anglePar0 <- c(-3.1, 0, 0.5, 0.99) # (mean_1, mean_2, concentration_1, concentration_2)
+anglePar0 <- c(0, 0, 0.5, 0.99) # (mean_1, mean_2, concentration_1, concentration_2)
 
 
 Par0 <- list(step = stepPar0, angle = anglePar0)
@@ -113,15 +113,16 @@ hmm.res <- fitHMM(data = dat, nbStates = 2,
                   dist = list(step = "gamma", angle = "wrpcauchy"),
                   formula = ~ 1, stationary=TRUE, #stationary for a slightly better fit
                   estAngleMean = list(angle=TRUE),
-                  stateNames = c('ARS','Migratory'),
-                  retryFits = 5
+                  stateNames = c('Resident','Migratory'),
+                  retryFits = 5,
+                  ncores = 5
 )
 toc()  #took 10 min to run
 
 
-fit_hmm
+hmm.res
 
-plot(fit_hmm)
-plotStates(fit_hmm)
-timeInStates(fit_hmm)  #66% breeding, 29% foraging, 5% migratory
-plotPR(fit_hmm, ncores = 5)  #look decent for SL and TA, but Disp could be improved
+plot(hmm.res)
+plotStates(hmm.res)
+timeInStates(hmm.res)  #66% breeding, 29% foraging, 5% migratory
+plotPR(hmm.res, ncores = 5)  #look decent for SL and TA, but Disp could be improved

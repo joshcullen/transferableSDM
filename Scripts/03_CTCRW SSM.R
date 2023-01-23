@@ -3,16 +3,14 @@
 
 library(tidyverse)
 library(lubridate)
-library(foieGras)  #v1.1
+library(aniMotum)  #v1.1
 library(sf)  #v1.0.9
 library(sfarrow)
 library(tictoc)
 library(plotly)
-library(pathroutr)
-library(patchwork)
 library(trelliscopejs)
-library(future)
-library(furrr)
+
+source('Scripts/helper functions.R')
 
 
 #### Load data ####
@@ -42,7 +40,7 @@ glimpse(dat2)
 
 
 
-## Define bouts per PTT where gap > 7 days (for splitting imputed tracks)
+## Define bouts per PTT where gap > 3 days (for splitting fitted tracks)
 int_tbl <- dat2 %>%
   split(.$id) %>%
   purrr::map(., ~mutate(.x, bout = crawlUtils::cu_get_bouts(x = .$date, gap = 3, time_unit = "days"))) %>%
@@ -91,12 +89,12 @@ tmp %>%
 
 #### Account for location error at observed irregular time interval ####
 
-# Estimate 'true' locations regularized at 2 hr time step
+# Estimate 'true' locations regularized at 4 hr time step
 set.seed(2022)
 tic()
-fit_crw <- fit_ssm(dat2, vmax = 3, model = "crw", time.step = 2,
+fit_crw <- fit_ssm(dat2, vmax = 3, model = "crw", time.step = 4,
                           control = ssm_control(verbose = 1))
-toc()  #took 5.5 min
+toc()  #took 4 min
 
 print(fit_crw, n = nrow(fit_crw))  #all indiv. models converged
 summary(fit_crw)
@@ -137,39 +135,6 @@ qa.tracks <- res_crw %>%
 
 
 
-# Create visibility graphs
-tic()
-gom_vis_graph <- st_buffer(gom.tracks, dist = 50000) %>%
-  st_union() %>%
-  st_convex_hull() %>%
-  st_intersection(gom.sf) %>%
-  st_collection_extract('POLYGON') %>%
-  st_sf() %>%
-  prt_visgraph()
-toc()  #took 28 sec
-
-tic()
-br_vis_graph <- st_buffer(br.tracks, dist = 50000) %>%
-  st_union() %>%
-  st_convex_hull() %>%
-  st_intersection(br.sf) %>%
-  st_collection_extract('POLYGON') %>%
-  st_sf() %>%
-  prt_visgraph()
-toc()  #took 17 sec
-
-tic()
-qa_vis_graph <- st_buffer(qa.tracks, dist = 50000) %>%
-  st_union() %>%
-  st_convex_hull() %>%
-  st_intersection(qa.sf) %>%
-  st_collection_extract('POLYGON') %>%
-  st_sf() %>%
-  prt_visgraph()
-toc()  #took 2 sec
-
-
-
 
 # Filter by the defined bout periods
 gom.tracks2 <- gom.tracks %>%
@@ -179,8 +144,7 @@ gom.tracks2 <- gom.tracks %>%
        ~fuzzyjoin::fuzzy_left_join(x = .x, y = .y,
                                    by = c(date = "start", date = "end"),
                                    match_fun = list(`>=`, `<=`))) %>%
-  bind_rows() #%>%
-  # filter(!is.na(bout))  #remove predictions that don't belong to a bout period
+  bind_rows()
 
 br.tracks2 <- br.tracks %>%
   split(.$id) %>%
@@ -201,151 +165,93 @@ qa.tracks2 <- qa.tracks %>%
   bind_rows()
 
 
-# Remove predictions that begin or end on land
-gom.tracks3 <- prt_trim(gom.tracks2, gom.sf)
-br.tracks3 <- prt_trim(br.tracks2, br.sf)
-qa.tracks3 <- prt_trim(qa.tracks2, qa.sf)
 
-
-
-
-# Convert tracks to list for re-routing
-gom.tracks3.list <- gom.tracks3 %>%
-  split(.$id)
-br.tracks3.list <- br.tracks3 %>%
-  split(.$id)
-qa.tracks3.list <- qa.tracks3 %>%
-  split(.$id)
-
-
-# Re-route GoM tracks
-plan(multisession)
-tic()
-gom.tracks.route <- gom.tracks3.list %>%
-  future_map(., ~{.x %>%
-      prt_trim(gom.sf) %>%
-      prt_reroute(gom.sf, gom_vis_graph, blend=FALSE)},
-             .options = furrr_options(packages = c("sf","dplyr"),
-                                      seed = 2022)
-             )
-toc()  #took 1.5 min
-
-
-gom.tracks.route <- gom.tracks.route %>%
-  future_map2(.x = ., .y = gom.tracks3.list, ~prt_update_points(.x, .y),
-              .options = furrr_options(seed = 2022)
-  )
-plan(sequential)
-
-
-# Re-route Brazil tracks
-plan(multisession)
-tic()
-br.tracks.route <- br.tracks3.list %>%
-  future_map(., ~{.x %>%
-      prt_trim(br.sf) %>%
-      prt_reroute(br.sf, br_vis_graph, blend=FALSE)},
-      .options = furrr_options(packages = c("sf","dplyr"),
-                               seed = 2022)
-  )
-toc()  #took 1.5 min
-
-
-br.tracks.route <- br.tracks.route %>%
-  future_map2(.x = ., .y = br.tracks3.list, ~prt_update_points(.x, .y),
-              .options = furrr_options(seed = 2022)
-  )
-plan(sequential)
-
-
-# Re-route Qatar tracks
-plan(multisession)
-tic()
-qa.tracks.route <- qa.tracks3.list %>%
-  future_map(., ~{.x %>%
-      prt_trim(qa.sf) %>%
-      prt_reroute(qa.sf, qa_vis_graph, blend=FALSE)},
-      .options = furrr_options(packages = c("sf","dplyr"),
-                               seed = 2022)
-  )
-toc()  #took 4 sec
-
-
-qa.tracks.route <- qa.tracks.route %>%
-  future_map2(.x = ., .y = qa.tracks3.list, ~prt_update_points(.x, .y),
-              .options = furrr_options(seed = 2022)
-  )
-plan(sequential)
 
 
 
 # Change from list of sf objects back to single data.frame
-gom.tracks.route <- bind_rows(gom.tracks.route) %>%
+gom.tracks3 <- gom.tracks2 %>%
+  drop_na(bout) %>%  #remove predictions that fall w/in 3-day time gaps
   mutate(x = st_coordinates(.)[,1],
          y = st_coordinates(.)[,2]) %>%
-  st_drop_geometry()
+  st_drop_geometry() %>%
+  split(.$id) %>%
+  purrr::map(~add_track_gaps(.x, "bout")) %>%  #add single rows of NA coords to create gaps when mapping
+  bind_rows()
 
-br.tracks.route <- bind_rows(br.tracks.route) %>%
+br.tracks3 <- br.tracks2 %>%
+  drop_na(bout) %>%
   mutate(x = st_coordinates(.)[,1],
          y = st_coordinates(.)[,2]) %>%
-  st_drop_geometry()
+  st_drop_geometry() %>%
+  split(.$id) %>%
+  purrr::map(~add_track_gaps(.x, "bout")) %>%  #add single rows of NA coords to create gaps when mapping
+  bind_rows()
 
-qa.tracks.route <- bind_rows(qa.tracks.route) %>%
+qa.tracks3 <- qa.tracks2 %>%
+  drop_na(bout) %>%
   mutate(x = st_coordinates(.)[,1],
          y = st_coordinates(.)[,2]) %>%
-  st_drop_geometry()
+  st_drop_geometry() %>%
+  split(.$id) %>%
+  purrr::map(~add_track_gaps(.x, "bout")) %>%  #add single rows of NA coords to create gaps when mapping
+  bind_rows()
 
 
 #############################
 ### Inspect mapped tracks ###
 #############################
 
+
+
 # GoM
-ggplot() +
-  geom_sf(data = gom.sf) +
-  geom_path(data = gom.tracks.route, aes(x, y, group = id, color = id)) +  #modeled tracks
-  theme_bw()
-
-# Brazil
-ggplot() +
-  geom_sf(data = br.sf) +
-  geom_path(data = br.tracks.route, aes(x, y, group = id, color = id)) +  #modeled tracks
-  theme_bw()
-
-# Qatar
-ggplot() +
-  geom_sf(data = qa.sf) +
-  geom_path(data = qa.tracks.route, aes(x, y, group = id, color = id)) +  #modeled tracks
-  theme_bw()
-
-
-# Viz modeled tracks together
-plotly::ggplotly(
+ggplotly(
   ggplot() +
     geom_sf(data = gom.sf) +
-    geom_path(data = gom.tracks.route, aes(x, y, group = id, color = id), alpha = 0.7) +  #modeled tracks
+    geom_path(data = gom.tracks3, aes(x, y, group = id, color = id)) +  #modeled tracks
     theme_bw()
 )
 
-plotly::ggplotly(
+ggplot(data = gom.tracks3, aes(x, y, color = factor(bout))) +
+  geom_path() +
+  theme_bw() +
+  facet_trelliscope(~ id, nrow = 3, ncol = 3, scales = "free")
+
+
+# Brazil
+ggplotly(
   ggplot() +
     geom_sf(data = br.sf) +
-    geom_path(data = br.tracks.route, aes(x, y, group = id, color = id), alpha = 0.7) +  #modeled tracks
+    geom_path(data = br.tracks3, aes(x, y, group = id, color = id)) +  #modeled tracks
     theme_bw()
 )
 
-plotly::ggplotly(
+ggplot(data = br.tracks3, aes(x, y, color = factor(bout))) +
+  geom_path() +
+  theme_bw() +
+  facet_trelliscope(~ id, nrow = 3, ncol = 3, scales = "free")
+
+
+# Qatar
+ggplotly(
   ggplot() +
     geom_sf(data = qa.sf) +
-    geom_path(data = qa.tracks.route, aes(x, y, group = id, color = id), alpha = 0.7) +  #modeled tracks
+    geom_path(data = qa.tracks3, aes(x, y, group = id, color = id)) +  #modeled tracks
     theme_bw()
 )
+
+ggplot(data = qa.tracks3, aes(x, y, color = factor(bout))) +
+  geom_path() +
+  theme_bw() +
+  facet_trelliscope(~ id, nrow = 3, ncol = 3, scales = "free")
+
+
 
 
 
 
 ### Export fitted tracks ###
 
-write.csv(gom.tracks.route, "Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr_foieGras.csv", row.names = FALSE)
-write.csv(br.tracks.route, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_2hr_foieGras.csv", row.names = FALSE)
-write.csv(qa.tracks.route, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_2hr_foieGras.csv", row.names = FALSE)
+write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)

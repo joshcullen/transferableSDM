@@ -612,3 +612,25 @@ inla_mmarginal <- function(r.out){
   names(results) <- sapply(as.vector(as.character(names(results))), function(y) gsub("Precision", x=y, "Mode of variance"))
   results
 }
+
+#-----------------------------------
+
+
+# Function that adds single row of NA coords to create gaps in tracks (when mapping w/ ggplot2)
+
+add_track_gaps <- function(data, ind) {
+
+  # find rows where gaps should be placed
+  row.ind <- which(diff(data[[ind]]) > 0) + 1
+
+  # insert NA for coords at each gap
+  tmp <- data[row.ind,] %>%
+    mutate(date = date - 30*60) %>%  #subtract 30 min from end of gap
+    mutate(x = NA,
+           y = NA)
+
+  data.out <- rbind(data, tmp) %>%
+    dplyr::arrange(date)
+
+  return(data.out)
+}
