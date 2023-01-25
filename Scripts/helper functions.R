@@ -309,7 +309,7 @@ extract.covars = function(data, layers, state.col = NULL, which_cat = NULL, dyn_
 # Function to generate new coordinates for different forms of SSF
 
 
-avail_steps <- function(data, nsteps) {
+avail_steps <- function(data, pop, nsteps) {
 
   # create list to store results for each strata
   avail.list <- vector("list", nrow(data))
@@ -318,7 +318,7 @@ avail_steps <- function(data, nsteps) {
   for (i in 1:nrow(data)) {
 
     ## generate random steps and angles
-    rand.sl <- sample(data$step, size = nsteps)
+    rand.sl <- sample(pop$step, size = nsteps)
     rand.bearing <- runif(nsteps, min = 0, max = 2*pi)
 
 
@@ -390,7 +390,7 @@ add_avail_steps <- function(data, nsteps) {
   ## generate coordinates for available steps; also adds new values for steps and angles
   dat.list <- split(data2, data2$id)
   avail <- dat.list %>%
-    furrr::future_map(~avail_steps(data = ., nsteps = nsteps),
+    furrr::future_map(~avail_steps(data = ., pop = data2, nsteps = nsteps),
                       .options = furrr_options(seed = TRUE)) %>%
     bind_rows()
 
@@ -615,7 +615,6 @@ inla_mmarginal <- function(r.out){
 
 #-----------------------------------
 
-
 # Function that adds single row of NA coords to create gaps in tracks (when mapping w/ ggplot2)
 
 add_track_gaps <- function(data, ind) {
@@ -633,4 +632,16 @@ add_track_gaps <- function(data, ind) {
     dplyr::arrange(date)
 
   return(data.out)
+}
+
+#-----------------------------------
+
+# Function to mask out land (or some polygon) from in-water UDs (or some other polygon)
+# Per StackOverflow answer at https://stackoverflow.com/questions/71289669/intersection-keeping-non-intersecting-polygons-in-sf-r
+
+st_mask <- function(layer, mask) {
+  intersection <- st_intersection(layer, mask)
+  diff1 <- st_difference(layer, st_union(intersection$geometry))
+
+  return(diff1)
 }

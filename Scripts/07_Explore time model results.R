@@ -70,8 +70,8 @@ dat <- dat %>%
 
 ### Wrangle model input to required format ###
 
-# Change time step from secs to mins
-mod.input$dt <- mod.input$dt/60
+# Change time step from secs to hrs
+mod.input$dt <- mod.input$dt/3600
 
 # Retain only observed steps
 # mod.input <- mod.input %>%
@@ -93,6 +93,11 @@ mod.input2 <- mod.input2 %>%
          sst.s = scale(sst) %>%
            as.vector())
 
+# Only keep IDs where N >= 30
+mod.input3 <- mod.input2 %>%
+  group_by(id) %>%
+  filter(n() >= 30) %>%
+  ungroup()
 
 
 
@@ -146,8 +151,8 @@ mcmc_intervals(mod, pars = "mu_b", regex_pars = "^b\\[", prob = 0.5, prob_outer 
 ### Viz marginal effects plots to show relationships by ID ###
 
 n <- 100
-id1 <- unique(mod.input2$id)
-dist1 <- median(mod.input2$dist)  #median step length is 474 m
+id1 <- unique(mod.input3$id)
+dist1 <- median(mod.input3$dist)  #median step length is 1922 m
 b0 <- rstan::extract(mod, pars = 'betas')$betas[,,1]
 bBathym <- rstan::extract(mod, pars = 'betas')$betas[,,2]
 bK490 <- rstan::extract(mod, pars = 'betas')$betas[,,3]
@@ -200,7 +205,7 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
   geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -211,12 +216,12 @@ ggplot(data = bathym.res.df, aes(x = bathy)) +
   geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'Bathymetric depth (m)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
   xlim(-500,0) +
-  ylim(0,240)
+  ylim(0,30)
 
 
 
@@ -266,7 +271,7 @@ ggplot(data = k490.res.df, aes(x = k490)) +
   geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'K490 (1/m)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -277,12 +282,12 @@ ggplot(data = k490.res.df, aes(x = k490)) +
   geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'K490 (1/m)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'K490 (1/m)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
   xlim(0,1.5) +
-  ylim(0,360)
+  ylim(0,30)
 
 
 
@@ -332,7 +337,7 @@ ggplot(data = npp.res.df, aes(x = npp)) +
   geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -343,12 +348,12 @@ ggplot(data = npp.res.df, aes(x = npp)) +
   geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'Net Primary Productivity (mg C m^-2 d^-1)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
-  xlim(0,10000) +
-  ylim(0,1000)
+  xlim(0,25000) +
+  ylim(0,30)
 
 
 
@@ -399,7 +404,7 @@ ggplot(data = sst.res.df, aes(x = sst)) +
   geom_line(aes(y = med, color = factor(id)), linewidth = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18),
@@ -410,11 +415,11 @@ ggplot(data = sst.res.df, aes(x = sst)) +
   geom_line(aes(y = med, color = factor(id)), size = 1, alpha = 0.5) +
   scale_color_viridis_d("ID", option = "mako") +
   scale_fill_viridis_d("ID", option = "mako") +
-  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 474 m (min)") +
+  labs(x = 'Sea surface temperature (°C)', y = "Time to traverse 2 km (hrs)") +
   theme_bw() +
   theme(axis.title = element_text(size = 18),
         axis.text = element_text(size = 18)) +
-  ylim(0,360)
+  ylim(0,30)
 
 
 
@@ -508,7 +513,7 @@ track.142713 <- dat %>%
 ggplot() +
   geom_raster(data = time.pred.df %>%
                 filter(id == 142713), aes(x, y, fill = time)) +
-  scale_fill_viridis_c("Time (min)", option = 'inferno', limits = c(0,240)) +
+  scale_fill_viridis_c("Time (hrs)", option = 'inferno', limits = c(0,15)) +
   geom_sf(data = gom) +
   geom_path(data = track.142713, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
   theme_bw() +
@@ -530,8 +535,8 @@ unique(track.181800$month.year)
 
 ggplot() +
   geom_raster(data = time.pred.df %>%
-                filter(id == 181800), aes(x, y, fill = log10(time))) +
-  scale_fill_viridis_c("log_10(Time) (min)", option = 'inferno') +
+                filter(id == 181800), aes(x, y, fill = time)) +
+  scale_fill_viridis_c("Time (hrs)", option = 'inferno', limits = c(0,50)) +
   geom_sf(data = gom) +
   geom_path(data = track.181800, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
   theme_bw() +
@@ -547,26 +552,26 @@ ggplot() +
 
 
 
-track.159783 <- dat %>%
-  filter(id == 159783)
-unique(track.159783$month.year)
-
-ggplot() +
-  geom_raster(data = time.pred.df %>%
-                filter(id == 159783), aes(x, y, fill = time)) +
-  scale_fill_viridis_c("Time (min)", option = 'inferno') +
-  geom_sf(data = gom) +
-  geom_path(data = track.159783, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
-  theme_bw() +
-  labs(x = "Longitude", y = "Latitude", title = "PTT 159783") +
-  theme(panel.grid = element_blank(),
-        axis.title = element_text(size = 18),
-        axis.text = element_text(size = 14),
-        strip.text = element_text(size = 12, face = "bold")) +
-  coord_sf(xlim = c(min(track.159783$x) - 10000, max(track.159783$x) + 10000),
-           ylim = c(min(track.159783$y) - 10000, max(track.159783$y) + 10000)) +
-  # scale_x_continuous(breaks = c(-88, -86)) +
-  facet_wrap(~ month.year)
+# track.159783 <- dat %>%
+#   filter(id == 159783)
+# unique(track.159783$month.year)
+#
+# ggplot() +
+#   geom_raster(data = time.pred.df %>%
+#                 filter(id == 159783), aes(x, y, fill = time)) +
+#   scale_fill_viridis_c("Time (hrs)", option = 'inferno') +
+#   geom_sf(data = gom) +
+#   geom_path(data = track.159783, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
+#   theme_bw() +
+#   labs(x = "Longitude", y = "Latitude", title = "PTT 159783") +
+#   theme(panel.grid = element_blank(),
+#         axis.title = element_text(size = 18),
+#         axis.text = element_text(size = 14),
+#         strip.text = element_text(size = 12, face = "bold")) +
+#   coord_sf(xlim = c(min(track.159783$x) - 10000, max(track.159783$x) + 10000),
+#            ylim = c(min(track.159783$y) - 10000, max(track.159783$y) + 10000)) +
+#   # scale_x_continuous(breaks = c(-88, -86)) +
+#   facet_wrap(~ month.year)
 
 
 
@@ -577,7 +582,7 @@ unique(track.181796$month.year)
 ggplot() +
   geom_raster(data = time.pred.df %>%
                 filter(id == 181796), aes(x, y, fill = time)) +
-  scale_fill_viridis_c("Time (min)", option = 'inferno') +
+  scale_fill_viridis_c("Time (hrs)", option = 'inferno', limits = c(0,40)) +
   geom_sf(data = gom) +
   geom_path(data = track.181796, aes(x, y, group = id), color = 'chartreuse', size = 0.25) +
   theme_bw() +

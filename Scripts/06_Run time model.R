@@ -23,8 +23,8 @@ glimpse(dat)
 summary(dat)
 
 
-# Change time step from secs to mins
-dat$dt <- dat$dt/60
+# Change time step from secs to hrs
+dat$dt <- dat$dt/3600
 
 # # Retain only observed steps
 # dat <- dat %>%
@@ -137,11 +137,20 @@ table(tmp$id)
   # slice_sample(n = 0.01*nrow(dat2)) %>%
   # arrange(id, date)
 
+
+# Only keep IDs where N >= 30
+dat2 <- dat2 %>%
+  group_by(id) %>%
+  filter(n() >= 30) %>%
+  ungroup()
+
 # Do this step if not running the prior predictive simulation
 dat2$id <- factor(dat2$id) %>%  #need to convert to integer for Stan
   as.numeric()
 
-table(dat2$id) #47 IDs remaining
+table(dat2$id) #36 IDs remaining
+
+
 
 
 # Define objects pertaining to imputation of missing covars
@@ -196,7 +205,7 @@ data {
   //int npp_missidx[n_npp_miss];            // index for missing NPP vals
   //int n_sst_miss;                         // number of missing SST vals
   //int sst_missidx[n_sst_miss];            // index for missing SST vals
-  vector[N] dt;                           // time interval (min)
+  vector[N] dt;                           // time interval (hr)
   vector[N] dist;                         // Distance traveled for given step (m)
   vector[N] bathym;                       // Bathymetric depth (m)
   vector[N] k490;                         // Light attenuation coefficient at 490 nm (units)
@@ -404,7 +413,7 @@ data {
   int K;                                  // number of terms in linear model
   int ID[N];                              // ID label for each step
   int nID;                                // number of unique IDs
-  vector[N] dt;                           // time interval (min)
+  vector[N] dt;                           // time interval (hr)
   vector[N] dist;                         // Distance traveled for given step (m)
   vector[N] bathym;                       // Bathymetric depth (m)
   vector[N] k490;                         // Light attenuation coefficient at 490 nm (units)
@@ -483,7 +492,7 @@ model {
 
 mod2 <- rstan::stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000,
                     seed = 8675309, refresh = 100, control = list(max_treedepth = 15))
-#took 8.9 hrs to run 2000 iter for full dataset
+#took 17 min to run 2000 iter for full dataset
 
 params <- c('mu_b','b','mu_betas','tau','L')
 print(mod2, digits_summary = 3, pars = params, probs = c(0.025, 0.5, 0.975))

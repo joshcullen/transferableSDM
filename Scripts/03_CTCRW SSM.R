@@ -89,12 +89,12 @@ tmp %>%
 
 #### Account for location error at observed irregular time interval ####
 
-# Estimate 'true' locations regularized at 4 hr time step
+# Estimate 'true' locations regularized at 2 hr time step
 set.seed(2022)
 tic()
 fit_crw <- fit_ssm(dat2, vmax = 3, model = "crw", time.step = 4,
                           control = ssm_control(verbose = 1))
-toc()  #took 4 min
+toc()  #took 5 min
 
 print(fit_crw, n = nrow(fit_crw))  #all indiv. models converged
 summary(fit_crw)
@@ -108,11 +108,6 @@ plot(fit_crw, what = "predicted", type = 2, alpha = 0.1, ask = TRUE)
 ################################################################
 ### Filter out long time gaps and re-route paths around land ###
 ################################################################
-
-# Load land layers
-gom.sf <- st_read_parquet('Environ_data/GoM_land.parquet')
-br.sf <- st_read_parquet('Environ_data/Brazil_land.parquet')
-qa.sf <- st_read_parquet('Environ_data/Qatar_land.parquet')
 
 # Grab results and create data.frame
 res_crw <- grab(fit_crw, what = "predicted")
@@ -133,6 +128,19 @@ qa.tracks <- res_crw %>%
   st_as_sf(., coords = c('lon','lat'), crs = 4326) %>%
   st_transform(3395)
 
+
+# Generate hi-res coastline spatial layers
+tic()
+gom.sf <- ptolemy::extract_gshhg(data = gom.tracks, resolution = 'f', buffer = 500000)
+toc()  #takes 1.5 min to run
+
+tic()
+br.sf <- ptolemy::extract_gshhg(data = br.tracks, resolution = 'f', buffer = 200000)
+toc()  #takes 1 min to run
+
+tic()
+qa.sf <- ptolemy::extract_gshhg(data = qa.tracks, resolution = 'f', buffer = 100000)
+toc()  #takes 1 min to run
 
 
 
@@ -252,6 +260,12 @@ ggplot(data = qa.tracks3, aes(x, y, color = factor(bout))) +
 
 ### Export fitted tracks ###
 
-write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
-write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
-write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_12hr_aniMotum.csv", row.names = FALSE)
+write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_12hr_aniMotum.csv", row.names = FALSE)
+write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_12hr_aniMotum.csv", row.names = FALSE)
+
+
+## Write files for coastline spatial layers
+st_write_parquet(gom.sf, 'Environ_data/GoM_land.parquet')
+st_write_parquet(br.sf, 'Environ_data/Brazil_land.parquet')
+st_write_parquet(qa.sf, 'Environ_data/Qatar_land.parquet')

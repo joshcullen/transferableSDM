@@ -19,9 +19,9 @@ source('Scripts/helper functions.R')
 #################
 
 
-dat_gom <- read_csv("Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv")
-dat_br <- read_csv("Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv")
-dat_qa <- read_csv("Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv")
+dat_gom <- read_csv("Processed_data/Processed_GoM_Cm_Tracks_SSM_12hr_aniMotum.csv")
+dat_br <- read_csv("Processed_data/Processed_Brazil_Cm_Tracks_SSM_12hr_aniMotum.csv")
+dat_qa <- read_csv("Processed_data/Processed_Qatar_Cm_Tracks_SSM_12hr_aniMotum.csv")
 
 glimpse(dat_gom)
 glimpse(dat_br)
@@ -45,7 +45,7 @@ dat <- dat %>%
   prepData(., type = "UTM", coordNames = c('x','y'))
 
 
-# Remove any bouts that have large (i.e., 7-day) gaps
+# Remove any bouts that have large (i.e., 3-day) gaps
 dat2 <- dat %>%
   drop_na(x, y)
 
@@ -56,7 +56,7 @@ dat2 <- dat %>%
 ### Fit 2-state HMM ###
 #######################
 
-# Viz SL and TA over time by ID
+# Viz SL over time by ID
 ggplot(dat, aes(date, step)) +
   geom_path(aes(group = ID, color = ID)) +
   theme_bw() +
@@ -65,7 +65,7 @@ ggplot(dat, aes(date, step)) +
 
 # Pre-define possible states to determine 'good' initial values
 dat <- dat %>%
-  mutate(phase = case_when(step > 1000 ~ 'Migratory',
+  mutate(phase = case_when(step > 10000 ~ 'Migratory',
                            TRUE ~ 'Resident'))
 
 
@@ -90,10 +90,10 @@ dat %>%
 
 # initial step length distribution (natural scale parameters); gamma distribution
 sum(dat$step == 0)  #Check to see if I need to account for zero mass
-stepPar0 <- c(350, 3500, 250, 3500)  #(mu_1, mu_2, sd_1, sd_2)
+stepPar0 <- c(1500, 25000, 1500, 12500)  #(mu_1, mu_2, sd_1, sd_2)
 
 # initial turning angle distribution (natural scale parameters); wrapped Cauchy distribution
-anglePar0 <- c(0, 0, 0.5, 0.99) # (mean_1, mean_2, concentration_1, concentration_2)
+anglePar0 <- c(3.1, 0, 0.5, 0.8) # (mean_1, mean_2, concentration_1, concentration_2)
 
 
 Par0 <- list(step = stepPar0, angle = anglePar0)
@@ -114,10 +114,10 @@ hmm.res <- fitHMM(data = dat, nbStates = 2,
                   formula = ~ 1, stationary=TRUE, #stationary for a slightly better fit
                   estAngleMean = list(angle=TRUE),
                   stateNames = c('Resident','Migratory'),
-                  retryFits = 5,
-                  ncores = 5
+                  retryFits = 30,
+                  ncores = 15
 )
-toc()  #took 10 min to run
+toc()  #took 46 sec to run
 
 
 hmm.res

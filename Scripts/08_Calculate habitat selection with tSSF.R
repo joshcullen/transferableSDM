@@ -25,7 +25,7 @@ rstan_options(auto_write = TRUE)
 mod <- readRDS('Data_products/Time_model_intercept-slopes_stanfit.rds')
 # time.mod.input <- read_csv("Processed_data/Input for time model.csv")
 tSSF.input <- read_csv("Processed_data/Input for tSSF.csv")
-dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr_foieGras.csv')
+dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_12hr_aniMotum.csv')
 
 # glimpse(time.mod.input)
 glimpse(tSSF.input)
@@ -33,8 +33,8 @@ glimpse(tSSF.input)
 summary(tSSF.input)
 
 
-# Change time step from secs to mins
-tSSF.input$dt <- tSSF.input$dt/60
+# Change time step from secs to hrs
+tSSF.input$dt <- tSSF.input$dt/3600
 
 
 
@@ -80,13 +80,16 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 # Extract covar values at end of each used/available step
 plan(multisession, workers = availableCores() - 2)
 tSSF.input2 <- extract.covars(data = tSSF.input, layers = cov_list, dyn_names = c('k490', 'npp', 'sst'),
-                              along = FALSE, ind = "month.year", imputed = FALSE)
+                              along = TRUE, ind = "month.year", imputed = FALSE)
 #takes 1.5 min to run on desktop (18 cores)
 plan(sequential)
 
 
 # Center and scale covariates
 tSSF.input3 <- tSSF.input2 %>%
+  mutate(strata = tSSF.input$strata,
+         obs = tSSF.input$obs,
+         step = tSSF.input$step) %>%
   drop_na(bathym, k490, npp, sst) %>%
   mutate(bathym.s = scale(bathym) %>%
            as.vector(),
@@ -97,6 +100,11 @@ tSSF.input3 <- tSSF.input2 %>%
          sst.s = scale(sst) %>%
            as.vector())
 
+# Only keep IDs where N >= 30
+tSSF.input4 <- tSSF.input3 %>%
+  group_by(id) %>%
+  filter(sum(obs) >= 30) %>%
+  ungroup()
 
 
 
@@ -106,19 +114,19 @@ tSSF.input3 <- tSSF.input2 %>%
 
 
 # Only keep strata that have at least 1 used and 1 available step (since only complete cases analyzed)
-tSSF.input3 <- tSSF.input3 %>%
+tSSF.input4 <- tSSF.input4 %>%
   group_by(strata) %>%
   filter(sum(obs) == 1) %>%
   filter(n() > 1) %>%
   ungroup()
 
 # Add new ID column as consecutive numeric values
-tSSF.input3 <- tSSF.input3 %>%
+tSSF.input4 <- tSSF.input4 %>%
   mutate(id1 = as.numeric(factor(id)), .after = id)
 
 
 
-tSSF.input.list <- split(tSSF.input3, tSSF.input3$id1)
+tSSF.input.list <- split(tSSF.input4, tSSF.input4$id1)
 
 plan(multisession, workers = availableCores() - 2)
 
@@ -136,9 +144,9 @@ toc()  #took 2.5 min to run
 plan(sequential)
 
 
-tSSF.input3$time.prob <- unlist(res)
+tSSF.input4$time.prob <- unlist(res)
 # time.mod.input3$time.prob <- ifelse(time.mod.input3$time.prob == 0, 1e-99, time.mod.input3$time.prob)
-summary(tSSF.input3$time.prob)
+summary(tSSF.input4$time.prob)
 
 
 
@@ -149,7 +157,7 @@ summary(tSSF.input3$time.prob)
 ########################################################
 
 # Prepare data for model
-tSSF.input3 <- tSSF.input3 %>%
+tSSF.input4 <- tSSF.input4 %>%
   group_by(strata) %>%
   mutate(step.id = 1:n(), .after = obs) %>%  #number each of the used and available steps for subsetting
   ungroup()
@@ -159,7 +167,7 @@ tSSF.input3 <- tSSF.input3 %>%
 plan(multisession, workers = availableCores() - 2)
 
 tic()
-tSSF.input4 <- tSSF.input3 %>%
+tSSF.input5 <- tSSF.input4 %>%
   mutate(step.id = factor(step.id)) %>%
   split(.$id1) %>%
   future_map(., ~{.x %>%
@@ -169,13 +177,13 @@ tSSF.input4 <- tSSF.input3 %>%
       ungroup()
     }) %>%
   bind_rows()
-toc()  #took 2.5 min
+toc()  #took 23 sec
 
 plan(sequential)
 
 
 
-tSSF.input5 <- tSSF.input4 #%>%
+# tSSF.input5 <- tSSF.input4 #%>%
   # slice(693391:693400) #%>%
   # slice(510301:510400)
   # slice(1:1000000)
@@ -202,7 +210,7 @@ xmat <- tSSF.input5 %>%
   map(~{.x %>%
       dplyr::select(-step.id) %>%
       as.matrix()})
-xmat <- array(unlist(xmat), dim = c(n_distinct(tSSF.input5$strata), 4, max(tSSF.input3$step.id)))
+xmat <- array(unlist(xmat), dim = c(n_distinct(tSSF.input5$strata), length(covar.names), max(tSSF.input4$step.id)))
 
 pmov <- tSSF.input5 %>%
   dplyr::select(step.id, time.prob) %>%
@@ -210,7 +218,7 @@ pmov <- tSSF.input5 %>%
   map(~{.x %>%
       dplyr::select(-step.id) %>%
       as.matrix()})
-pmov <- array(unlist(pmov), dim = c(n_distinct(tSSF.input5$strata), 1, max(tSSF.input3$step.id)))
+pmov <- array(unlist(pmov), dim = c(n_distinct(tSSF.input5$strata), 1, max(tSSF.input4$step.id)))
 
 # Create list of data
 dat.list <- list(
@@ -221,7 +229,7 @@ dat.list <- list(
     pull(id1) %>%
     factor() %>% as.numeric(),
   nID = n_distinct(tSSF.input5$id, na.rm = TRUE),
-  nstep = max(tSSF.input3$step.id),
+  nstep = max(tSSF.input4$step.id),
   xmat = xmat,
   pmov = pmov,
   # xmat_used = as.matrix(tSSF.input5[tSSF.input5$step.id == 1, covar.names]),
@@ -250,19 +258,7 @@ data {
   int nstep;                             // number of used and available steps
   int<lower=1, upper=nID> ID[N];         // ID label for each step
   matrix[K,nstep] xmat[N];                 // Design matrix for all used and available steps
-  //matrix[N,K] xmat_used;                 // Design matrix for used steps
-  //matrix[N,K] xmat_avail1;               // Design matrix for first available step
-  //matrix[N,K] xmat_avail2;               // Design matrix for second available step
-  //matrix[N,K] xmat_avail3;               // Design matrix for third available step
-  //matrix[N,K] xmat_avail4;               // Design matrix for fourth available step
-
   matrix<lower=0>[1,nstep] pmov[N];      // Time model probs for all used and available steps
-  //vector<lower=0>[N] pmov_used;          // Time model probs for used steps
-  //vector<lower=0>[N] pmov_avail1;        // Time model probs for first available step
-  //vector<lower=0>[N] pmov_avail2;        // Time model probs for second available step
-  //vector<lower=0>[N] pmov_avail3;        // Time model probs for third available step
-  //vector<lower=0>[N] pmov_avail4;        // Time model probs for fourth available step
-
   int<lower=1, upper=1> y[N];            // Ones for ones trick of Bernoulli model
 }
 
@@ -287,11 +283,6 @@ transformed parameters {
 
 
 model {
-    //vector[N] p_used;                     // Vector to store probs for used steps
-    //vector[N] p_avail1;                   // Vector to store probs for first available step
-    //vector[N] p_avail2;                   // Vector to store probs for second available step
-    //vector[N] p_avail3;                   // Vector to store probs for third available step
-    //vector[N] p_avail4;                   // Vector to store probs for fourth available step
     vector[nstep] prob[N];                // Matrix to store joint probabilities of time model and SSF
     vector[N] pi;                         // Vector to store tSSF probs
 
@@ -318,31 +309,12 @@ for (i in 1:nID) {
     // calculation of pi
     prob[i] = pmov[i] * exp(xmat[i]' * betas[ID[i]]);
 
-    //p_used[i] = pmov_used[i] * exp(dot_product(xmat_used[i,], betas[ID[i]]));
-    //p_avail1[i] = pmov_avail1[i] * exp(dot_product(xmat_avail1[i,], betas[ID[i]]));
-    //p_avail2[i] = pmov_avail2[i] * exp(dot_product(xmat_avail2[i,], betas[ID[i]]));
-    //p_avail3[i] = pmov_avail3[i] * exp(dot_product(xmat_avail3[i,], betas[ID[i]]));
-    //p_avail4[i] = pmov_avail4[i] * exp(dot_product(xmat_avail4[i,], betas[ID[i]]));
-
     pi[i] = prob[i,1] / sum(prob[i,]);
 
 
     // calculate likelihood using ones trick
     y[i] ~ bernoulli(pi[i]);
   }
-
-  // calculation of pi
-    //p_used = pmov_used .* exp(xmat_used * betas);
-    //p_avail1 = pmov_avail1 .* exp(xmat_avail1 * betas);
-    //p_avail2 = pmov_avail2 .* exp(xmat_avail2 * betas);
-    //p_avail3 = pmov_avail3 .* exp(xmat_avail3 * betas);
-    //p_avail4 = pmov_avail4 .* exp(xmat_avail4 * betas);
-
-    //pi = p_used ./ (p_used + p_avail1 + p_avail2 + p_avail3 + p_avail4);
-
-
-    // calculate likelihood using ones trick
-    //target += bernoulli_lpmf(y | pi);
 }
 
 "
@@ -350,7 +322,7 @@ for (i in 1:nID) {
 
 mod1 <- stan(model_code = stan.model, data = dat.list, chains = 4, iter = 2000, warmup = 1000, seed = 2023,
              refresh = 100, control = list(adapt_delta = 0.99))
-# took 2.5 hrs to run 2000 iter for full dataset
+# took 1.25 hrs to run 2000 iter for full dataset
 
 # params <- c('mu_b','b','b0_id','bBathym','bK490','bNPP','bSST','b0_bar','sd_b0')
 print(mod1, digits_summary = 3, probs = c(0.025, 0.5, 0.975))

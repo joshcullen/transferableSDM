@@ -17,7 +17,7 @@ source('Scripts/helper functions.R')
 ### Import turtle tracks ###
 ############################
 
-dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_2hr_foieGras.csv')
+dat <- read_csv('Processed_data/Processed_GoM_Cm_Tracks_SSM_12hr_aniMotum.csv')
 
 dat <- dat %>%
   mutate(month.year = as_date(date), .after = 'date') %>%
@@ -40,8 +40,8 @@ sum(dat$step == 0, na.rm = TRUE)  #none
 set.seed(2022)
 
 plan(multisession, workers = availableCores() - 2)
-dat2 <- add_avail_steps(dat, nsteps = 15)
-plan(sequential)  #took 60 sec to run
+dat2 <- add_avail_steps(dat, nsteps = 100)
+plan(sequential)  #took 48 sec to run
 
 
 # Remove observations w/ NA step length (i.e., last obs of each PTT)
@@ -117,7 +117,7 @@ obs.path1 <- cbind(obs.path, dat.filt[dat.filt$obs == 1, c("strata","obs")])
 
 
 nrow(drop_na(obs.path1, bathym, k490, npp, sst)) / nrow(obs.path1)
-## 68.7% of observed and available steps have complete data
+## 70.9% of observed and available steps have complete data
 
 
 
