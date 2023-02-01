@@ -187,7 +187,7 @@ extract.covars.internal = function(data, layers, state.col, which_cat, dyn_names
       #         obs = tmp$obs,
       #         geometry = .)} %>%
       # st_sf()
-      sf::st_as_sf(., coords = c('x2','y2'), crs = 3395)
+      sf::st_as_sf(., coords = c('x','y'), crs = 3395)
 
     #Extract values from each line segment
     for (j in 1:n_distinct(pts[[ind]])) {
@@ -640,8 +640,22 @@ add_track_gaps <- function(data, ind) {
 # Per StackOverflow answer at https://stackoverflow.com/questions/71289669/intersection-keeping-non-intersecting-polygons-in-sf-r
 
 st_mask <- function(layer, mask) {
-  intersection <- st_intersection(layer, mask)
-  diff1 <- st_difference(layer, st_union(intersection$geometry))
+
+  # First check if an intersection occurs
+  tmp <- unlist(st_intersects(layer, mask))
+
+  if (length(tmp > 0) & unique(st_geometry_type(layer)) %in% c("POLYGON","MULTIPOLYGON")) {
+    intersection <- st_intersection(layer, mask)
+    diff1 <- st_difference(layer, st_union(intersection$geometry))
+
+  } else if (length(tmp > 0) & unique(st_geometry_type(layer)) == "POINT") {
+    diff1 <- layer[!st_intersects(layer, mask) %>% lengths > 0,]
+
+  } else {  #for tracks/polygons where no intersection w/ land
+
+    diff1 <- layer
+
+  }
 
   return(diff1)
 }

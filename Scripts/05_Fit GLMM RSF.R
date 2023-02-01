@@ -6,8 +6,8 @@ library(lubridate)
 library(bayesmove)
 library(terra)
 # library(INLA)
-# library(future)
-# library(furrr)
+library(future)
+library(furrr)
 library(sf)
 library(sfarrow)
 library(tictoc)
@@ -101,32 +101,221 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 ### Generate random (available) points and extract environ covars ###
 #####################################################################
 
+# Remove points that intersect land
+tic()
+dat3 <- dat2 %>%
+  split(.$id) %>%
+  map(~{.x %>%
+      st_as_sf(coords = c('x','y'), crs = 3395) %>%
+      st_mask(gom.sf) %>%
+      mutate(x = st_coordinates(.)[,1],
+             y = st_coordinates(.)[,2]) %>%
+      st_drop_geometry()}) %>%
+  bind_rows()
+toc()  #took 17 sec
+
+# How many points per ID?
+table(dat3$id)  #min of 37; max of 1953
+
 # Convert to class for use of {amt} functions
-dat3 <- make_track(dat2, .x = x, .y = y, .t = date, id = id, month.year = month.year, crs = 3395) %>%
+dat4 <- make_track(dat3, .x = x, .y = y, .t = date, id = id, month.year = month.year, crs = 3395) %>%
   nest(data = -id)
 
-# Remove points that intersect land
-### PICKBACK UP FROM HERE
-
 # Create KDE_href for each ID and add as nested column
-dat4 <- dat3 %>%
+dat4 <- dat4 %>%
   mutate(ud = map(data, ~hr_akde(.x, levels = 0.99)))
 
-# Check mean step length
-summary(dat2$step)
+# Add buffer to extend available area
+mean(dat3$step) * 6  #check avg distance that could be covered in a day (based on 4 hr time step)
 
 dat4 <- dat4 %>%
   mutate(ud_buff = map(ud, ~{.x %>%
       hr_isopleths() %>%
       slice(2) %>%
-      sf::st_buffer(dist = 2e4)}  #add 2 km buffer (mean step length)
+      sf::st_buffer(dist = 1e4)}  #add 10 km buffer (avg daily distance)
       ))
 
 # Clip UDs by land mask
-dat5 <- dat4 %>%
+dat4 <- dat4 %>%
   mutate(ud_buff = map(ud_buff, ~st_mask(.x, gom.sf)))
 
 
-# Generate available points
-dat5 <- dat5 %>%
-  mutate(avail_pts = map2(.x = ud_buff, .y = data, ~random_points(.x, n = 1000, presence = .y)))
+# Generate available points and randomly assign to month.year per ID
+dat4 <- dat4 %>%
+  mutate(avail_pts = map2(.x = ud_buff,
+                          .y = data,
+                          ~{data.frame(geometry = st_sample(.x, size = 10 * nrow(.y))) %>%
+                              mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
+                              st_sf()}
+                          ))
+
+
+# Viz example of available point spread by month.year
+ggplot() +
+  geom_sf(data = dat4$avail_pts[[45]], aes(color = month.year)) +
+  theme_bw() +
+  facet_wrap(~ month.year)
+
+
+# Join all used and available points together
+used <- dat4 %>%
+  dplyr::select(id, data) %>%
+  unnest(cols = data) %>%
+  mutate(obs = 1) %>%
+  rename(x = x_, y = y_) %>%
+  dplyr::select(id, month.year, x, y, obs) %>%
+  data.frame()
+
+avail <- dat4 %>%
+  dplyr::select(id, avail_pts) %>%
+  mutate(avail_pts = map(avail_pts, ~{.x %>%
+      mutate(x = st_coordinates(.)[,1],
+             y = st_coordinates(.)[,2]) %>%
+      st_drop_geometry()}
+      )) %>%
+  unnest(cols = avail_pts) %>%
+  mutate(obs = 0)
+
+
+rsf.pts <- rbind(used, avail)
+
+
+# Remove ID 104833 since some covar data not available in 2011
+rsf.pts <- rsf.pts %>%
+  filter(id != 104833)
+
+
+# Extract environ covars by month.year
+plan(multisession, workers = availableCores() - 2)
+rsf.pts <- extract.covars(data = rsf.pts, layers = cov_list, dyn_names = c('k490', 'npp', 'sst'),
+                           along = FALSE, ind = "month.year", imputed = FALSE)
+#takes 1.5 min to run on desktop (18 cores)
+plan(sequential)
+
+
+
+# Viz example of available point covar values by month.year
+ggplot() +
+  geom_point(data = rsf.pts %>%
+            filter(id == 128352, obs == 0), aes(x, y, color = bathym)) +
+  geom_point(data = rsf.pts %>%
+               filter(id == 128352, obs == 1), aes(x, y), color = 'red') +
+  theme_bw() +
+  facet_wrap(~ month.year)
+
+ggplot() +
+  geom_point(data = rsf.pts %>%
+               filter(id == 128352, obs == 0), aes(x, y, color = sst)) +
+  geom_point(data = rsf.pts %>%
+               filter(id == 128352, obs == 1), aes(x, y), color = 'red') +
+  scale_color_viridis_c(option = 'inferno') +
+  theme_bw() +
+  facet_wrap(~ month.year)
+
+
+
+
+
+
+####################
+### Fit GLMM RSF ###
+####################
+
+# Center and scale covars; remove rows w/ incomplete observations
+rsf.pts <- rsf.pts %>%
+  mutate(bathym.s = as.numeric(scale(bathym)),
+         k490.s = as.numeric(scale(k490)),
+         npp.s = as.numeric(scale(npp)),
+         sst.s = as.numeric(scale(sst))) %>%
+  drop_na(bathym, k490, npp, sst)
+
+
+
+# Infinitely-weighted logistic regression
+rsf.pts$wts <- ifelse(rsf.pts$obs == 0, 5000, 1)
+
+logis.mod <- glm(obs ~ bathym + k490 + npp + sst,
+                data = rsf.pts, family = binomial(), weights = wts)
+
+summary(logis.mod)
+
+
+# Down-weighted Poisson regression
+A <- (res(cov_list$bathym)[1] / 1000) ^ 2  #area of grid cells
+rsf.pts$wts2 <- ifelse(rsf.pts$obs == 0, A/sum(rsf.pts$obs == 0), 1e-6)
+
+pois.mod <- glm(obs/wts2 ~ bathym + k490 + npp + sst,
+                data = rsf.pts, family = poisson(), weights = wts2)
+
+summary(pois.mod)
+
+
+
+
+
+## Mixed RSF via glmmTMB
+library(glmmTMB)
+logis.glmmTMB <- glmmTMB(obs ~ bathym.s + k490.s + npp.s + sst.s +
+                        (1|id) + (0 + bathym|id)  + (0 + k490|id) + (0 + npp|id) + (0 + sst|id),
+                      family = binomial(), data = rsf.pts,
+                      doFit = FALSE, weights = wts)
+
+# Fix standard deviation of random intercept to 1000 (variance is 1e6)
+logis.glmmTMB$parameters$theta[1] <- log(1e3)
+
+# Tell glmmTMB to leave sd of random intercept fixed, but estimate for random slopes
+logis.glmmTMB$mapArg <- list(theta = factor(c(NA, 1, 1, 1, 1)))
+
+# Fit model
+logis.glmmTMB.fit <- fitTMB(logis.glmmTMB)
+summary(logis.glmmTMB.fit)
+
+
+
+
+## Mixed RSF via INLA
+library(INLA)
+
+rsf.pts$id1 <- as.numeric(factor(rsf.pts$id))
+rsf.pts$id2 <- rsf.pts$id1
+rsf.pts$id3 <- rsf.pts$id1
+rsf.pts$id4 <- rsf.pts$id1
+rsf.pts$id5 <- rsf.pts$id1
+rsf.pts$id6 <- rsf.pts$id1
+rsf.pts$id7 <- rsf.pts$id1
+rsf.pts$id8 <- rsf.pts$id1
+rsf.pts$id9 <- rsf.pts$id1
+
+rsf.pts <- arrange(rsf.pts, id1)
+
+RSF.formula <- obs ~ bathym.s + I(bathym.s ^ 2) + k490.s + I(k490.s ^ 2) + npp.s + I(npp.s ^ 2) + sst.s + I(sst.s ^ 2) +
+  f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
+  f(id2, bathym.s, values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id3, I(bathym.s ^ 2), values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id4, k490.s, values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id5, I(k490.s ^ 2), values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id6, npp.s, values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id7, I(npp.s ^ 2), values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id8, sst.s, values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+  f(id9, I(sst.s ^ 2), values = unique(rsf.pts$id1), model = "iid",
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
+
+# Fit the model
+tic()
+fit.RSF <- inla(RSF.formula, family = "binomial", data = rsf.pts, #weights = rsf.pts$wts,
+                 control.fixed = list(
+                   mean = 0,
+                   prec = list(default = 1e-4)),
+                 control.compute = list(waic = TRUE,
+                                        dic = TRUE), verbose = FALSE
+)
+toc()  # took 11.5 min to run
+
+summary(fit.RSF)
