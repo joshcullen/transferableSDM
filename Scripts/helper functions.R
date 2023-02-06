@@ -659,3 +659,73 @@ st_mask <- function(layer, mask) {
 
   return(diff1)
 }
+
+#-----------------------------------
+
+# Updated version of the same function in {bayesmove}; fixes issue w/ specifying wrong N for ID/tseg combos
+expand_behavior=function(dat, theta.estim, obs, nbehav, behav.names, behav.order) {
+
+  #Assign behaviors (via theta) to each track segment
+  theta.estim1<- apply(theta.estim[,1:nbehav], 1, function(x) x/sum(x)) %>%
+    t()  #normalize probs for only first 3 behaviors being used
+  theta.estim1<- data.frame(id = obs$id, tseg = obs$tseg, theta.estim1)
+  theta.estim1$id<- as.character(theta.estim1$id)
+  names(theta.estim1)<- c("id", "tseg", behav.names)  #define behaviors
+
+  nobs<- data.frame(id = obs$id, tseg = obs$tseg)
+  nobs <- nobs %>%
+    left_join(dat %>%
+                dplyr::group_by(.data$id, .data$tseg) %>%
+                dplyr::tally() %>%
+                dplyr::ungroup(),
+              by = c('id', 'tseg'))
+
+
+  for (i in 1:nrow(theta.estim1)) {
+    ind<- which(dat$id == theta.estim1$id[i] & dat$tseg == theta.estim1$tseg[i])
+
+    if (i == 1) {
+      theta.estim2<- rep(theta.estim1[i,], nobs$n[i]) %>%
+        unlist() %>%
+        matrix(nrow = nobs$n[i], ncol = ncol(theta.estim1), byrow = TRUE)
+    } else {
+      tmp<- rep(theta.estim1[i,], nobs$n[i]) %>%
+        unlist() %>%
+        matrix(nrow = nobs$n[i], ncol = ncol(theta.estim1), byrow = TRUE)
+
+      theta.estim2<- rbind(theta.estim2, tmp)
+    }
+  }
+
+  colnames(theta.estim2)<- names(theta.estim1)
+  theta.estim2<- data.frame(theta.estim2, time1 = dat$time1, date = dat$date,
+                            stringsAsFactors = FALSE)
+
+  #Change col classes to numeric besides ID
+  ind1<- which(names(theta.estim2) != "id")
+  theta.estim2<- theta.estim2 %>%
+    dplyr::mutate_at(names(theta.estim2)[ind1], as.numeric) %>%
+    dplyr::select(.data$id, .data$tseg, .data$time1, .data$date, dplyr::everything())
+
+  #Change into long format
+  theta.estim.long<- tidyr::pivot_longer(theta.estim2, cols = -c(1:4),
+                                         names_to = "behavior", values_to = "prop")
+  theta.estim.long$behavior<- factor(theta.estim.long$behavior,
+                                     levels = behav.names[behav.order])
+  theta.estim.long<- theta.estim.long %>%
+    dplyr::arrange(.data$behavior) %>%
+    dplyr::mutate_at("date", lubridate::as_datetime)
+
+  theta.estim.long
+}
+
+#-----------------------------------
+
+# Updated version of the same function in {bayesmove}; fixes issue w/ function speed and efficiency
+get_MAP = function(dat, nburn) {
+
+  tmp <- dat[,(nburn + 2):ncol(dat)]  #subset only columns after burn-in period
+  MAP.est <- apply(tmp, 1, function(x) which.max(x)) + nburn  #find max LML per ID
+
+  return(MAP.est)
+}

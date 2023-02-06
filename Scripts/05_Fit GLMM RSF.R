@@ -319,3 +319,159 @@ fit.RSF <- inla(RSF.formula, family = "binomial", data = rsf.pts, #weights = rsf
 toc()  # took 11.5 min to run
 
 summary(fit.RSF)
+
+
+
+
+# The summary for the posterior distribution of the fixed effects:
+fixed.coeffs <- fit.RSF$summary.fixed %>%
+  dplyr::slice(2:n()) %>%  #remove intercept
+  mutate(param = factor(rownames(.), levels = rownames(.)))
+
+ggplot(fixed.coeffs, aes(y = param)) +
+  geom_vline(xintercept = 0, linewidth = 0.75) +
+  geom_linerange(aes(xmin = `0.025quant`, xmax = `0.975quant`)) +
+  geom_point(aes(x = mean)) +
+  theme_bw()
+
+
+random.coeffs <- fit.RSF$summary.random[-1] %>%
+  bind_rows(.id = "param") %>%
+  mutate(across(param, factor))
+levels(random.coeffs$param) <- fixed.coeffs$param
+
+# Add population means to random effects
+random.coeffs <- random.coeffs %>%
+  split(.$param) %>%
+  map2(.x = ., .y = fixed.coeffs$mean,
+       ~mutate(.x,
+               mean = mean + .y,
+               `0.025quant` = `0.025quant` + .y,
+               `0.975quant` = `0.975quant` + .y)) %>%
+  bind_rows()
+random.coeffs <- rbind(random.coeffs,
+                       fixed.coeffs %>%
+                         mutate(ID = "Pop", .before = mean) %>%
+                         relocate(param, .before = ID)) %>%
+  arrange(param)
+
+ggplot(random.coeffs) +
+  geom_hline(yintercept = 0, linewidth = 0.75) +
+  geom_linerange(aes(x = ID, ymin = `0.025quant`, ymax = `0.975quant`, color = param)) +
+  geom_point(aes(y = mean, x = ID, color = param)) +
+  theme_bw() +
+  facet_wrap(~ param, scales = "free")
+
+
+
+
+####################################################
+### Viz marginal effects plots per environ covar ###
+####################################################
+
+fixed.coeffs2 <- fixed.coeffs[,c("mean","0.025quant","0.975quant")] %>%
+  as.matrix()
+
+random.coeffs2 <- random.coeffs %>%
+  dplyr::select(param, ID, mean, `0.025quant`, `0.975quant`)
+
+
+### Bathymetry ###
+
+bathym.newdata <- data.frame(bathym = seq(min(rsf.pts$bathym.s), max(rsf.pts$bathym.s), length.out = 100),
+                             bathym.2 = seq(min(rsf.pts$bathym.s), max(rsf.pts$bathym.s), length.out = 100) ^ 2,
+                             k490 = 0,
+                             k490.s = 0,
+                             npp = 0,
+                             npp.2 = 0,
+                             sst = 0,
+                             sst.2 = 0) %>%
+  as.matrix()
+
+
+## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+
+
+
+pred.bathym <- vector("list", length = n_distinct(random.coeffs2$ID))
+names(pred.bathym) <- unique(random.coeffs2$ID)
+
+for (i in 1:n_distinct(random.coeffs2$ID)) {
+
+  coeff1 <- random.coeffs2 %>%
+    filter(ID == unique(random.coeffs2$ID)[i]) %>%
+    dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+    as.matrix()
+
+  tmp <- bathym.newdata %*% coeff1 %>%
+    data.frame() %>%
+    mutate(bathym = (bathym.newdata[,1] * sd(rsf.pts$bathym, na.rm = T)) + mean(rsf.pts$bathym, na.rm = T))
+
+  pred.bathym[[i]] <- tmp
+}
+
+pred.bathym <- pred.bathym %>%
+  bind_rows(.id = "id")
+
+# Pop mean in black; ID by color
+ggplot() +
+  geom_line(data = pred.bathym %>%
+              filter(id != "Pop"), aes(x = bathym, y = plogis(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_ribbon(data = pred.bathym %>%
+                filter(id == "Pop"), aes(x = bathym, ymin = plogis(X0.025quant), ymax = plogis(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.bathym %>%
+              filter(id == "Pop"), aes(x = bathym, y = plogis(mean)), linewidth = 1.5) +
+  theme_bw()
+
+
+
+
+
+
+
+### SST ###
+
+sst.newdata <- data.frame(bathym = 0,
+                             bathym.2 = 0,
+                             k490 = 0,
+                             k490.s = 0,
+                             npp = 0,
+                             npp.2 = 0,
+                             sst = seq(min(rsf.pts$sst.s), max(rsf.pts$sst.s), length.out = 100),
+                             sst.2 = seq(min(rsf.pts$sst.s), max(rsf.pts$sst.s), length.out = 100) ^ 2) %>%
+  as.matrix()
+
+
+## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+
+
+
+pred.sst <- vector("list", length = n_distinct(random.coeffs2$ID))
+names(pred.sst) <- unique(random.coeffs2$ID)
+
+for (i in 1:n_distinct(random.coeffs2$ID)) {
+
+  coeff1 <- random.coeffs2 %>%
+    filter(ID == unique(random.coeffs2$ID)[i]) %>%
+    dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
+    as.matrix()
+
+  tmp <- sst.newdata %*% coeff1 %>%
+    data.frame() %>%
+    mutate(sst = (sst.newdata[,7] * sd(rsf.pts$sst, na.rm = T)) + mean(rsf.pts$sst, na.rm = T))
+
+  pred.sst[[i]] <- tmp
+}
+
+pred.sst <- pred.sst %>%
+  bind_rows(.id = "id")
+
+# Pop mean in black; ID by color
+ggplot() +
+  geom_line(data = pred.sst %>%
+              filter(id != "Pop"), aes(x = sst, y = plogis(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_ribbon(data = pred.sst %>%
+                filter(id == "Pop"), aes(x = sst, ymin = plogis(X0.025quant), ymax = plogis(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.sst %>%
+              filter(id == "Pop"), aes(x = sst, y = plogis(mean)), linewidth = 1.5) +
+  theme_bw()
