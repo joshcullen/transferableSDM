@@ -34,31 +34,19 @@ dat <- dat %>%
 
 dat <- prep_data(dat = dat, coord.names = c('x','y'), id = "id")
 
+# Define bounding box of study extent for population
+bbox <- dat %>%
+  st_as_sf(coords = c('x','y'), crs = 3395) %>%
+  st_bbox() %>%
+  st_as_sfc() %>%
+  st_buffer(5000)  #buffer each side by 5 km
 
 ggplot() +
   geom_sf(data = gom.sf) +
   geom_point(data = dat, aes(x, y, color = behav)) +
+  geom_sf(data = bbox, color = "red", fill = "transparent") +
   scale_color_viridis_d() +
   theme_bw()
-
-
-###########################################################################
-### Calculate step lengths, turning angles, and dt; filter observations ###
-###########################################################################
-
-
-# dat$speed <- dat$step / dat$dt
-
-# Check speed for any outliers
-# round(quantile(dat$speed, c(0.01, 0.25, 0.5, 0.75, 0.95, 0.99, 1), na.rm = TRUE), 2)
-# any(dat$step == 0, na.rm = TRUE)  #no step lengths equal to 0
-#
-#
-# # Remove any observations w/ speeds faster than 3 m/s and w/ large time gaps (i.e., 3 days)
-# dat2 <- dat %>%
-#   filter(speed <= 3) %>%
-#   filter(!is.na(bout))
-
 
 
 
@@ -118,54 +106,75 @@ toc()  #took 18 sec
 # How many points per ID?
 table(dat2$id)  #min of 38; max of 1961
 
+
+# Mask the bbox by the land layer to generate available pts in water
+bbox_mask <- st_mask(bbox, gom.sf)
+
+# Check polygon of availability
+ggplot() +
+  geom_sf(data = bbox, fill = "lightblue") +
+  geom_sf(data = gom.sf) +
+  geom_point(data = dat2, aes(x, y, color = behav)) +
+  geom_sf(data = bbox_mask, color = "red", fill = "transparent") +
+  scale_color_viridis_d() +
+  theme_bw()
+
+
 # Convert to class for use of {amt} functions
-dat3 <- make_track(dat2, .x = x, .y = y, .t = date, id = id, month.year = month.year, behav = behav, crs = 3395) %>%
+# dat3 <- make_track(dat2, .x = x, .y = y, .t = date, id = id, month.year = month.year,
+#                    behav = behav, crs = 3395) %>%
+#   nest(data = -id)
+dat3 <- dat2 %>%
   nest(data = -id)
 
 # Create KDE_href for each ID and add as nested column
-tic()
-dat4 <- dat3 %>%
-  mutate(ud = map(data, ~hr_akde(.x, levels = 0.99)))
-toc()  #took 40 sec to run
+# tic()
+# dat4 <- dat3 %>%
+#   mutate(ud = map(data, ~hr_akde(.x, levels = 0.99)))
+# toc()  #took 40 sec to run
 
 # Add buffer to extend available area
-mean(dat2$step, na.rm = TRUE) * 6  #check avg distance that could be covered in a day (based on 4 hr time step)
+# mean(dat2$step, na.rm = TRUE) * 6  #check avg distance that could be covered in a day (based on 4 hr time step)
 
-dat4 <- dat4 %>%
-  mutate(ud_buff = map(ud, ~{.x %>%
-      hr_isopleths() %>%
-      slice(2) %>%
-      sf::st_buffer(dist = 1e4)}  #add 10 km buffer (avg daily distance)
-      ))
+# dat4 <- dat4 %>%
+#   mutate(ud_buff = map(ud, ~{.x %>%
+#       hr_isopleths() %>%
+#       slice(2) %>%
+#       sf::st_buffer(dist = 1e4)}  #add 10 km buffer (avg daily distance)
+#       ))
 
 # Clip UDs by land mask
-dat4 <- dat4 %>%
-  mutate(ud_buff = map(ud_buff, ~st_mask(.x, gom.sf)))
+# dat4 <- dat4 %>%
+#   mutate(ud_buff = map(ud_buff, ~st_mask(.x, gom.sf)))
 
 
 # Subset only 'Resident' locations
-dat4 <- dat4 %>%
+# dat4 <- dat4 %>%
+#   mutate(data_res = map(data, ~{.x %>%
+#       filter(behav == 'Resident')}
+#       ))
+dat4 <- dat3 %>%
   mutate(data_res = map(data, ~{.x %>%
       filter(behav == 'Resident')}
-      ))
+  ))
 
 
 # Generate available points and randomly assign to month.year per ID
 tic()
 dat4 <- dat4 %>%
-  mutate(avail_pts10 = map2(.x = ud_buff,
+  mutate(avail_pts10 = map2(.x = bbox_mask,
                           .y = data_res,
                           ~{data.frame(geometry = st_sample(.x, size = 10 * nrow(.y))) %>%
                               mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
                               st_sf()}
                           ),
-         avail_pts30 = map2(.x = ud_buff,
+         avail_pts30 = map2(.x = bbox_mask,
                             .y = data_res,
                             ~{data.frame(geometry = st_sample(.x, size = 30 * nrow(.y))) %>%
                                 mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
                                 st_sf()}
          ),
-         avail_pts50 = map2(.x = ud_buff,
+         avail_pts50 = map2(.x = bbox_mask,
                             .y = data_res,
                             ~{data.frame(geometry = st_sample(.x, size = 50 * nrow(.y))) %>%
                                 mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
@@ -177,7 +186,7 @@ toc()  #takes 2 min to run
 # Viz example of available point spread by month.year
 ggplot() +
   geom_sf(data = dat4$avail_pts10[[2]], aes(color = month.year)) +
-  geom_point(data = dat4$data_res[[2]], aes(x_, y_)) +
+  geom_point(data = dat4$data_res[[2]], aes(x, y)) +
   theme_bw() +
   facet_wrap(~ month.year)
 
@@ -187,7 +196,7 @@ used <- dat4 %>%
   dplyr::select(id, data_res) %>%
   unnest(cols = data_res) %>%
   mutate(obs = 1) %>%
-  rename(x = x_, y = y_) %>%
+  # rename(x = x_, y = y_) %>%
   dplyr::select(id, month.year, x, y, obs) %>%
   data.frame()
 
@@ -232,11 +241,11 @@ rsf.pts_50 <- rbind(used, avail_50)
 
 # Remove ID 104833 since some covar data not available in 2011
 rsf.pts_10 <- rsf.pts_10 %>%
-  filter(id != 104833)
+  filter(!id %in% c(104833, 169273))
 rsf.pts_30 <- rsf.pts_30 %>%
-  filter(id != 104833)
+  filter(!id %in% c(104833, 169273))
 rsf.pts_50 <- rsf.pts_50 %>%
-  filter(id != 104833)
+  filter(!id %in% c(104833, 169273))
 
 
 # Extract environ covars by month.year
@@ -394,23 +403,24 @@ rsf.pts_50 <- arrange(rsf.pts_50, id1)
 RSF.formula <- obs ~ bathym.s + I(bathym.s ^ 2) + k490.s + I(k490.s ^ 2) + npp.s + I(npp.s ^ 2) + sst.s + I(sst.s ^ 2) +
   f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
   f(id2, bathym.s, values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
   f(id3, I(bathym.s ^ 2), values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
   f(id4, k490.s, values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
   f(id5, I(k490.s ^ 2), values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
   f(id6, npp.s, values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
   f(id7, I(npp.s ^ 2), values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
   f(id8, sst.s, values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05)))) +
   f(id9, I(sst.s ^ 2), values = unique(rsf.pts_10$id1), model = "iid",
-    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
+    hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(3,0.05))))
 
 # Fit the model
+inla.setOption("enable.inla.argument.weights", TRUE)
 set.seed(2023)
 tic()
 fit.RSF_10 <- inla(RSF.formula, family = "binomial", data = rsf.pts_10, weights = rsf.pts_10$wts,

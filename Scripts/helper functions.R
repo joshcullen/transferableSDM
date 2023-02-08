@@ -646,7 +646,13 @@ st_mask <- function(layer, mask) {
 
   if (length(tmp > 0) & unique(st_geometry_type(layer)) %in% c("POLYGON","MULTIPOLYGON")) {
     intersection <- st_intersection(layer, mask)
-    diff1 <- st_difference(layer, st_union(intersection$geometry))
+
+    if (!is.null(names(intersection))) {  #when there's a df w/ column named 'geometry'
+      diff1 <- st_difference(layer, st_union(intersection$geometry))
+    } else {  #when object is simply an sf layer, not as df
+      diff1 <- st_difference(layer, st_union(intersection))
+    }
+
 
   } else if (length(tmp > 0) & unique(st_geometry_type(layer)) == "POINT") {
     diff1 <- layer[!st_intersects(layer, mask) %>% lengths > 0,]
