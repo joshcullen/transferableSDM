@@ -35,16 +35,16 @@ dat <- dat %>%
 dat <- prep_data(dat = dat, coord.names = c('x','y'), id = "id")
 
 # Define bounding box of study extent for population
-bbox <- dat %>%
-  st_as_sf(coords = c('x','y'), crs = 3395) %>%
-  st_bbox() %>%
-  st_as_sfc() %>%
-  st_buffer(5000)  #buffer each side by 5 km
+# bbox <- dat %>%
+#   st_as_sf(coords = c('x','y'), crs = 3395) %>%
+#   st_bbox() %>%
+#   st_as_sfc() %>%
+#   st_buffer(5000)  #buffer each side by 5 km
 
 ggplot() +
   geom_sf(data = gom.sf) +
   geom_point(data = dat, aes(x, y, color = behav)) +
-  geom_sf(data = bbox, color = "red", fill = "transparent", linewidth = 1) +
+  # geom_sf(data = bbox, color = "red", fill = "transparent", linewidth = 1) +
   scale_color_viridis_d() +
   theme_bw()
 
@@ -108,86 +108,86 @@ table(dat2$id)  #min of 38; max of 1961
 
 
 # Mask the bbox by the land layer to generate available pts in water
-bbox_mask <- st_mask(bbox, gom.sf)
+# bbox_mask <- st_mask(bbox, gom.sf)
 
 # Check polygon of availability
-ggplot() +
-  geom_sf(data = bbox, fill = "lightblue") +
-  geom_sf(data = gom.sf) +
-  geom_point(data = dat2, aes(x, y, color = behav)) +
-  geom_sf(data = bbox_mask, color = "red", fill = "transparent") +
-  scale_color_viridis_d() +
-  theme_bw()
+# ggplot() +
+#   geom_sf(data = bbox, fill = "lightblue") +
+#   geom_sf(data = gom.sf) +
+#   geom_point(data = dat2, aes(x, y, color = behav)) +
+#   geom_sf(data = bbox_mask, color = "red", fill = "transparent") +
+#   scale_color_viridis_d() +
+#   theme_bw()
 
 
 # Convert to class for use of {amt} functions
-# dat3 <- make_track(dat2, .x = x, .y = y, .t = date, id = id, month.year = month.year,
-#                    behav = behav, crs = 3395) %>%
-#   nest(data = -id)
-dat3 <- dat2 %>%
+dat3 <- make_track(dat2, .x = x, .y = y, .t = date, id = id, month.year = month.year,
+                   behav = behav, crs = 3395) %>%
   nest(data = -id)
+# dat3 <- dat2 %>%
+#   nest(data = -id)
 
 # Create KDE_href for each ID and add as nested column
-# tic()
-# dat4 <- dat3 %>%
-#   mutate(ud = map(data, ~hr_akde(.x, levels = 0.99)))
-# toc()  #took 40 sec to run
+tic()
+dat4 <- dat3 %>%
+  mutate(ud = map(data, ~hr_akde(.x, levels = 0.99)))
+toc()  #took 40 sec to run
 
 # Add buffer to extend available area
-# mean(dat2$step, na.rm = TRUE) * 6  #check avg distance that could be covered in a day (based on 4 hr time step)
+mean(dat2$step, na.rm = TRUE) * 6  #check avg distance that could be covered in a day (based on 4 hr time step)
 
-# dat4 <- dat4 %>%
-#   mutate(ud_buff = map(ud, ~{.x %>%
-#       hr_isopleths() %>%
-#       slice(2) %>%
-#       sf::st_buffer(dist = 1e4)}  #add 10 km buffer (avg daily distance)
-#       ))
+dat4 <- dat4 %>%
+  mutate(ud_buff = map(ud, ~{.x %>%
+      hr_isopleths() %>%
+      slice(2) %>%
+      sf::st_buffer(dist = 1e4)}  #add 10 km buffer (avg daily distance)
+      ))
 
 # Clip UDs by land mask
-# dat4 <- dat4 %>%
-#   mutate(ud_buff = map(ud_buff, ~st_mask(.x, gom.sf)))
+dat4 <- dat4 %>%
+  mutate(ud_buff = map(ud_buff, ~st_mask(.x, gom.sf)))
 
 
 # Subset only 'Resident' locations
-# dat4 <- dat4 %>%
-#   mutate(data_res = map(data, ~{.x %>%
-#       filter(behav == 'Resident')}
-#       ))
-dat4 <- dat3 %>%
+dat4 <- dat4 %>%
   mutate(data_res = map(data, ~{.x %>%
       filter(behav == 'Resident')}
-  ))
+      ))
+# dat4 <- dat3 %>%
+#   mutate(data_res = map(data, ~{.x %>%
+#       filter(behav == 'Resident')}
+#   ))
 
 
 # Generate available points and randomly assign to month.year per ID
 set.seed(2023)
 tic()
 dat4 <- dat4 %>%
-  mutate(avail_pts10 = map2(.x = bbox_mask,
+  mutate(avail_pts10 = map2(.x = ud_buff,
                           .y = data_res,
                           ~{data.frame(geometry = st_sample(.x, size = 10 * nrow(.y))) %>%
                               mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
                               st_sf()}
                           ),
-         avail_pts30 = map2(.x = bbox_mask,
+         avail_pts30 = map2(.x = ud_buff,
                             .y = data_res,
                             ~{data.frame(geometry = st_sample(.x, size = 30 * nrow(.y))) %>%
                                 mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
                                 st_sf()}
          ),
-         avail_pts50 = map2(.x = bbox_mask,
+         avail_pts50 = map2(.x = ud_buff,
                             .y = data_res,
                             ~{data.frame(geometry = st_sample(.x, size = 50 * nrow(.y))) %>%
                                 mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
                                 st_sf()}
          ))
-toc()  #takes 1 min to run
+toc()  #takes 1.5 min to run
 
 
 # Viz example of available point spread by month.year
 ggplot() +
   geom_sf(data = dat4$avail_pts10[[2]], aes(color = month.year)) +
-  geom_point(data = dat4$data_res[[2]], aes(x, y)) +
+  geom_point(data = dat4$data_res[[2]], aes(x_, y_)) +
   theme_bw() +
   facet_wrap(~ month.year)
 
@@ -197,7 +197,7 @@ used <- dat4 %>%
   dplyr::select(id, data_res) %>%
   unnest(cols = data_res) %>%
   mutate(obs = 1) %>%
-  # rename(x = x_, y = y_) %>%
+  rename(x = x_, y = y_) %>%
   dplyr::select(id, month.year, x, y, obs) %>%
   data.frame()
 

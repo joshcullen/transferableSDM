@@ -100,7 +100,7 @@ rsf.pts_50s <- rsf.pts_50s %>%
 
 
 # Check Pearson corrs
-cor(rsf.pts_10s[,c('bathym','k490','npp','sst')])  #NPP and K490 highly corr (0.83); remove k490
+cor(rsf.pts_10s[,c('bathym','k490','npp','sst')])  #NPP and K490 highly corr (0.78); remove k490
 
 
 # Now explore transformed distributions
@@ -114,10 +114,10 @@ rsf.pts_10s %>%
 
 # Down-weighted Poisson regression
 # A <- as.numeric(st_area(bbox_mask) / 1e6)  #in km^2
-# A <- (res(cov_list$bathym)[1]) ^ 2  #in m^2
-# rsf.pts_10s$wts2 <- ifelse(rsf.pts_10s$obs == 0, A / sum(rsf.pts_10s$obs == 0), 1e-6)
-# rsf.pts_30s$wts2 <- ifelse(rsf.pts_30s$obs == 0, A / sum(rsf.pts_30s$obs == 0), 1e-6)
-# rsf.pts_50s$wts2 <- ifelse(rsf.pts_50s$obs == 0, A / sum(rsf.pts_50s$obs == 0), 1e-6)
+A <- 4759.836 ^ 2  #in m^2; pixel res is 4759.836 m
+rsf.pts_10s$wts2 <- ifelse(rsf.pts_10s$obs == 0, A / sum(rsf.pts_10s$obs == 0), 1e-6)
+rsf.pts_30s$wts2 <- ifelse(rsf.pts_30s$obs == 0, A / sum(rsf.pts_30s$obs == 0), 1e-6)
+rsf.pts_50s$wts2 <- ifelse(rsf.pts_50s$obs == 0, A / sum(rsf.pts_50s$obs == 0), 1e-6)
 #
 # rsf.pts_10s2 <- rsf.pts_10s %>%
 #   nest(data = -id) %>%
@@ -186,7 +186,7 @@ rsf.pts_50s <- arrange(rsf.pts_50s, id1)
 # create vector of ID values
 id.vals <- unique(rsf.pts_10s$id1)
 
-RSF.formula <- obs ~ log.bathym + I(log.bathym ^ 2) + log.npp + I(log.npp ^ 2) + log.sst + I(log.sst ^ 2) +
+RSF.formula <- obs/wts2 ~ log.bathym + I(log.bathym ^ 2) + log.npp + I(log.npp ^ 2) + log.sst + I(log.sst ^ 2) +
   f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
   f(id2, log.bathym, values = id.vals, model = "iid",
     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
@@ -214,42 +214,42 @@ RSF.formula <- obs ~ log.bathym + I(log.bathym ^ 2) + log.npp + I(log.npp ^ 2) +
 # Fit the model
 set.seed(2023)
 tic()
-fit.RSF_10 <- inla(RSF.formula, family = "Binomial", data = rsf.pts_10s, weights = rsf.pts_10s$wts,
+fit.RSF_10_pois <- inla(RSF.formula, family = "Poisson", data = rsf.pts_10s, weights = rsf.pts_10s$wts2,
                    control.fixed = list(
                      mean = 0,
                      prec = list(default = 1e-3)),
                    control.compute = list(waic = TRUE,
                                           dic = TRUE), verbose = FALSE
 )
-toc()  # took 5 min to run for x10
+toc()  # took 45 sec to run for x10
 
 summary(fit.RSF_10)
 
 
 set.seed(2023)
 tic()
-fit.RSF_30 <- inla(RSF.formula, family = "Binomial", data = rsf.pts_30s, weights = rsf.pts_30s$wts,
+fit.RSF_30 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_30s, weights = rsf.pts_30s$wts2,
                    control.fixed = list(
                      mean = 0,
                      prec = list(default = 1e-3)),
                    control.compute = list(waic = TRUE,
                                           dic = TRUE), verbose = FALSE
 )
-toc()  # took 16 min to run for 30x
+toc()  # took 3 min to run for 30x
 
 summary(fit.RSF_30)
 
 
 set.seed(2023)
 tic()
-fit.RSF_50 <- inla(RSF.formula, family = "Binomial", data = rsf.pts_50s, weights = rsf.pts_50s$wts,
+fit.RSF_50 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_50s, weights = rsf.pts_50s$wts2,
                    control.fixed = list(
                      mean = 0,
                      prec = list(default = 1e-3)),
                    control.compute = list(waic = TRUE,
                                           dic = TRUE), verbose = FALSE
 )
-toc()  # took 11 min to run for 50x
+toc()  # took 4.5 min to run for 50x
 
 summary(fit.RSF_50)
 
@@ -321,11 +321,11 @@ random.coeffs <- random.coeffs %>%
                `0.025quant` = `0.025quant` + .y$mean,
                `0.975quant` = `0.975quant` + .y$mean)) %>%
   bind_rows()
-random.coeffs <- rbind(random.coeffs,
-                       fixed.coeffs %>%
-                         mutate(ID = "Pop", .before = mean) %>%
-                         relocate(param, .before = ID)) %>%
-  arrange(param)
+# random.coeffs <- rbind(random.coeffs,
+#                        fixed.coeffs %>%
+#                          mutate(ID = "Pop", .before = mean) %>%
+#                          relocate(param, .before = ID)) %>%
+#   arrange(param)
 
 ggplot(random.coeffs) +
   geom_hline(yintercept = 0, linewidth = 0.75) +
@@ -347,7 +347,7 @@ ggplot(random.coeffs) +
 #   as.matrix()
 
 random.coeffs2 <- random.coeffs %>%
-  filter(dataset == 'x50') %>%
+  filter(dataset == 'x10') %>%
   dplyr::select(param, ID, mean, `0.025quant`, `0.975quant`)
 
 
@@ -389,7 +389,7 @@ pred.bathym <- pred.bathym %>%
   bind_rows(.id = "id")
 
 tmp <- fixed.coeffs %>%
-  filter(dataset == "x50") %>%
+  filter(dataset == "x10") %>%
   dplyr::select(mean) %>%
   as.matrix()
 
@@ -402,12 +402,12 @@ pred.bathym.pop <- bathym.newdata %*% tmp %>%
 
 # Pop mean in black; ID by color
 ggplot() +
-  # geom_line(data = pred.bathym, aes(x = bathym, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_line(data = pred.bathym, aes(x = bathym, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
   # geom_ribbon(data = pred.bathym %>%
   #               filter(id == "Pop"), aes(x = bathym, ymin = plogis(X0.025quant), ymax = plogis(X0.975quant)), alpha = 0.4) +
   geom_line(data = pred.bathym.pop, aes(x = bathym, y = exp(mean)), linewidth = 1.5) +
   theme_bw() +
-  lims(x = c(0,100), y = c(0,12))
+  lims(x = c(0,300), y = c(0,40))
 
 
 # ggplot() +
@@ -461,16 +461,27 @@ for (i in 1:n_distinct(random.coeffs2$ID)) {
 pred.sst <- pred.sst %>%
   bind_rows(.id = "id")
 
+
+tmp <- fixed.coeffs %>%
+  filter(dataset == "x10") %>%
+  dplyr::select(mean) %>%
+  as.matrix()
+
+pred.sst.pop <- sst.newdata %*% tmp %>%
+  data.frame() %>%
+  # mutate(sst = (sst.newdata[,1] * sd(rsf.pts_10s$sst, na.rm = T)) + mean(rsf.pts_10s[obs.ind_10,]$sst, na.rm = T))
+  mutate(sst = exp(sst.newdata[,5]))
+
+
+
 # Pop mean in black; ID by color
 ggplot() +
-  geom_line(data = pred.sst %>%
-              filter(id != "Pop"), aes(x = sst, y = plogis(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
-  geom_ribbon(data = pred.sst %>%
-                filter(id == "Pop"), aes(x = sst, ymin = plogis(X0.025quant), ymax = plogis(X0.975quant)), alpha = 0.4) +
-  geom_line(data = pred.sst %>%
-              filter(id == "Pop"), aes(x = sst, y = plogis(mean)), linewidth = 1.5) +
+  geom_line(data = pred.sst, aes(x = sst, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  # geom_ribbon(data = pred.sst %>%
+  #               filter(id == "Pop"), aes(x = sst, ymin = plogis(X0.025quant), ymax = plogis(X0.975quant)), alpha = 0.4) +
+  geom_line(data = pred.sst.pop, aes(x = sst, y = exp(mean)), linewidth = 1.5) +
   theme_bw() +
-  lims(y = c(0,1e20))
+  lims(y = c(0,1e118))
 
 
 
