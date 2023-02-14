@@ -3,15 +3,8 @@
 
 library(tidyverse)
 library(lubridate)
-# library(bayesmove)
-library(terra)
 library(INLA)
-library(future)
-library(furrr)
-library(sf)
-# library(sfarrow)
 library(tictoc)
-# library(amt)
 
 source('Scripts/helper functions.R')
 
@@ -200,28 +193,19 @@ RSF.formula <- obs/wts2 ~ log.bathym + I(log.bathym ^ 2) + log.npp + I(log.npp ^
     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
   f(id7, I(log.sst ^ 2), values = id.vals, model = "iid",
     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
-# RSF.formula <- obs ~ bathym.s + k490.s + npp.s + sst.s +
-#   f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
-#   f(id2, bathym.s, values = unique(rsf.pts_10$id1), model = "iid",
-#     hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id4, k490.s, values = unique(rsf.pts_10$id1), model = "iid",
-#     hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id6, npp.s, values = unique(rsf.pts_10$id1), model = "iid",
-#     hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id8, sst.s, values = unique(rsf.pts_10$id1), model = "iid",
-#     hyper = list(theta = list(initial = log(1), fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
+
 
 # Fit the model
 set.seed(2023)
 tic()
-fit.RSF_10_pois <- inla(RSF.formula, family = "Poisson", data = rsf.pts_10s, weights = rsf.pts_10s$wts2,
+fit.RSF_10 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_10s, weights = rsf.pts_10s$wts2,
                    control.fixed = list(
                      mean = 0,
                      prec = list(default = 1e-3)),
                    control.compute = list(waic = TRUE,
                                           dic = TRUE), verbose = FALSE
 )
-toc()  # took 45 sec to run for x10
+toc()  # took 45 sec to run for x10; 76 sec on laptop
 
 summary(fit.RSF_10)
 
@@ -235,7 +219,7 @@ fit.RSF_30 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_30s, weights 
                    control.compute = list(waic = TRUE,
                                           dic = TRUE), verbose = FALSE
 )
-toc()  # took 3 min to run for 30x
+toc()  # took 3 min to run for 30x; 6.5 min on laptop
 
 summary(fit.RSF_30)
 
@@ -249,7 +233,7 @@ fit.RSF_50 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_50s, weights 
                    control.compute = list(waic = TRUE,
                                           dic = TRUE), verbose = FALSE
 )
-toc()  # took 4.5 min to run for 50x
+toc()  # took 4.5 min to run for 50x; 7 min on laptop
 
 summary(fit.RSF_50)
 
@@ -261,8 +245,8 @@ summary(fit.RSF_50)
 #                         sqrt()) %>%
 #   mutate(lo = mean - sigma, hi = mean + sigma) %>%
 #   mutate(param = factor(rownames(.), levels = rownames(.)))
-fixed.coeffs <- fit.RSF_10$summary.fixed[-1,] %>%
-  mutate(param = factor(rownames(.), levels = rownames(.)))
+# fixed.coeffs <- fit.RSF_10$summary.fixed[-1,] %>%
+#   mutate(param = factor(rownames(.), levels = rownames(.)))
 
 
 fixed.coeffs.list <- list(x10 = cbind(fit.RSF_10$summary.fixed[-1,],
@@ -287,6 +271,7 @@ ggplot(fixed.coeffs, aes(x = param)) +
   geom_linerange(aes(ymin = lo, ymax = hi, color = dataset), position = position_dodge(width = 0.1)) +
   geom_point(aes(y = mean, color = dataset), position = position_dodge(width = 0.1)) +
   theme_bw()
+
 
 
 random.coeffs.list <- list(x10 = fit.RSF_10$summary.random[-1] %>%
@@ -355,8 +340,6 @@ random.coeffs2 <- random.coeffs %>%
 
 bathym.newdata <- data.frame(bathym = seq(min(rsf.pts_10s$log.bathym), max(rsf.pts_10s$log.bathym), length.out = 100),
                              bathym.2 = seq(min(rsf.pts_10s$log.bathym), max(rsf.pts_10s$log.bathym), length.out = 100) ^ 2,
-                             # k490 = 0,
-                             # k490.2 = 0,
                              npp = 0,
                              npp.2 = 0,
                              sst = 0,
@@ -364,7 +347,23 @@ bathym.newdata <- data.frame(bathym = seq(min(rsf.pts_10s$log.bathym), max(rsf.p
   as.matrix()
 
 
-## Come back and calculate log-RSS for these results (or the avg effect of each covar) as discussed in Avgar et al 2017
+# Generate samples for marginal effects from posterior
+# set.seed(2023)
+# foo <- fixed.coeffs %>%
+#   split(.$dataset) %>%
+#   pluck(1) %>%
+#   filter(str_detect(param, "bathym")) %>%
+#   dplyr::select(mean, sigma) %>%
+#   pmap(., function(mean, sigma) rnorm(1000, mean = mean, sd = sigma)) %>%
+#   map(data.frame) %>%
+#   bind_cols() %>%
+#   mutate(npp = 0, npp.2 = 0, sst = 0, sst.2 = 0) %>%
+#   t()
+#
+# tmp <- bathym.newdata %*% foo %>%
+#   data.frame() %>%
+#   mutate(bathym = exp(bathym.newdata[,1]))
+
 
 
 
@@ -380,7 +379,6 @@ for (i in 1:n_distinct(random.coeffs2$ID)) {
 
   tmp <- bathym.newdata %*% coeff1 %>%
     data.frame() %>%
-    # mutate(bathym = (bathym.newdata[,1] * sd(rsf.pts_10s$bathym, na.rm = T)) + mean(rsf.pts_10s[obs.ind_10,]$bathym, na.rm = T))
     mutate(bathym = exp(bathym.newdata[,1]))
 
   pred.bathym[[i]] <- tmp
@@ -395,7 +393,6 @@ tmp <- fixed.coeffs %>%
 
 pred.bathym.pop <- bathym.newdata %*% tmp %>%
   data.frame() %>%
-  # mutate(bathym = (bathym.newdata[,1] * sd(rsf.pts_10s$bathym, na.rm = T)) + mean(rsf.pts_10s[obs.ind_10,]$bathym, na.rm = T))
   mutate(bathym = exp(bathym.newdata[,1]))
 
 
