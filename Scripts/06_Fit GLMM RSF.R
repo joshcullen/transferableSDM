@@ -2,7 +2,6 @@
 ### Fit RSF as GLMM ###
 
 library(tidyverse)
-library(lubridate)
 library(INLA)
 library(tictoc)
 
@@ -540,49 +539,5 @@ ggplot() +
 
 
 
-library(mgcv)
 
-rsf.pts_10s2 <- rsf.pts_10s %>%
-  mutate(across(id, factor)) #%>%
-# filter(id %in% c(128352, 181800, 181796))
 
-rsf.pts_30s2 <- rsf.pts_30s %>%
-  mutate(across(id, factor))
-
-rsf.pts_50s2 <- rsf.pts_50s %>%
-  mutate(across(id, factor))
-
-set.seed(2023)
-tic()
-fit.gamm10 <- bam(obs ~ s(log.bathym, bs = "tp", k = 5, m = 2) +
-                    s(log.bathym, id, bs = "fs", k = 5, m = 1) +
-                    s(log.npp, bs = "tp", k = 5, m = 2) +
-                    s(log.npp, id, bs = "fs", k = 5, m = 1) +
-                    s(log.sst, bs = "tp", k = 5, m = 2) +
-                    s(log.sst, id, bs = "fs", k = 5, m = 1) +
-                    s(id, bs = "re"), data = rsf.pts_10s2, method = "fREML",
-                  family = binomial(), weights = wts, discrete = TRUE)
-toc()  #took 31 min to run
-
-summary(fit.gamm10)
-plot(fit.gamm10, select = 1, scale = 0, shade = TRUE, shade.col = "lightblue")
-plot(fit.gamm10, select = 50, scale = 0, shade = TRUE, shade.col = "lightblue")
-plot(fit.gamm10, select = 99, scale = 0, shade = TRUE, shade.col = "lightblue")
-plot(fit.gamm10, scale = 0, trans = exp, shade = TRUE, shade.col = "lightblue")
-
-set.seed(2023)
-tic()
-fit.gamm30 <- bam(obs ~ s(log.bathym, bs = "tp", k = 5, m = 2) +
-                    s(log.bathym, by = id, bs = "tp", k = 5, m = 1) +
-                    s(log.npp, bs = "tp", k = 5, m = 2) +
-                    s(log.npp, by = id, bs = "tp", k = 5, m = 1) +
-                    s(log.sst, bs = "tp", k = 5, m = 2) +
-                    s(log.sst, by = id, bs = "tp", k = 5, m = 1) +
-                    s(id, bs = "re"), data = rsf.pts_30s2, method = "fREML",
-                  family = binomial(), weights = wts, discrete = TRUE)
-toc()  #took 2.4 hrs to run; didn't converge
-
-summary(fit.gamm30)
-plot(fit.gamm30, select = 1, scale = 0, shade = TRUE, shade.col = "lightblue")
-plot(fit.gamm30, select = 50, scale = 0, shade = TRUE, shade.col = "lightblue")
-plot(fit.gamm30, select = 99, scale = 0, shade = TRUE, shade.col = "lightblue")
