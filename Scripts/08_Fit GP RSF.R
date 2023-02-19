@@ -3,10 +3,10 @@
 
 library(tidyverse)
 library(brms)
-library(tictoc)
+library(bayesplot)
 
 options(mc.cores = parallel::detectCores())
-rstan_options(auto_write = TRUE)
+rstan::rstan_options(auto_write = TRUE)
 
 
 #################
@@ -29,12 +29,18 @@ summary(rsf.pts_10)
 # Center and scale covars; remove rows w/ incomplete observations
 rsf.pts_10s <- rsf.pts_10 %>%
   drop_na(bathym, k490, npp, sst)
-obs.ind_10 <- which(rsf.pts_10s$obs == 1)
+# obs.ind_10 <- which(rsf.pts_10s$obs == 1)
+# rsf.pts_10s <- rsf.pts_10s %>%
+#   mutate(bathym.s = (bathym - mean(bathym[obs.ind_10])) / sd(bathym),
+#          k490.s = (k490 - mean(k490[obs.ind_10])) / sd(k490),
+#          npp.s = (npp - mean(npp[obs.ind_10])) / sd(npp),
+#          sst.s = (sst - mean(sst[obs.ind_10])) / sd(sst))
 rsf.pts_10s <- rsf.pts_10s %>%
-  mutate(bathym.s = (bathym - mean(bathym[obs.ind_10])) / sd(bathym),
-         k490.s = (k490 - mean(k490[obs.ind_10])) / sd(k490),
-         npp.s = (npp - mean(npp[obs.ind_10])) / sd(npp),
-         sst.s = (sst - mean(sst[obs.ind_10])) / sd(sst))
+  mutate(bathym.s = as.numeric(scale(bathym)),
+         k490.s = as.numeric(scale(k490)),
+         npp.s = as.numeric(scale(npp)),
+         sst.s = as.numeric(scale(sst))
+         )
 
 rsf.pts_30s <- rsf.pts_30 %>%
   drop_na(bathym, k490, npp, sst)
@@ -115,7 +121,7 @@ rsf.pts_50s$wts2 <- ifelse(rsf.pts_50s$obs == 0, A / sum(rsf.pts_50s$obs == 0), 
 
 ## Convert ID to factor for {brms}
 rsf.pts_10s$id1 <- factor(rsf.pts_10s$id)
-rsf.pts_10s$id2 <- rsf.pts_10s$id1
+# rsf.pts_10s$id2 <- rsf.pts_10s$id1
 
 # rsf.pts_10s <- arrange(rsf.pts_10s, id1)
 
@@ -151,21 +157,48 @@ plot(me1, ask = TRUE, points = FALSE)
 
 
 tmp2 <- rsf.pts_10s %>%
-  filter(id == 181800)
+  filter(id %in% c(181800, 181796, 159776))
 
-# Fit simple GLMM; coeffs estimated from MVN
-fit.gp <- brm(obs ~ gp(log.bathym) + log.npp + log.sst,
-            data = tmp2,
-            iter = 500, warmup = 250, refresh = 100,
-            chains = 4, cores = 4, family = "bernoulli", seed = 2023, backend = "rstan")
-# took 4 min
+# Fit GP RSF w/ fixed effects
+## NEED TO SET SENSIBLE PRIORS!!!
+get_prior(obs | weights(wts) ~ bathym.s + npp.s + sst.s +
+            gp(bathym.s, by = id1, gr = T, scale = FALSE, k = 5, c = 5/4) +
+            gp(npp.s, by = id1, gr = T, scale = FALSE, k = 5, c = 5/4) +
+            gp(sst.s, by = id1, gr = T, scale = FALSE, k = 5, c = 5/4) +
+            (1 | id1), #+
+            # (1 + bathym.s || id1),
+          data = tmp2,
+          family = "bernoulli")
+
+
+fit.gp <- brm(obs | weights(wts) ~ #bathym.s + npp.s + sst.s +
+                gp(bathym.s, by = id1, gr = T, scale = FALSE, k = 5, c = 5/4) +
+                gp(npp.s, by = id1, gr = T, scale = FALSE, k = 5, c = 5/4) +
+                gp(sst.s, by = id1, gr = T, scale = FALSE, k = 5, c = 5/4) +
+                (1 | id1),
+                # (1 + bathym.s || id1),
+              prior = c(prior(normal(0,10), class = Intercept),
+                        # prior(normal(0,10), class = b),
+                        prior(constant(1000), class = sd, coef = Intercept, group = id1),
+                        # prior(inv_gamma(2.874624, 2.941204), class = lscale),
+                        prior(exponential(1), class = sdgp)#,
+                        # prior(exponential(1), class = sd, coef = bathym.s, group = id1)
+                        ),
+              data = tmp2,
+              iter = 2000, warmup = 1000, refresh = 100,
+              chains = 3, cores = 3, family = "bernoulli", seed = 2023,
+              backend = "cmdstanr", threads = threading(3),
+              control = list(adapt_delta = 0.9, max_treedepth = 15))
+# took 1 hr
 
 summary(fit.gp)
 plot(fit.gp)
-rhat_vals <- rhat(fit_gender_dept_brm_prior)
+rhat_vals <- rhat(fit.gp)
 mcmc_rhat_data(rhat_vals)
 mcmc_rhat(rhat_vals) + theme_bw()
 
 me1 <- conditional_effects(fit.gp, ndraws = 200, spaghetti = TRUE)
 plot(me1, ask = TRUE, points = FALSE)
 
+# post_ranef <- as_draws(fit.gp_thread, add_chain = T)
+# mcmc_trace(post_ranef)
