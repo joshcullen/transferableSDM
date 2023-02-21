@@ -260,9 +260,9 @@ ggplot(data = qa.tracks3, aes(x, y, color = factor(bout))) +
 
 ### Export fitted tracks ###
 
-write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_12hr_aniMotum.csv", row.names = FALSE)
-write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_12hr_aniMotum.csv", row.names = FALSE)
-write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_12hr_aniMotum.csv", row.names = FALSE)
+write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
 
 
 ## Write files for coastline spatial layers
