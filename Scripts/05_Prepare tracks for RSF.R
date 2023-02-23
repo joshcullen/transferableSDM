@@ -5,7 +5,6 @@ library(tidyverse)
 library(lubridate)
 library(bayesmove)
 library(terra)
-# library(INLA)
 library(future)
 library(furrr)
 library(sf)
@@ -43,11 +42,14 @@ dat <- prep_data(dat = dat, coord.names = c('x','y'), id = "id")
 
 ggplot() +
   geom_sf(data = gom.sf) +
-  geom_point(data = dat, aes(x, y, color = behav)) +
+  geom_point(data = dat, aes(x, y, color = behav), alpha = 0.6) +
   # geom_sf(data = bbox, color = "red", fill = "transparent", linewidth = 1) +
-  scale_color_viridis_d() +
+  scale_color_viridis_d("State", end = 0.98) +
+  labs(x="",y="") +
+  coord_sf(expand = FALSE) +
   theme_bw()
-
+# ggsave("../../Conference Presentations/SERSTM 2023/behav_gom_map.png", width = 8, height = 6,
+#        units = "in", dpi = 400)
 
 
 #####################################
@@ -267,22 +269,42 @@ plan(sequential)
 
 
 # Viz example of available point covar values by month.year
-ggplot() +
-  geom_point(data = rsf.pts_50 %>%
-            filter(id == 181796, obs == 0), aes(x, y, color = bathym)) +
-  geom_point(data = rsf.pts_50 %>%
-               filter(id == 181796, obs == 1), aes(x, y), color = 'red') +
-  theme_bw() +
-  facet_wrap(~ month.year)
+x181796 <- rsf.pts_10 %>%
+  filter(id == 181796)
 
 ggplot() +
-  geom_point(data = rsf.pts_50 %>%
-               filter(id == 181796, obs == 0), aes(x, y, color = sst)) +
-  geom_point(data = rsf.pts_50 %>%
-               filter(id == 181796, obs == 1), aes(x, y), color = 'red') +
-  scale_color_viridis_c(option = 'inferno') +
+  geom_sf(data = gom.sf) +
+  geom_point(data = x181796 %>%
+            filter(obs == 0), aes(x, y, color = bathym)) +
+  geom_point(data = x181796 %>%
+               filter(obs == 1), aes(x, y), color = 'red') +
   theme_bw() +
+  coord_sf(xlim = c(min(x181796$x), max(x181796$x)),
+           ylim = c(min(x181796$y), max(x181796$y))) +
+  labs(x="",y="") +
+  cmocean::scale_color_cmocean("Depth (m)", name = 'deep',
+                               direction = -1, breaks = c(-250,-200,-150,-100,-50,0)) +
+  theme(strip.text = element_text(size = 12, face = "bold"),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)) +
   facet_wrap(~ month.year)
+# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_depth_map.png", width = 8, height = 8,
+#        units = "in", dpi = 400)
+
+ggplot() +
+  geom_point(data = rsf.pts_10 %>%
+               filter(id == 181796, obs == 0), aes(x, y, color = sst)) +
+  geom_point(data = rsf.pts_10 %>%
+               filter(id == 181796, obs == 1), aes(x, y), color = 'red') +
+  cmocean::scale_color_cmocean("SST (°C)", name = 'thermal') +
+  labs(x="",y="") +
+  theme_bw() +
+  theme(strip.text = element_text(size = 12, face = "bold"),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10)) +
+  facet_wrap(~ month.year)
+# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_sst_map.png", width = 8, height = 8,
+#        units = "in", dpi = 400)
 
 
 

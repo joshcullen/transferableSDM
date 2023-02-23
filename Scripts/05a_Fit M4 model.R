@@ -13,6 +13,7 @@ library(trelliscopejs)
 library(MetBrewer)
 library(rnaturalearth)
 library(sf)
+library(sfarrow)
 library(plotly)
 
 source('Scripts/helper functions.R')
@@ -41,6 +42,72 @@ dat_qa$id <- as.character(dat_qa$id)
 dat <- list(GoM = dat_gom, Brazil = dat_br, Qatar = dat_qa) %>%
   bind_rows(.id = "Region")
 
+
+# Map all tracks
+world <- ne_countries(scale = 50, returnclass = 'sf') %>%
+  filter(continent != "Antarctica")
+dat.sf <- dat %>%
+  drop_na(x, y) %>%
+  st_as_sf(., coords = c('x','y'), crs = 3395) %>%
+  st_transform(4326) %>%
+  mutate(lon = st_coordinates(.)[,1],
+         lat = st_coordinates(.)[,2]) %>%
+  st_drop_geometry()
+
+ggplot() +
+  geom_sf(data = world) +
+  geom_path(data = dat.sf, aes(lon, lat, group = id, color = id)) +
+  labs(x="",y="") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  coord_sf(xlim = c(-100,60), ylim = c(-50,50))
+
+# ggsave("../../Conference Presentations/SERSTM 2023/world_map.png", width = 8, height = 6,
+#        units = "in", dpi = 400)
+
+
+# Map tracks by region
+gom.sf <- st_read_parquet("Environ_data/GoM_land.parquet") %>%
+  st_transform(4326)
+br.sf <- st_read_parquet("Environ_data/Brazil_land.parquet") %>%
+  st_transform(4326)
+qa.sf <- st_read_parquet("Environ_data/Qatar_land.parquet") %>%
+  st_transform(4326)
+
+ggplot() +
+  geom_sf(data = gom.sf) +
+  geom_path(data = dat.sf %>%
+              filter(Region == 'GoM'), aes(lon, lat, group = id, color = id)) +
+  labs(x="",y="") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  coord_sf(xlim = c(-98,-77), ylim = c(18,32))
+# ggsave("../../Conference Presentations/SERSTM 2023/gom_map.png", width = 8, height = 6,
+#        units = "in", dpi = 400)
+
+
+ggplot() +
+  geom_sf(data = br.sf) +
+  geom_path(data = dat.sf %>%
+              filter(Region == 'Brazil'), aes(lon, lat, group = id, color = id)) +
+  labs(x="",y="") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  coord_sf(xlim = c(-49,-31), ylim = c(-26,-2))
+# ggsave("../../Conference Presentations/SERSTM 2023/br_map.png", width = 8, height = 6,
+#        units = "in", dpi = 400)
+
+
+ggplot() +
+  geom_sf(data = qa.sf) +
+  geom_path(data = dat.sf %>%
+              filter(Region == 'Qatar'), aes(lon, lat, group = id, color = id)) +
+  labs(x="",y="") +
+  theme_bw() +
+  theme(legend.position = "none") +
+  coord_sf(xlim = c(50.25,53), ylim = c(23.8,27.2))
+# ggsave("../../Conference Presentations/SERSTM 2023/qa_map.png", width = 4, height = 6,
+#        units = "in", dpi = 400)
 
 
 ##############################
