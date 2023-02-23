@@ -59,16 +59,17 @@ ggplot() +
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
 files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
 cov_list <- sapply(files, rast)
 cov_list
 
-names(cov_list) <- c('bathym', 'k490', 'npp', 'sst')
+names(cov_list) <- c('bathym', 'npp', 'sst')
 
 # Change names for dynamic layers to match YYYY-MM-01 format
-for (var in c('k490', 'npp', 'sst')) {
+for (var in c('npp', 'sst')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
   }
 
@@ -77,10 +78,14 @@ for (var in c('k490', 'npp', 'sst')) {
 cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
 
-## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP)
 for (var in c("bathym", "sst")) {
   cov_list[[var]] <- terra::resample(cov_list[[var]], cov_list$npp, method = "average")
 }
+
+## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
+cov_list[["bathym"]][cov_list[["bathym"]] > -1e-9] <- NA
+
 
 ## Transform CRS to match tracks
 cov_list <- map(cov_list, terra::project, 'EPSG:3395')
@@ -242,26 +247,26 @@ rsf.pts_30 <- rbind(used, avail_30)
 rsf.pts_50 <- rbind(used, avail_50)
 
 
-# Remove ID 104833 since some covar data not available in 2011l remove 169273 due to unrealistic track w/ many anomalous locations
+# Remove ID 169273 due to unrealistic track w/ many anomalous locations
 rsf.pts_10 <- rsf.pts_10 %>%
-  filter(!id %in% c(104833, 169273))
+  filter(!id %in% c(169273))
 rsf.pts_30 <- rsf.pts_30 %>%
-  filter(!id %in% c(104833, 169273))
+  filter(!id %in% c(169273))
 rsf.pts_50 <- rsf.pts_50 %>%
-  filter(!id %in% c(104833, 169273))
+  filter(!id %in% c(169273))
 
 
 # Extract environ covars by month.year
 plan(multisession, workers = availableCores() - 2)
-rsf.pts_10 <- extract.covars(data = rsf.pts_10, layers = cov_list, dyn_names = c('k490', 'npp', 'sst'),
+rsf.pts_10 <- extract.covars(data = rsf.pts_10, layers = cov_list, dyn_names = c('npp', 'sst'),
                            along = FALSE, ind = "month.year", imputed = FALSE)
 #takes 1.5 min to run on desktop (18 cores)
 
-rsf.pts_30 <- extract.covars(data = rsf.pts_30, layers = cov_list, dyn_names = c('k490', 'npp', 'sst'),
+rsf.pts_30 <- extract.covars(data = rsf.pts_30, layers = cov_list, dyn_names = c('npp', 'sst'),
                              along = FALSE, ind = "month.year", imputed = FALSE)
 #takes 30 sec to run on desktop (18 cores)
 
-rsf.pts_50 <- extract.covars(data = rsf.pts_50, layers = cov_list, dyn_names = c('k490', 'npp', 'sst'),
+rsf.pts_50 <- extract.covars(data = rsf.pts_50, layers = cov_list, dyn_names = c('npp', 'sst'),
                              along = FALSE, ind = "month.year", imputed = FALSE)
 #takes 40 sec to run on desktop (18 cores)
 plan(sequential)
@@ -312,6 +317,6 @@ ggplot() +
 ### Export prepped data ###
 ###########################
 
-write_csv(rsf.pts_10, "Processed_data/GoM_Cm_RSFprep_10x.csv")
-write_csv(rsf.pts_30, "Processed_data/GoM_Cm_RSFprep_30x.csv")
-write_csv(rsf.pts_50, "Processed_data/GoM_Cm_RSFprep_50x.csv")
+# write_csv(rsf.pts_10, "Processed_data/GoM_Cm_RSFprep_10x.csv")
+# write_csv(rsf.pts_30, "Processed_data/GoM_Cm_RSFprep_30x.csv")
+# write_csv(rsf.pts_50, "Processed_data/GoM_Cm_RSFprep_50x.csv")

@@ -2,8 +2,9 @@
 ### Fit RSF as GLMM w/ Gaussian Process Prior on SST ###
 
 library(tidyverse)
-library(lubridate)
 library(INLA)
+library(terra)
+library(sfarrow)
 library(tictoc)
 
 source('Scripts/helper functions.R')
@@ -17,6 +18,8 @@ source('Scripts/helper functions.R')
 rsf.pts_10 <- read_csv("Processed_data/GoM_Cm_RSFprep_10x.csv")
 rsf.pts_30 <- read_csv("Processed_data/GoM_Cm_RSFprep_30x.csv")
 rsf.pts_50 <- read_csv("Processed_data/GoM_Cm_RSFprep_50x.csv")
+
+gom.sf <- st_read_parquet("Environ_data/GoM_land.parquet")
 
 glimpse(rsf.pts_10)
 summary(rsf.pts_10)
@@ -158,14 +161,15 @@ id.vals <- unique(rsf.pts_10s$id1)
 
 
 
-dat <- rsf.pts_10s %>%
-  filter(id %in% c(181800, 181796, 159776))
-covars <- c('bathym.s','npp.s','sst.s')
+dat <- rsf.pts_10s #%>%
+  # filter(id %in% c(181800, 181796, 159776))
+covars <- c('log.bathym','log.npp','log.sst')
 # x <- tmp$sst
 y <- dat$obs / dat$wts2
 
 sigma0=sd(y)
 pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))
+
 
 
 bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
@@ -176,7 +180,7 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   mesh.list <- vector("list", length(covars))
 
   for (i in 1:length(covars)) {
-    mesh.list[[i]] <- inla.mesh.1d(seq(min(dat[[covars[i]]]), max(dat[[covars[i]]]), length.out = nbasis),
+    mesh.list[[i]] <- inla.mesh.1d(seq(min(dat[[covars[i]]]) - 2, max(dat[[covars[i]]]) + 2, length.out = nbasis),
                                    degree = degree,
                                    boundary = 'free')
   }
@@ -212,6 +216,8 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
     A.list[[i]] <- inla.spde.make.A(mesh.list[[ind[i]]], loc=dat[[covars[[ind[i]]]]])
   }
 
+
+
   ################################
   ### Include random GP slopes ###
   A.rand.bathym <- inla.spde.make.A(mesh.list[[ind[1]]], loc = dat[[covars[[ind[1]]]]],
@@ -228,9 +234,9 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   }
   st.est <- inla.stack(data=list(y=y),
                        A=append(A.list[1:length(A.list) %% 2 == 1],
-                                list(1, 1, 1)),
+                                list(1, 1)),
                        effects=append(index.list,
-                                      list(Intercept = rep(1, nrow(dat)), id1 = dat$id1, id2 = dat$id2)),
+                                      list(Intercept = rep(1, nrow(dat)), id1 = dat$id1)),
                        tag="est")
   st.pred.bath <- inla.stack(data=list(y=NA),
                              A=A.list[which(1:length(A.list) %% 2 == 0)[1]],
@@ -245,7 +251,7 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
                             effects=index.list[3],
                             tag="pred.sst")
   sestpred <- inla.stack(st.est, st.pred.bath, st.pred.npp, st.pred.sst)
-  formula <-  y ~ f(bathym.s, model=spde.list[[1]]) + f(npp.s, model=spde.list[[2]]) + f(sst.s, model=spde.list[[3]]) +
+  formula <-  y ~ -1 + Intercept + f(log.bathym, model=spde.list[[1]]) + f(log.npp, model=spde.list[[2]]) + f(log.sst, model=spde.list[[3]]) +
     f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) #+
     # f(rand.log.bathym, model=spde.list[[1]])
   data <-  inla.stack.data(sestpred)
@@ -256,7 +262,7 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
                   #   mean = 0,
                   #   prec = list(default = 1e-3))
   )
-  toc()  #took 25 min to run
+  toc()  #took 1 min to run
   pred.bath.ind <- inla.stack.index(sestpred, tag='pred.bath')$data
   pred.npp.ind <- inla.stack.index(sestpred, tag='pred.npp')$data
   pred.sst.ind <- inla.stack.index(sestpred, tag='pred.sst')$data
@@ -270,6 +276,12 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
 ind.list <- list(pred.bath.ind, pred.npp.ind, pred.sst.ind)
 
 
+
+
+##############################
+### Marginal effects plots ###
+##############################
+
 pred.vals <- vector("list", length(covars))
 for (i in 1:length(covars)) {
   pred.vals[[i]] <- list(x=dat[[covars[i]]],
@@ -277,15 +289,146 @@ for (i in 1:length(covars)) {
                          lcb=result$summary.fitted.values$"0.025quant"[ind.list[[i]]],
                          ucb=result$summary.fitted.values$"0.975quant"[ind.list[[i]]]) %>%
     bind_cols() %>%
-    mutate(across(mean:ucb, exp))
+    mutate(across(x:ucb, exp))
 }
 
 
+# Depth
 ggplot() +
-  # geom_point(data = tmp, aes(sst, obs)) +
-  # geom_ribbon(data = pred.vals[[3]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
-  geom_line(data = pred.vals[[1]], aes(x = x, y = mean)) +
-  theme_bw()
+  # geom_ribbon(data = pred.vals[[1]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
+  geom_line(data = pred.vals[[1]], aes(x = x, y = mean), linewidth = 1.5) +
+  theme_bw() +
+  lims(x = c(0,300)) +
+  labs(x = "Depth (m)", y = "Relative Intensity of Use") +
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24))
 
-ggplot(dat, aes(sst, obs)) +
-  geom_point()
+# NPP
+ggplot() +
+  # geom_ribbon(data = pred.vals[[2]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
+  geom_line(data = pred.vals[[2]], aes(x = x / 1000, y = mean), linewidth = 1.5) +
+  theme_bw() +
+  # lims(x = c(0,300)) +
+  labs(x = expression(paste("NPP (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24))
+
+# SST
+ggplot() +
+  # geom_ribbon(data = pred.vals[[3]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
+  geom_line(data = pred.vals[[3]], aes(x = x, y = mean), linewidth = 1.5) +
+  theme_bw() +
+  labs(x = "SST (°C)", y = "Relative Intensity of Use") +
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24))
+
+
+
+
+
+
+
+
+
+#####################################
+### Load environmental covariates ###
+#####################################
+
+## Load in environ rasters
+files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
+files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
+
+# Merge into list; each element is a different covariate
+cov_list <- sapply(files, rast)
+cov_list
+
+names(cov_list) <- c('bathym', 'k490', 'npp', 'sst')
+
+# Change names for dynamic layers to match YYYY-MM-01 format
+for (var in c('k490', 'npp', 'sst')) {
+  names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
+}
+
+
+## Set all positive bathymetric values (i.e., elevation) as NA
+cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
+
+
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
+for (var in c("bathym", "sst")) {
+  cov_list[[var]] <- terra::resample(cov_list[[var]], cov_list$npp, method = "average")
+}
+
+## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
+cov_list[["bathym"]][cov_list[["bathym"]] == 0.0000] <- NA
+
+
+## Transform CRS to match tracks
+cov_list <- map(cov_list, terra::project, 'EPSG:3395')
+
+
+
+
+####################################
+### Generate predictive surfaces ###
+####################################
+
+rast.sep.20 <- data.frame(log.bathym = log(abs(terra::values(cov_list$bathym))) %>%
+                            as.vector(),
+                          log.npp = log(terra::values(cov_list$npp$`2020-09-01`)) %>%
+                            as.vector(),
+                          log.sst = log(terra::values(cov_list$sst$`2020-09-01`)) %>%
+                            as.vector()) %>%
+  mutate(row_id = 1:nrow(.)) %>%
+  drop_na(log.bathym, log.npp, log.sst)
+
+
+
+# Generate matrices for covariate raster data (for prediction)
+A.pop.sep.20 <- vector("list", length(covars))
+for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+  A.pop.sep.20[[i]] <- inla.spde.make.A(mesh.list[[i]], loc=rast.sep.20[[covars[[i]]]])
+}
+
+# Store resulting GP coeffs per covar into a list
+pred.coeffs <- result$summary.random[-4] %>%  #remove random intercept term
+  map(., ~pull(.x, mean))
+
+# Make predictions via linear algebra
+pred.sep.20 <- A.pop.sep.20 %>%
+  map2(.x = ., .y = pred.coeffs,
+       ~{.x %*% .y %>%
+           as.vector()}
+      ) %>%
+  bind_cols() %>%
+  rowSums()  #sum up all predictions across covars
+
+
+# Define dummy raster for storing predictions
+rast.pred <- cov_list$bathym
+terra::values(rast.pred) <- NA  # initially store all NAs for locs w/o predictions
+terra::values(rast.pred)[rast.sep.20$row_id] <- pred.sep.20
+# plot(rast.pred)
+
+
+rast.pred.df <- as.data.frame(rast.pred, xy = TRUE)
+names(rast.pred.df)[3] <- "pred"
+bbox <- ext(rast.pred)
+
+
+# Generate predictive surface for GP at pop-level
+ggplot() +
+  geom_raster(data = rast.pred.df, aes(x, y, fill = pred)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = gom.sf) +
+  labs(x="",y="", title = "Population Mean: September 2020") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE) +
+  theme(axis.text = element_text(size = 12),
+        plot.title = element_text(size = 26, face = "bold"),
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size = 16)) +
+  guides(fill = guide_colourbar(barwidth = 2, barheight = 20))
