@@ -6,8 +6,6 @@ library(lubridate)
 library(mgcv)
 library(gratia)
 library(terra)
-# library(future)
-# library(furrr)
 library(sf)
 library(sfarrow)
 library(tictoc)
@@ -48,21 +46,21 @@ rsf.pts_10s <- rsf.pts_10 %>%
 
 rsf.pts_30s <- rsf.pts_30 %>%
   drop_na(bathym, k490, npp, sst)
-obs.ind_30 <- which(rsf.pts_30s$obs == 1)
-rsf.pts_30s <- rsf.pts_30s %>%
-  mutate(bathym.s = (bathym - mean(bathym[obs.ind_30])) / sd(bathym),
-         k490.s = (k490 - mean(k490[obs.ind_30])) / sd(k490),
-         npp.s = (npp - mean(npp[obs.ind_30])) / sd(npp),
-         sst.s = (sst - mean(sst[obs.ind_30])) / sd(sst))
+# obs.ind_30 <- which(rsf.pts_30s$obs == 1)
+# rsf.pts_30s <- rsf.pts_30s %>%
+#   mutate(bathym.s = (bathym - mean(bathym[obs.ind_30])) / sd(bathym),
+#          k490.s = (k490 - mean(k490[obs.ind_30])) / sd(k490),
+#          npp.s = (npp - mean(npp[obs.ind_30])) / sd(npp),
+#          sst.s = (sst - mean(sst[obs.ind_30])) / sd(sst))
 
 rsf.pts_50s <- rsf.pts_50 %>%
   drop_na(bathym, k490, npp, sst)
-obs.ind_50 <- which(rsf.pts_50s$obs == 1)
-rsf.pts_50s <- rsf.pts_50s %>%
-  mutate(bathym.s = (bathym - mean(bathym[obs.ind_50])) / sd(bathym),
-         k490.s = (k490 - mean(k490[obs.ind_50])) / sd(k490),
-         npp.s = (npp - mean(npp[obs.ind_50])) / sd(npp),
-         sst.s = (sst - mean(sst[obs.ind_50])) / sd(sst))
+# obs.ind_50 <- which(rsf.pts_50s$obs == 1)
+# rsf.pts_50s <- rsf.pts_50s %>%
+#   mutate(bathym.s = (bathym - mean(bathym[obs.ind_50])) / sd(bathym),
+#          k490.s = (k490 - mean(k490[obs.ind_50])) / sd(k490),
+#          npp.s = (npp - mean(npp[obs.ind_50])) / sd(npp),
+#          sst.s = (sst - mean(sst[obs.ind_50])) / sd(sst))
 
 
 
@@ -131,11 +129,11 @@ rsf.pts_10s2 <- rsf.pts_10s %>%
   mutate(across(id, factor)) #%>%
   # filter(id %in% c(128352, 181800, 181796))
 
-# rsf.pts_30s2 <- rsf.pts_30s %>%
-#   mutate(across(id, factor))
-#
-# rsf.pts_50s2 <- rsf.pts_50s %>%
-#   mutate(across(id, factor))
+rsf.pts_30s2 <- rsf.pts_30s %>%
+  mutate(across(id, factor))
+
+rsf.pts_50s2 <- rsf.pts_50s %>%
+  mutate(across(id, factor))
 
 
 
