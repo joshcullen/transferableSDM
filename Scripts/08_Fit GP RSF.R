@@ -1,5 +1,5 @@
 
-### Fit RSF as GLMM w/ Gaussian Process Prior on SST ###
+### Fit RSF as Hierarchicl Gaussian Process regression ###
 
 library(tidyverse)
 library(INLA)
@@ -167,7 +167,7 @@ covars <- c('log.bathym','log.npp','log.sst')
 # x <- tmp$sst
 y <- dat$obs / dat$wts2
 
-sigma0=sd(y)
+# sigma0=sd(y)
 pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))
 
 
@@ -180,7 +180,8 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   mesh.list <- vector("list", length(covars))
 
   for (i in 1:length(covars)) {
-    mesh.list[[i]] <- inla.mesh.1d(seq(min(dat[[covars[i]]]) - 2, max(dat[[covars[i]]]) + 2, length.out = nbasis),
+    mesh.list[[i]] <- inla.mesh.1d(seq(min(dat[[covars[i]]]) - 0.2, max(dat[[covars[i]]]) + 0.2,
+                                       length.out = nbasis),
                                    degree = degree,
                                    boundary = 'free')
   }
@@ -209,13 +210,16 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
     }
   }
 
-  A.list <- vector("list", length(covars) * 2)
-  ind <- rep(1:length(covars), each = 2)
 
-  for (i in 1:(length(covars) * 2)) { #one matrix for model estimation and another for generating predictions for plotting
-    A.list[[i]] <- inla.spde.make.A(mesh.list[[ind[i]]], loc=dat[[covars[[ind[i]]]]])
+  ############################
+  ### Population-level GPs ###
+  A.list <- vector("list", length(covars))
+  # ind <- rep(1:length(covars), each = 2)
+
+  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.list[[i]] <- inla.spde.make.A(mesh.list[[i]], loc=dat[[covars[[i]]]])
   }
-
+  ############################
 
 
   ################################
@@ -233,39 +237,40 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
     index.list[[i]] <-  inla.spde.make.index(covars[i], n.spde = spde.list[[i]]$n.spde)
   }
   st.est <- inla.stack(data=list(y=y),
-                       A=append(A.list[1:length(A.list) %% 2 == 1],
+                       A=append(A.list,
                                 list(1, 1)),
                        effects=append(index.list,
                                       list(Intercept = rep(1, nrow(dat)), id1 = dat$id1)),
                        tag="est")
-  st.pred.bath <- inla.stack(data=list(y=NA),
-                             A=A.list[which(1:length(A.list) %% 2 == 0)[1]],
-                             effects=index.list[1],
-                             tag="pred.bath")
-  st.pred.npp <- inla.stack(data=list(y=NA),
-                            A=A.list[which(1:length(A.list) %% 2 == 0)[2]],
-                            effects=index.list[2],
-                            tag="pred.npp")
-  st.pred.sst <- inla.stack(data=list(y=NA),
-                            A=A.list[which(1:length(A.list) %% 2 == 0)[3]],
-                            effects=index.list[3],
-                            tag="pred.sst")
-  sestpred <- inla.stack(st.est, st.pred.bath, st.pred.npp, st.pred.sst)
+  # st.pred.bath <- inla.stack(data=list(y=NA),
+  #                            A=A.list[which(1:length(A.list) %% 2 == 0)[1]],
+  #                            effects=index.list[1],
+  #                            tag="pred.bath")
+  # st.pred.npp <- inla.stack(data=list(y=NA),
+  #                           A=A.list[which(1:length(A.list) %% 2 == 0)[2]],
+  #                           effects=index.list[2],
+  #                           tag="pred.npp")
+  # st.pred.sst <- inla.stack(data=list(y=NA),
+  #                           A=A.list[which(1:length(A.list) %% 2 == 0)[3]],
+  #                           effects=index.list[3],
+  #                           tag="pred.sst")
+  # sestpred <- inla.stack(st.est, st.pred.bath, st.pred.npp, st.pred.sst)
   formula <-  y ~ -1 + Intercept + f(log.bathym, model=spde.list[[1]]) + f(log.npp, model=spde.list[[2]]) + f(log.sst, model=spde.list[[3]]) +
     f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) #+
     # f(rand.log.bathym, model=spde.list[[1]])
-  data <-  inla.stack.data(sestpred)
+  data <-  inla.stack.data(st.est)
   tic()
-  result <-  inla(formula, data=data,  family="poisson", weights = rep(dat$wts2, 4),
-                  control.predictor= list(A=inla.stack.A(sestpred),compute=TRUE)#,
+  result <-  inla(formula, data=data,  family="poisson", weights = dat$wts2,
+                  control.predictor= list(A=inla.stack.A(st.est),compute=TRUE)#,
                   # control.fixed = list(
                   #   mean = 0,
                   #   prec = list(default = 1e-3))
   )
-  toc()  #took 1 min to run
-  pred.bath.ind <- inla.stack.index(sestpred, tag='pred.bath')$data
-  pred.npp.ind <- inla.stack.index(sestpred, tag='pred.npp')$data
-  pred.sst.ind <- inla.stack.index(sestpred, tag='pred.sst')$data
+  toc()  #took 1 min to run; 1 min to run on laptop
+  # pred.bath.ind <- inla.stack.index(sestpred, tag='pred.bath')$data
+  # pred.npp.ind <- inla.stack.index(sestpred, tag='pred.npp')$data
+  # pred.sst.ind <- inla.stack.index(sestpred, tag='pred.sst')$data
+
   # list(xout=xout,
   #      mean=result$summary.fitted.values$mean[ii],
   #      lcb=result$summary.fitted.values$"0.025quant"[ii],
@@ -273,7 +278,7 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   #      inlaobj=result)
 }
 
-ind.list <- list(pred.bath.ind, pred.npp.ind, pred.sst.ind)
+# ind.list <- list(pred.bath.ind, pred.npp.ind, pred.sst.ind)
 
 
 
@@ -282,21 +287,49 @@ ind.list <- list(pred.bath.ind, pred.npp.ind, pred.sst.ind)
 ### Marginal effects plots ###
 ##############################
 
-pred.vals <- vector("list", length(covars))
-for (i in 1:length(covars)) {
-  pred.vals[[i]] <- list(x=dat[[covars[i]]],
-                         mean=result$summary.fitted.values$mean[ind.list[[i]]],
-                         lcb=result$summary.fitted.values$"0.025quant"[ind.list[[i]]],
-                         ucb=result$summary.fitted.values$"0.975quant"[ind.list[[i]]]) %>%
-    bind_cols() %>%
-    mutate(across(x:ucb, exp))
+# Generate matrices for sequences of covariate ranges
+A.me <- vector("list", length(covars))
+newdat.list <- list(log.bathym = seq(min(dat$log.bathym), max(dat$log.bathym), length.out = 500),
+                    log.npp = seq(min(dat$log.npp), max(dat$log.npp), length.out = 500),
+                    log.sst = seq(min(dat$log.sst), max(dat$log.sst), length.out = 500))
+for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+  A.me[[i]] <- inla.spde.make.A(mesh.list[[i]], loc=newdat.list[[covars[[i]]]])
 }
+
+
+# Store resulting GP coeffs per covar into a list
+pred.coeffs <- result$summary.random[-4] %>%  #remove random intercept term
+  map(., ~pull(.x, mean))
+
+# Make predictions via linear algebra
+pred.vals <- A.me %>%
+  map2(.x = ., .y = pred.coeffs,
+       ~{.x %*% .y %>%
+           as.vector() %>%
+           data.frame(mean = .)
+           }
+  ) %>%
+  set_names(covars) %>%
+  bind_rows(.id = 'covar') %>%
+  mutate(x = unlist(newdat.list)) %>%
+  mutate(across(mean:x, exp))
+
+# pred.vals <- vector("list", length(covars))
+# for (i in 1:length(covars)) {
+#   pred.vals[[i]] <- list(x=dat[[covars[i]]],
+#                          mean=result$summary.fitted.values$mean[ind.list[[i]]],
+#                          lcb=result$summary.fitted.values$"0.025quant"[ind.list[[i]]],
+#                          ucb=result$summary.fitted.values$"0.975quant"[ind.list[[i]]]) %>%
+#     bind_cols() %>%
+#     mutate(across(x:ucb, exp))
+# }
 
 
 # Depth
 ggplot() +
   # geom_ribbon(data = pred.vals[[1]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
-  geom_line(data = pred.vals[[1]], aes(x = x, y = mean), linewidth = 1.5) +
+  geom_line(data = pred.vals %>%
+              filter(covar == "log.bathym"), aes(x = x, y = mean), linewidth = 1.5) +
   theme_bw() +
   lims(x = c(0,300)) +
   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
@@ -306,7 +339,8 @@ ggplot() +
 # NPP
 ggplot() +
   # geom_ribbon(data = pred.vals[[2]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
-  geom_line(data = pred.vals[[2]], aes(x = x / 1000, y = mean), linewidth = 1.5) +
+  geom_line(data = pred.vals %>%
+              filter(covar == "log.npp"), aes(x = x / 1000, y = mean), linewidth = 1.5) +
   theme_bw() +
   # lims(x = c(0,300)) +
   labs(x = expression(paste("NPP (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
@@ -316,7 +350,8 @@ ggplot() +
 # SST
 ggplot() +
   # geom_ribbon(data = pred.vals[[3]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
-  geom_line(data = pred.vals[[3]], aes(x = x, y = mean), linewidth = 1.5) +
+  geom_line(data = pred.vals %>%
+              filter(covar == "log.sst"), aes(x = x, y = log(mean)), linewidth = 1.5) +
   theme_bw() +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 30),
@@ -341,7 +376,6 @@ files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
 cov_list <- sapply(files, rast)
-cov_list
 
 names(cov_list) <- c('bathym', 'k490', 'npp', 'sst')
 
@@ -361,7 +395,7 @@ for (var in c("bathym", "sst")) {
 }
 
 ## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
-cov_list[["bathym"]][cov_list[["bathym"]] == 0.0000] <- NA
+cov_list[["bathym"]][cov_list[["bathym"]] > -1e-9] <- NA
 
 
 ## Transform CRS to match tracks

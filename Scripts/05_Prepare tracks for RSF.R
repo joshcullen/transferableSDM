@@ -278,9 +278,9 @@ x181796 <- rsf.pts_10 %>%
   filter(id == 181796)
 
 ggplot() +
-  geom_sf(data = gom.sf) +
   geom_point(data = x181796 %>%
             filter(obs == 0), aes(x, y, color = bathym)) +
+  geom_sf(data = gom.sf) +
   geom_point(data = x181796 %>%
                filter(obs == 1), aes(x, y), color = 'red') +
   theme_bw() +
@@ -293,22 +293,25 @@ ggplot() +
         legend.title = element_text(size = 12),
         legend.text = element_text(size = 10)) +
   facet_wrap(~ month.year)
-# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_depth_map.png", width = 8, height = 8,
+# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_depth_map.png", width = 6, height = 6,
 #        units = "in", dpi = 400)
 
 ggplot() +
   geom_point(data = rsf.pts_10 %>%
                filter(id == 181796, obs == 0), aes(x, y, color = sst)) +
+  geom_sf(data = gom.sf) +
   geom_point(data = rsf.pts_10 %>%
                filter(id == 181796, obs == 1), aes(x, y), color = 'red') +
   cmocean::scale_color_cmocean("SST (°C)", name = 'thermal') +
   labs(x="",y="") +
   theme_bw() +
+  coord_sf(xlim = c(min(x181796$x), max(x181796$x)),
+           ylim = c(min(x181796$y), max(x181796$y))) +
   theme(strip.text = element_text(size = 12, face = "bold"),
         legend.title = element_text(size = 12),
         legend.text = element_text(size = 10)) +
   facet_wrap(~ month.year)
-# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_sst_map.png", width = 8, height = 8,
+# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_sst_map.png", width = 6, height = 6,
 #        units = "in", dpi = 400)
 
 

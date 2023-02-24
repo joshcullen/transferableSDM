@@ -257,7 +257,7 @@ fit.RSF_50 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_50s, weights 
                    control.compute = list(waic = TRUE,
                                           dic = TRUE), verbose = FALSE
 )
-toc()  # took 4.5 min to run for 50x; 7 min on laptop
+toc()  # took 4.5 min to run for 50x; 23 min on laptop
 
 summary(fit.RSF_50)
 
@@ -356,7 +356,7 @@ ggplot(random.coeffs) +
 #   as.matrix()
 
 random.coeffs2 <- random.coeffs %>%
-  filter(dataset == 'x10') %>%
+  filter(dataset == 'x30') %>%
   dplyr::select(param, ID, mean, `0.025quant`, `0.975quant`)
 
 
@@ -411,7 +411,7 @@ pred.bathym <- pred.bathym %>%
   bind_rows(.id = "id")
 
 tmp <- fixed.coeffs %>%
-  filter(dataset == "x10") %>%
+  filter(dataset == "x30") %>%
   dplyr::select(mean,`0.025quant`,`0.975quant`) %>%
   as.matrix()
 
@@ -428,16 +428,19 @@ ggplot() +
   theme_bw() +
   lims(x = c(0,300)) +
   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24))
 
 ggplot() +
-  geom_line(data = pred.bathym, aes(x = bathym, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_line(data = pred.bathym, aes(x = bathym, y = exp(mean), group = id, color = id),
+            linewidth = 1, show.legend = FALSE) +
   theme_bw() +
   lims(x = c(0,300), y = c(0,1500)) +
   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24),
+        panel.background = element_rect(fill = "black"),
+        panel.grid = element_blank())
 
 
 # ggplot() +
@@ -491,7 +494,7 @@ pred.sst <- pred.sst %>%
 
 
 tmp <- fixed.coeffs %>%
-  filter(dataset == "x10") %>%
+  filter(dataset == "x30") %>%
   dplyr::select(mean) %>%
   as.matrix()
 
@@ -508,16 +511,19 @@ ggplot() +
   geom_line(data = pred.sst.pop, aes(x = sst, y = exp(mean)), linewidth = 1.5) +
   theme_bw() +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24))
 
 ggplot() +
-  geom_line(data = pred.sst, aes(x = sst, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_line(data = pred.sst, aes(x = sst, y = exp(mean), group = id, color = id),
+            linewidth = 1, show.legend = FALSE) +
   theme_bw() +
-  lims(y = c(0,1e152)) +
+  lims(y = c(0,1e105)) +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24),
+        panel.background = element_rect(fill = "black"),
+        panel.grid = element_blank())
 
 
 
@@ -561,7 +567,7 @@ pred.npp <- pred.npp %>%
 
 
 tmp <- fixed.coeffs %>%
-  filter(dataset == "x10") %>%
+  filter(dataset == "x30") %>%
   dplyr::select(mean) %>%
   as.matrix()
 
@@ -576,16 +582,19 @@ ggplot() +
   geom_line(data = pred.npp.pop, aes(x = npp / 1000, y = exp(mean)), linewidth = 1.5) +
   theme_bw() +
   labs(x = expression(paste("Net Primary Productivity (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24))
 
 ggplot() +
-  geom_line(data = pred.npp, aes(x = npp / 1000, y = exp(mean), group = id, color = id), linewidth = 0.75, show.legend = FALSE) +
+  geom_line(data = pred.npp, aes(x = npp / 1000, y = exp(mean), group = id, color = id),
+            linewidth = 1, show.legend = FALSE) +
   theme_bw() +
-  lims(y = c(0,5000)) +
+  lims(y = c(0,1000)) +
   labs(x = expression(paste("Net Primary Productivity (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24),
+        panel.background = element_rect(fill = "black"),
+        panel.grid = element_blank())
 
 
 
@@ -614,13 +623,17 @@ for (var in c('k490', 'npp', 'sst')) {
 
 
 ## Set all positive bathymetric values (i.e., elevation) as NA
-cov_list[["bathym"]][cov_list[["bathym"]] >= 0.0] <- NA
+cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
 
 ## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
 for (var in c("bathym", "sst")) {
   cov_list[[var]] <- terra::resample(cov_list[[var]], cov_list$npp, method = "average")
 }
+
+## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
+cov_list[["bathym"]][cov_list[["bathym"]] > -1e-9] <- NA
+
 
 ## Transform CRS to match tracks
 cov_list <- map(cov_list, terra::project, 'EPSG:3395')
@@ -653,7 +666,7 @@ newdat <- data.frame(log.bathym = terra::values(cov_list$bathym) %>%
 names(newdat) <- c('log.bathym','log.bathym2','log.npp','log.npp2','log.sst','log.sst2')
 summary(newdat)
 
-coeff1 <- fit.RSF_10$summary.fixed$mean[-1]
+coeff1 <- fit.RSF_30$summary.fixed$mean[-1]
 mean.pred <- as.matrix(newdat) %*% coeff1  #make predictions
 
 
