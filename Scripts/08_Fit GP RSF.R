@@ -4,8 +4,11 @@
 library(tidyverse)
 library(INLA)
 library(terra)
+library(raster)
 library(sfarrow)
 library(tictoc)
+library(lubridate)
+library(BRRR)
 
 source('Scripts/helper functions.R')
 
@@ -32,7 +35,7 @@ summary(rsf.pts_10)
 
 # Center and scale covars; remove rows w/ incomplete observations
 rsf.pts_10s <- rsf.pts_10 %>%
-  drop_na(bathym, k490, npp, sst)
+  drop_na(bathym, npp, sst)
 # obs.ind_10 <- which(rsf.pts_10s$obs == 1)
 # rsf.pts_10s <- rsf.pts_10s %>%
 #   mutate(bathym.s = (bathym - mean(bathym[obs.ind_10])) / sd(bathym),
@@ -48,21 +51,21 @@ rsf.pts_10s <- rsf.pts_10s %>%
 
 rsf.pts_30s <- rsf.pts_30 %>%
   drop_na(bathym, k490, npp, sst)
-obs.ind_30 <- which(rsf.pts_30s$obs == 1)
-rsf.pts_30s <- rsf.pts_30s %>%
-  mutate(bathym.s = (bathym - mean(bathym[obs.ind_30])) / sd(bathym),
-         k490.s = (k490 - mean(k490[obs.ind_30])) / sd(k490),
-         npp.s = (npp - mean(npp[obs.ind_30])) / sd(npp),
-         sst.s = (sst - mean(sst[obs.ind_30])) / sd(sst))
+# obs.ind_30 <- which(rsf.pts_30s$obs == 1)
+# rsf.pts_30s <- rsf.pts_30s %>%
+#   mutate(bathym.s = (bathym - mean(bathym[obs.ind_30])) / sd(bathym),
+#          k490.s = (k490 - mean(k490[obs.ind_30])) / sd(k490),
+#          npp.s = (npp - mean(npp[obs.ind_30])) / sd(npp),
+#          sst.s = (sst - mean(sst[obs.ind_30])) / sd(sst))
 
 rsf.pts_50s <- rsf.pts_50 %>%
   drop_na(bathym, k490, npp, sst)
-obs.ind_50 <- which(rsf.pts_50s$obs == 1)
-rsf.pts_50s <- rsf.pts_50s %>%
-  mutate(bathym.s = (bathym - mean(bathym[obs.ind_50])) / sd(bathym),
-         k490.s = (k490 - mean(k490[obs.ind_50])) / sd(k490),
-         npp.s = (npp - mean(npp[obs.ind_50])) / sd(npp),
-         sst.s = (sst - mean(sst[obs.ind_50])) / sd(sst))
+# obs.ind_50 <- which(rsf.pts_50s$obs == 1)
+# rsf.pts_50s <- rsf.pts_50s %>%
+#   mutate(bathym.s = (bathym - mean(bathym[obs.ind_50])) / sd(bathym),
+#          k490.s = (k490 - mean(k490[obs.ind_50])) / sd(k490),
+#          npp.s = (npp - mean(npp[obs.ind_50])) / sd(npp),
+#          sst.s = (sst - mean(sst[obs.ind_50])) / sd(sst))
 
 
 
@@ -84,7 +87,6 @@ rsf.pts_10s %>%
 # Log-transform skewed covars to allow model fitting
 rsf.pts_10s <- rsf.pts_10s %>%
   mutate(log.bathym = log(abs(bathym)),
-         log.k490 = log(k490),
          log.npp = log(npp),
          log.sst = log(sst))
 
@@ -169,7 +171,11 @@ y <- dat$obs / dat$wts2
 
 # sigma0=sd(y)
 pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))
-
+mesh.seq <- list(log.bathym = c(0.001, 5000),
+                       log.npp = c(50, 200000),
+                       log.sst = c(5,38)) %>%
+  map(log)
+# apply(values(cov_list$sst), 2, min, na.rm = T) %>% summary()
 
 
 bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
@@ -180,7 +186,7 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   mesh.list <- vector("list", length(covars))
 
   for (i in 1:length(covars)) {
-    mesh.list[[i]] <- inla.mesh.1d(seq(min(dat[[covars[i]]]) - 0.2, max(dat[[covars[i]]]) + 0.2,
+    mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
                                        length.out = nbasis),
                                    degree = degree,
                                    boundary = 'free')
@@ -266,7 +272,7 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
                   #   mean = 0,
                   #   prec = list(default = 1e-3))
   )
-  toc()  #took 1 min to run; 1 min to run on laptop
+  toc()  #took 24 sec to run; 1 min to run on laptop
   # pred.bath.ind <- inla.stack.index(sestpred, tag='pred.bath')$data
   # pred.npp.ind <- inla.stack.index(sestpred, tag='pred.npp')$data
   # pred.sst.ind <- inla.stack.index(sestpred, tag='pred.sst')$data
@@ -351,7 +357,7 @@ ggplot() +
 ggplot() +
   # geom_ribbon(data = pred.vals[[3]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
   geom_line(data = pred.vals %>%
-              filter(covar == "log.sst"), aes(x = x, y = log(mean)), linewidth = 1.5) +
+              filter(covar == "log.sst"), aes(x = x, y = mean), linewidth = 1.5) +
   theme_bw() +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 30),
@@ -372,15 +378,17 @@ ggplot() +
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
 files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
 cov_list <- sapply(files, rast)
+cov_list
 
-names(cov_list) <- c('bathym', 'k490', 'npp', 'sst')
+names(cov_list) <- c('bathym', 'npp', 'sst')
 
 # Change names for dynamic layers to match YYYY-MM-01 format
-for (var in c('k490', 'npp', 'sst')) {
+for (var in c('npp', 'sst')) {
   names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$", replacement = "-01")
 }
 
@@ -389,7 +397,7 @@ for (var in c('k490', 'npp', 'sst')) {
 cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
 
 
-## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP)
 for (var in c("bathym", "sst")) {
   cov_list[[var]] <- terra::resample(cov_list[[var]], cov_list$npp, method = "average")
 }

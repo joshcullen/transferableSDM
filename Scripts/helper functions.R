@@ -735,3 +735,72 @@ get_MAP = function(dat, nburn) {
 
   return(MAP.est)
 }
+
+#-----------------------------------
+
+#### internal function calculating predicted-to-expected ratio for each class-interval (from ecospat::ecospat.boyce())
+boycei <- function(interval, obs, fit) {
+  pi <- sum(as.numeric(obs >= interval[1] & obs <= interval[2])) / length(obs)
+  ei <- sum(as.numeric(fit >= interval[1] & fit <= interval[2])) / length(fit)
+  return(round(pi/ei,10))
+}
+
+
+#-----------------------------------
+
+# Slightly modified version of ecospat::ecospat.boyce() that accounts for NAs from extracted habitat suitability values
+cbi <- function(fit, obs, nclass = 0, window.w = "default", res = 100,
+                PEplot = TRUE, rm.duplicate = TRUE, method = 'spearman') {
+
+
+
+  if (inherits(fit,"RasterLayer")) {
+    if (is.data.frame(obs) || is.matrix(obs)) {
+      obs <- extract(fit, obs)
+      obs <- obs[!is.na(obs)]
+    }
+    fit <- raster::getValues(fit)
+    fit <- fit[!is.na(fit)]
+  }
+
+  mini <- min(fit,obs)
+  maxi <- max(fit,obs)
+
+  if(length(nclass)==1){
+    if (nclass == 0) { #moving window
+      if (window.w == "default") {window.w <- (max(fit) - min(fit))/10}
+      vec.mov <- seq(from = mini, to = maxi - window.w, by = (maxi - mini - window.w)/res)
+      vec.mov[res + 1] <- vec.mov[res + 1] + 1  #Trick to avoid error with closed interval in R
+      interval <- cbind(vec.mov, vec.mov + window.w)
+    } else{ #window based on nb of class
+      vec.mov <- seq(from = mini, to = maxi, by = (maxi - mini)/nclass)
+      interval <- cbind(vec.mov, c(vec.mov[-1], maxi))
+    }
+  } else{ #user defined window
+    vec.mov <- c(mini, sort(nclass[!nclass>maxi|nclass<mini]))
+    interval <- cbind(vec.mov, c(vec.mov[-1], maxi))
+  }
+
+  f <- apply(interval, 1, boycei, obs, fit)
+  to.keep <- which(f != "NaN")  # index to keep no NaN data
+  f <- f[to.keep]
+  if (length(f) < 2) {
+    b <- NA  #at least two points are necessary to draw a correlation
+  } else {
+    r<-1:length(f)
+    if(rm.duplicate == TRUE){
+      r <- c(1:length(f))[f != c( f[-1],TRUE)]  #index to remove successive duplicates
+    }
+    b <- cor(f[r], vec.mov[to.keep][r], method = method)  # calculation of the correlation (i.e. Boyce index) after removing successive duplicated values
+  }
+  HS <- apply(interval, 1, sum)/2  # mean habitat suitability in the moving window
+  if(length(nclass)==1 & nclass == 0) {
+    HS[length(HS)] <- HS[length(HS)] - 1  #Correction of the 'trick' to deal with closed interval
+  }
+  HS <- HS[to.keep]  #exclude the NaN
+  if (PEplot == TRUE) {
+    plot(HS, f, xlab = "Habitat suitability", ylab = "Predicted/Expected ratio", col = "grey", cex = 0.75)
+    points(HS[r], f[r], pch = 19, cex = 0.75)
+  }
+  return(list(F.ratio = f, cor = round(b, 3), HS = HS))
+}
