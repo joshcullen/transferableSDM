@@ -754,12 +754,13 @@ cbi <- function(fit, obs, nclass = 0, window.w = "default", res = 100,
 
 
 
-  if (inherits(fit,"RasterLayer")) {
+  if (inherits(fit,"SpatRaster")) {
     if (is.data.frame(obs) || is.matrix(obs)) {
-      obs <- extract(fit, obs)
+      obs <- extract(fit, obs, ID = FALSE) %>%
+        pull(1)
       obs <- obs[!is.na(obs)]
     }
-    fit <- raster::getValues(fit)
+    fit <- terra::values(fit)
     fit <- fit[!is.na(fit)]
   }
 
@@ -773,8 +774,8 @@ cbi <- function(fit, obs, nclass = 0, window.w = "default", res = 100,
       vec.mov[res + 1] <- vec.mov[res + 1] + 1  #Trick to avoid error with closed interval in R
       interval <- cbind(vec.mov, vec.mov + window.w)
     } else{ #window based on nb of class
-      vec.mov <- seq(from = mini, to = maxi, by = (maxi - mini)/nclass)
-      interval <- cbind(vec.mov, c(vec.mov[-1], maxi))
+      vec.mov <- seq(from = mini, to = maxi + 1, length.out = nclass + 1)
+      interval <- cbind(vec.mov[-(nclass + 1)], vec.mov[-1])
     }
   } else{ #user defined window
     vec.mov <- c(mini, sort(nclass[!nclass>maxi|nclass<mini]))

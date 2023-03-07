@@ -1,7 +1,10 @@
 
 dat <- rsf.pts_10s %>%
-  filter(id %in% c(181800, 181796, 159776)) %>%
-  mutate(id1 = as.numeric(factor(id)))
+  # filter(id %in% c(181800, 181796, 159776)) %>%
+  mutate(id1 = as.integer(factor(id)),
+         id2 = id1,
+         id3 = id1,
+         id4 = id1)
 covars <- c('log.bathym','log.npp','log.sst')
 # x <- tmp$sst
 y <- dat$obs / dat$wts2
@@ -9,6 +12,10 @@ y <- dat$obs / dat$wts2
 # sigma0=sd(y)
 pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))
 ngroup <- n_distinct(dat$id1)
+mesh.seq <- list(log.bathym = c(0.001, 5500),
+                 log.npp = c(20, 200000),
+                 log.sst = c(12,38)) %>%
+  map(log)
 
 
 bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
@@ -19,7 +26,8 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   mesh.list <- vector("list", length(covars))
 
   for (i in 1:length(covars)) {  #buffer min and max values by exp(2)
-    mesh.list[[i]] <- inla.mesh.1d(seq(min(dat[[covars[i]]]) - 2, max(dat[[covars[i]]]) + 2, length.out = nbasis),
+    mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                       length.out = nbasis),
                                    degree = degree,
                                    boundary = 'free')
   }
@@ -48,72 +56,132 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
     }
   }
 
-  A.list <- vector("list", length(covars) * 2)
-  ind <- rep(1:length(covars), each = 2)
 
-  for (i in 1:(length(covars) * 2)) { #one matrix for model estimation and another for generating predictions for plotting
-    A.list[[i]] <- inla.spde.make.A(mesh.list[[ind[i]]],
-                                    loc=dat[[covars[[ind[i]]]]],
-                                    group = dat$id1,
-                                    n.group = ngroup
-                                    )
+
+
+  ############################
+  ### Population-level GPs ###
+  A.list.pop <- vector("list", length(covars))
+  index.list.pop <- vector("list", length(covars))
+
+  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.list.pop[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                        loc=dat[[covars[[i]]]]
+                                        )
+    index.list.pop[[i]] <-  inla.spde.make.index(paste(covars[i], "pop", sep = "."),
+                                                 n.spde = spde.list[[i]]$n.spde)
   }
-
+  ############################
 
 
   ################################
   ### Include random GP slopes ###
-  A.rand.bathym <- inla.spde.make.A(mesh.list[[ind[1]]], loc = dat[[covars[[ind[1]]]]],
-                                    # index = seq_len(nrow(dat)),
-                                    group = dat$id1, n.group = max(id.vals))
-  index.rand.bathym <- inla.spde.make.index(paste("rand", covars[1], sep = "."), n.spde = spde.list[[1]]$n.spde,
-                                            n.group = max(id.vals))
+  A.list.id <- vector("list", length(covars))
+  index.list.id <- vector("list", length(covars))
+
+  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.list.id[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                    loc=dat[[covars[[i]]]],
+                                    group = dat$id1,
+                                    n.group = ngroup,
+                                    )
+    index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
+                                                n.spde = spde.list[[i]]$n.spde,
+                                                n.group = ngroup)
+  }
   ################################
 
 
-  index.list <- vector("list", length(covars))
-  for (i in 1:length(covars)) {
-    index.list[[i]] <-  inla.spde.make.index(covars[i],
-                                             n.spde = spde.list[[i]]$n.spde,
-                                             n.group = ngroup)
-  }
+  ################################
+  ### Include random GP slopes ###
+  # A.list.id <- vector("list", length(covars))
+  # index.list.id <- vector("list", length(covars))
+  #
+  # for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+  #   A.list.id[[i]] <- inla.spde.make.A(mesh.list[[i]],
+  #                                      loc=dat[[covars[[i]]]],
+  #                                      repl = dat$id1
+  #   )
+  #   index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
+  #                                               n.spde = spde.list[[i]]$n.spde,
+  #                                               n.repl = max(dat$id1))
+  # }
+  ################################
+
+
+  # index.list <- vector("list", length(covars))
+  # for (i in 1:length(covars)) {
+  #   index.list[[i]] <-  inla.spde.make.index(covars[i],
+  #                                            n.spde = spde.list[[i]]$n.spde,
+  #                                            n.group = ngroup)
+  # }
+
+  # Function to replicate pop A matrix to match ID-level
+  # mat_expand <- function(A, n) {
+  #   tmp <- do.call("cbind", rep(list(A), n))
+  #   return(tmp)
+  # }
+  #
+  # A.list.pop2 <- A.list.pop %>%
+  #   map(., mat_expand, n = ngroup)
+  # index.list.pop2 <- index.list.pop %>%
+  #   map_depth(., 2, rep, 3)
+
+
   st.est <- inla.stack(data=list(y=y),
-                       A=append(A.list[1:length(A.list) %% 2 == 1],
-                                list(1, 1)),
-                       effects=append(index.list,
-                                      list(Intercept = rep(1, nrow(dat)), id1 = dat$id1)),
-                       tag="est")
-  st.pred.bath <- inla.stack(data=list(y=NA),
-                             A=A.list[which(1:length(A.list) %% 2 == 0)[1]],
-                             effects=index.list[1],
-                             tag="pred.bath")
-  st.pred.npp <- inla.stack(data=list(y=NA),
-                            A=A.list[which(1:length(A.list) %% 2 == 0)[2]],
-                            effects=index.list[2],
-                            tag="pred.npp")
-  st.pred.sst <- inla.stack(data=list(y=NA),
-                            A=A.list[which(1:length(A.list) %% 2 == 0)[3]],
-                            effects=index.list[3],
-                            tag="pred.sst")
-  sestpred <- inla.stack(st.est, st.pred.bath, st.pred.npp, st.pred.sst)
+                       A=c(A.list.pop, A.list.id,
+                                1, 1),
+                       effects=c(index.list.pop, index.list.id,
+                                      list(Intercept = rep(1, nrow(dat)), id1 = dat$id1)))
+  # st.pred.bath <- inla.stack(data=list(y=NA),
+  #                            A=A.list[which(1:length(A.list) %% 2 == 0)[1]],
+  #                            effects=index.list[1],
+  #                            tag="pred.bath")
+  # st.pred.npp <- inla.stack(data=list(y=NA),
+  #                           A=A.list[which(1:length(A.list) %% 2 == 0)[2]],
+  #                           effects=index.list[2],
+  #                           tag="pred.npp")
+  # st.pred.sst <- inla.stack(data=list(y=NA),
+  #                           A=A.list[which(1:length(A.list) %% 2 == 0)[3]],
+  #                           effects=index.list[3],
+  #                           tag="pred.sst")
+  # st.all <- inla.stack(st.pop, st.id)
   formula <-  y ~ -1 + Intercept +
-    f(log.bathym, model=spde.list[[1]], group = log.bathym.group, control.group = list(model = 'iid')) +
-    f(log.npp, model=spde.list[[2]], group = log.npp.group, control.group = list(model = 'iid')) +
-    f(log.sst, model=spde.list[[3]], group = log.sst.group, control.group = list(model = 'iid')) +
-    f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) #+
-  # f(rand.log.bathym, model=spde.list[[1]])
-  data <-  inla.stack.data(sestpred)
+    f(log.bathym.pop, model=spde.list[[1]]) +
+    f(log.npp.pop, model=spde.list[[2]]) +
+    f(log.sst.pop, model=spde.list[[3]]) +
+    f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
+    f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+    f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+    # f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid'), hyper = list(beta = gaus.prior)) +
+    # f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid'), hyper = list(beta = gaus.prior)) +
+    # f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid'), hyper = list(beta = gaus.prior)) +
+    f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+
+
+  formula <-  y ~ -1 + Intercept +
+    f(log.bathym.pop, model=spde.list[[1]]) +
+    f(log.npp.pop, model=spde.list[[2]]) +
+    f(log.sst.pop, model=spde.list[[3]]) +
+    f(log.bathym.id, model=spde.list[[1]], replicate = log.bathym.id.repl) +
+    f(log.npp.id, model=spde.list[[2]], replicate = log.npp.id.repl) +
+    f(log.sst.id, model=spde.list[[3]], replicate = log.sst.id.repl) +
+    f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+
+
+
+
+  data <-  inla.stack.data(st.est)
   tic()
-  result <-  inla(formula, data=data,  family="poisson", weights = rep(dat$wts2, 4),
-                  control.predictor= list(A=inla.stack.A(sestpred),compute=TRUE)#,
-                  # control.fixed = list(
-                  #   mean = 0,
-                  #   prec = list(default = 1e-3))
+  result <-  inla(formula, data=data,  family="poisson", weights = dat$wts2,
+                  control.predictor = list(A=inla.stack.A(st.est),compute=TRUE)
   )
-  toc()  #took 1 min to run
-  pred.bath.ind <- inla.stack.index(sestpred, tag='pred.bath')$data
-  pred.npp.ind <- inla.stack.index(sestpred, tag='pred.npp')$data
-  pred.sst.ind <- inla.stack.index(sestpred, tag='pred.sst')$data
+  toc()  #took 1 min to run; took 7.5 min on laptop
+  # pred.bath.ind <- inla.stack.index(sestpred, tag='pred.bath')$data
+  # pred.npp.ind <- inla.stack.index(sestpred, tag='pred.npp')$data
+  # pred.sst.ind <- inla.stack.index(sestpred, tag='pred.sst')$data
   # list(xout=xout,
   #      mean=result$summary.fitted.values$mean[ii],
   #      lcb=result$summary.fitted.values$"0.025quant"[ii],
@@ -121,8 +189,9 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   #      inlaobj=result)
 }
 
-ind.list <- list(pred.bath.ind, pred.npp.ind, pred.sst.ind)
+# ind.list <- list(pred.bath.ind, pred.npp.ind, pred.sst.ind)
 
+summary(result)
 
 
 
@@ -143,9 +212,9 @@ for (i in 1:length(covars)) { #one matrix for model estimation and another for g
 A.test <- rep(A.test, each = max(dat$id1))
 
 # Store resulting GP coeffs per covar into a list
-pred.coeffs <- result$summary.random[-4] %>%  #remove random intercept term
+pred.coeffs <- result$summary.random[4:6] %>%  #remove random intercept term
   map(., ~dplyr::select(.x, mean)) %>%
-  map(., ~mutate(.x, id = index.list[[1]]$log.bathym.group)) %>%
+  map(., ~mutate(.x, id = index.list.id[[1]]$log.bathym.id.repl)) %>%
   map(., ~split(.x, .x$id)) %>%
   flatten() %>%
   map(., pull, mean) %>%
@@ -194,11 +263,10 @@ ggplot() +
   geom_line(data = pred.test2 %>%
               filter(covar == 'bathym'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
   theme_bw() +
-  lims(x = c(0,800)) +
+  lims(x = c(0,800), y = c(0,500)) +
   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12)) +
-  facet_wrap(~id, scales = "free")
+        axis.text = element_text(size = 12))
 
 
 # NPP
@@ -206,11 +274,10 @@ ggplot() +
   geom_line(data = pred.test2 %>%
               filter(covar == 'npp'), aes(x = x / 1000, y = mean, color = factor(id)), linewidth = 1) +
   theme_bw() +
-  # lims(x = c(0,300)) +
+  lims(y = c(0,500)) +
   labs(x = expression(paste("Net Primary Productivity (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12)) +
-  facet_wrap(~id, scales = "free")
+        axis.text = element_text(size = 12))
 
 
 # SST
@@ -218,11 +285,10 @@ ggplot() +
   geom_line(data = pred.test2 %>%
               filter(covar == 'sst'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
   theme_bw() +
-  # lims(x = c(0,300)) +
+  lims(y = c(0,500)) +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12)) +
-  facet_wrap(~id, scales = "free")
+        axis.text = element_text(size = 12))
 
 
 #--------------------------------------

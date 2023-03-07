@@ -5,7 +5,6 @@ library(tidyverse)
 library(lubridate)
 library(mgcv)
 library(gratia)
-library(raster)
 library(terra)
 library(sf)
 library(sfarrow)
@@ -166,7 +165,7 @@ fit.HGAM10_PI <- bam(obs/wts2 ~ s(log.bathym, bs = "cr", k = 5, m = 2) +
                     s(log.sst, by = id, bs = "cr", k = 5, m = 1) +
                     s(id, bs = "re"), data = rsf.pts_10s2, method = "fREML",
                   family = poisson(), weights = wts2, discrete = TRUE)
-toc()  #took 16 min to run
+toc()  #took 16 min to run; 24 min on laptop
 
 summary(fit.HGAM10_PI)
 plot(fit.HGAM10_PI, select = 1, scale = 0, shade = TRUE, shade.col = "lightblue")
@@ -466,11 +465,13 @@ dat.qa <- read_csv("Processed_data/Qatar_Cm_Tracks_behav.csv")
 # Create indexing column "month.year"
 dat.br <- dat.br %>%
   mutate(month.year = as_date(date), .after = 'date') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01"))
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  filter(behav == 'Resident')
 
 dat.qa <- dat.qa %>%
   mutate(month.year = as_date(date), .after = 'date') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01"))
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  filter(behav == 'Resident')
 
 
 
@@ -557,10 +558,14 @@ for (i in 1:nlyr(br.rast.pred)) {
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
-  cbi.br[[i]] <- cbi(fit = as(br.rast.pred[[i]], "Raster"),
-                 obs = obs,
-                 nclass = 10,
-                 PEplot = FALSE)
+  cbi.br[[i]] <- cbi(fit = br.rast.pred[[i]],
+                     obs = obs,
+                     nclass = 0,
+                     window.w = "default",
+                     res = 100,
+                     PEplot = FALSE,
+                     rm.duplicate = TRUE,
+                     method = "spearman")
 }
 skrrrahh("khaled3")
 toc()  #took 30 sec
@@ -659,10 +664,14 @@ for (i in 1:nlyr(qa.rast.pred)) {
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
-  cbi.qa[[i]] <- cbi(fit = as(qa.rast.pred[[i]], "Raster"),
+  cbi.qa[[i]] <- cbi(fit = qa.rast.pred[[i]],
                      obs = obs,
-                     nclass = 10,
-                     PEplot = FALSE)
+                     nclass = 0,
+                     window.w = "default",
+                     res = 100,
+                     PEplot = FALSE,
+                     rm.duplicate = TRUE,
+                     method = "spearman")
 }
 skrrrahh("khaled3")
 toc()  #took 6 sec

@@ -171,9 +171,9 @@ y <- dat$obs / dat$wts2
 
 # sigma0=sd(y)
 pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))
-mesh.seq <- list(log.bathym = c(0.001, 5000),
-                       log.npp = c(50, 200000),
-                       log.sst = c(5,38)) %>%
+mesh.seq <- list(log.bathym = c(0.001, 5500),
+                       log.npp = c(20, 200000),
+                       log.sst = c(12,38)) %>%
   map(log)
 # apply(values(cov_list$sst), 2, min, na.rm = T) %>% summary()
 
@@ -304,7 +304,7 @@ for (i in 1:length(covars)) { #one matrix for model estimation and another for g
 
 
 # Store resulting GP coeffs per covar into a list
-pred.coeffs <- result$summary.random[-4] %>%  #remove random intercept term
+pred.coeffs <- result$summary.random[1:3] %>%  #remove random intercept term
   map(., ~pull(.x, mean))
 
 # Make predictions via linear algebra
@@ -474,3 +474,307 @@ ggplot() +
         legend.title = element_text(size = 18),
         legend.text = element_text(size = 16)) +
   guides(fill = guide_colourbar(barwidth = 2, barheight = 20))
+
+
+
+
+
+
+
+
+
+
+
+#####################
+### Validate HGPR ###
+#####################
+
+dat.br <- read_csv("Processed_data/Brazil_Cm_Tracks_behav.csv")
+dat.qa <- read_csv("Processed_data/Qatar_Cm_Tracks_behav.csv")
+
+# Create indexing column "month.year"
+dat.br <- dat.br %>%
+  mutate(month.year = as_date(date), .after = 'date') %>%
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  filter(behav == 'Resident')
+
+dat.qa <- dat.qa %>%
+  mutate(month.year = as_date(date), .after = 'date') %>%
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  filter(behav == 'Resident')
+
+
+
+
+
+
+### Brazil ###
+
+## Load in environ rasters
+files <- list.files(path = 'Environ_data', pattern = "Brazil", full.names = TRUE)
+files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
+
+# Merge into list; each element is a different covariate
+cov_list_br <- sapply(files, rast)
+# cov_list_br
+
+names(cov_list_br) <- c('bathym', 'npp', 'sst')
+
+# Change names for dynamic layers to match YYYY-MM-01 format
+for (var in c('npp', 'sst')) {
+  names(cov_list_br[[var]]) <- gsub(names(cov_list_br[[var]]), pattern = "-..$", replacement = "-01")
+}
+
+
+## Set all positive bathymetric values (i.e., elevation) as NA
+cov_list_br[["bathym"]][cov_list_br[["bathym"]] > 0] <- NA
+
+
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
+for (var in c("bathym", "sst")) {
+  cov_list_br[[var]] <- terra::resample(cov_list_br[[var]], cov_list_br$npp, method = "average")
+}
+
+## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
+cov_list_br[["bathym"]][cov_list_br[["bathym"]] > -1e-9] <- NA
+
+
+## Transform CRS to match tracks
+cov_list_br <- map(cov_list_br, terra::project, 'EPSG:3395')
+
+
+
+
+
+
+### Validate model using CBI ###
+
+my.ind.br <- names(cov_list_br$npp)
+br.rast.pred <- rep(cov_list_br$bathym, nlyr(cov_list_br$npp))
+names(br.rast.pred) <- my.ind.br
+
+
+
+# Store resulting GP coeffs per covar into a list
+pred.coeffs <- result$summary.random[-4] %>%  #remove random intercept term
+  map(., ~pull(.x, mean))
+
+
+tic()
+for (i in 1:nlyr(cov_list_br$npp)) {
+
+  # Subset covars by month.year
+  vars <- data.frame(log.bathym = as.vector(terra::values(cov_list_br$bathym)) %>%
+                       abs() %>%
+                       log(),
+                     log.npp = as.vector(terra::values(cov_list_br$npp[[my.ind.br[i]]])) %>%
+                       log(),
+                     log.sst = as.vector(terra::values(cov_list_br$sst[[my.ind.br[i]]])) %>%
+                       log()) %>%
+    mutate(row_id = 1:nrow(.)) %>%
+    drop_na(log.bathym, log.npp, log.sst)
+
+  # Generate matrices for covariate raster data (for prediction)
+  A.pop <- vector("list", length(covars))
+  for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.pop[[j]] <- inla.spde.make.A(mesh.list[[j]], loc=vars[[covars[[j]]]])
+  }
+
+
+  # Make predictions via linear algebra
+  br.pred <- A.pop %>%
+    map2(.x = ., .y = pred.coeffs,
+         ~{.x %*% .y %>%
+             as.vector()}
+    ) %>%
+    bind_cols() %>%
+    rowSums()  #sum up all predictions across covars
+
+
+  # Store results in raster stack
+  terra::values(br.rast.pred[[i]]) <- NA  # initially store all NAs for locs w/o predictions
+  terra::values(br.rast.pred[[i]])[vars$row_id] <- br.pred
+}
+skrrrahh('khaled2')
+toc()  #took 1.5 min
+
+
+
+cbi.br <- vector("list", nlyr(br.rast.pred))
+tic()
+for (i in 1:nlyr(br.rast.pred)) {
+
+  # Subset tracks by month.year
+  obs <- dat.br %>%
+    filter(month.year == my.ind.br[i]) %>%
+    dplyr::select(x, y)
+
+  cbi.br[[i]] <- cbi(fit = br.rast.pred[[i]],
+                     obs = obs,
+                     nclass = 0,
+                     window.w = "default",
+                     res = 100,
+                     PEplot = FALSE,
+                     rm.duplicate = TRUE,
+                     method = "spearman")
+}
+skrrrahh("khaled3")
+toc()  #took 34 sec
+
+
+cbi.br <- cbi.br %>%
+  map(., pluck, "cor") %>%
+  unlist() %>%
+  data.frame(cor = .,
+             Region = "Brazil")
+
+
+
+
+
+
+
+
+### Qatar ###
+
+## Load in environ rasters
+files <- list.files(path = 'Environ_data', pattern = "Qatar", full.names = TRUE)
+files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
+
+# Merge into list; each element is a different covariate
+cov_list_qa <- sapply(files, rast)
+cov_list_qa
+
+names(cov_list_qa) <- c('bathym', 'npp', 'sst')
+
+# Change names for dynamic layers to match YYYY-MM-01 format
+for (var in c('npp', 'sst')) {
+  names(cov_list_qa[[var]]) <- gsub(names(cov_list_qa[[var]]), pattern = "-..$", replacement = "-01")
+}
+
+
+## Set all positive bathymetric values (i.e., elevation) as NA
+cov_list_qa[["bathym"]][cov_list_qa[["bathym"]] > 0] <- NA
+
+
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
+for (var in c("bathym", "sst")) {
+  cov_list_qa[[var]] <- terra::resample(cov_list_qa[[var]], cov_list_qa$npp, method = "average")
+}
+
+## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
+cov_list_qa[["bathym"]][cov_list_qa[["bathym"]] > -1e-9] <- NA
+
+
+## Transform CRS to match tracks
+cov_list_qa <- map(cov_list_qa, terra::project, 'EPSG:3395')
+
+
+
+
+
+
+### Validate model using CBI ###
+
+my.ind.qa <- names(cov_list_qa$npp)
+qa.rast.pred <- rep(cov_list_qa$bathym, nlyr(cov_list_qa$npp))
+names(qa.rast.pred) <- my.ind.qa
+
+# Store resulting GP coeffs per covar into a list
+pred.coeffs <- result$summary.random[-4] %>%  #remove random intercept term
+  map(., ~pull(.x, mean))
+
+
+tic()
+for (i in 1:nlyr(cov_list_qa$npp)) {
+
+  # Subset covars by month.year
+  vars <- data.frame(log.bathym = as.vector(terra::values(cov_list_qa$bathym)) %>%
+                       abs() %>%
+                       log(),
+                     log.npp = as.vector(terra::values(cov_list_qa$npp[[my.ind.qa[i]]])) %>%
+                       log(),
+                     log.sst = as.vector(terra::values(cov_list_qa$sst[[my.ind.qa[i]]])) %>%
+                       log()) %>%
+    mutate(row_id = 1:nrow(.)) %>%
+    drop_na(log.bathym, log.npp, log.sst)
+
+  # Generate matrices for covariate raster data (for prediction)
+  A.pop <- vector("list", length(covars))
+  for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.pop[[j]] <- inla.spde.make.A(mesh.list[[j]], loc=vars[[covars[[j]]]])
+  }
+
+
+  # Make predictions via linear algeqaa
+  qa.pred <- A.pop %>%
+    map2(.x = ., .y = pred.coeffs,
+         ~{.x %*% .y %>%
+             as.vector()}
+    ) %>%
+    bind_cols() %>%
+    rowSums()  #sum up all predictions across covars
+
+
+  # Store results in raster stack
+  terra::values(qa.rast.pred[[i]]) <- NA  # initially store all NAs for locs w/o predictions
+  terra::values(qa.rast.pred[[i]])[vars$row_id] <- qa.pred
+}
+skrrrahh('khaled2')
+toc()  #took 1.5 min
+
+
+
+cbi.qa <- vector("list", nlyr(qa.rast.pred))
+tic()
+for (i in 1:nlyr(qa.rast.pred)) {
+
+  # Subset tracks by month.year
+  obs <- dat.qa %>%
+    filter(month.year == my.ind.qa[i]) %>%
+    dplyr::select(x, y)
+
+  cbi.qa[[i]] <- cbi(fit = qa.rast.pred[[i]],
+                     obs = obs,
+                     nclass = 0,
+                     window.w = "default",
+                     res = 100,
+                     PEplot = FALSE,
+                     rm.duplicate = TRUE,
+                     method = "spearman")
+}
+skrrrahh("khaled3")
+toc()  #took 6 sec
+
+
+cbi.qa <- cbi.qa %>%
+  map(., pluck, "cor") %>%
+  unlist() %>%
+  data.frame(cor = .,
+             Region = "Qatar")
+
+
+
+
+
+
+### Summarize Validation Results ###
+
+cbi.fit <- rbind(cbi.br, cbi.qa)
+
+cbi.mean <- cbi.fit %>%
+  group_by(Region) %>%
+  summarize(mean = mean(cor, na.rm = TRUE))
+
+set.seed(2023)
+ggplot(data = cbi.fit, aes(Region, cor)) +
+  # geom_boxplot(aes(fill = Region), outlier.color = NA) +
+  geom_jitter(aes(fill = Region), pch = 21, height = 0, width = 0.2, alpha = 0.7, size = 5) +
+  scale_fill_manual(values = c("#1DB100", "#00A2FF"), guide = "none") +
+  geom_point(data = cbi.mean, aes(Region, mean), fill = "black", pch = 21, size = 6) +
+  geom_hline(yintercept = 0, linewidth = 1) +
+  lims(y = c(-1,1)) +
+  labs(x="", y = "Continuous Boyce Index") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 20),
+        axis.title = element_text(size = 24))

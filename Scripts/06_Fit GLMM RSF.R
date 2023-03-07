@@ -767,7 +767,7 @@ ggplot() +
 
 
 #####################
-### Validate HGAM ###
+### Validate GLMM ###
 #####################
 
 dat.br <- read_csv("Processed_data/Brazil_Cm_Tracks_behav.csv")
@@ -776,11 +776,13 @@ dat.qa <- read_csv("Processed_data/Qatar_Cm_Tracks_behav.csv")
 # Create indexing column "month.year"
 dat.br <- dat.br %>%
   mutate(month.year = as_date(date), .after = 'date') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01"))
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  filter(behav == 'Resident')
 
 dat.qa <- dat.qa %>%
   mutate(month.year = as_date(date), .after = 'date') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01"))
+  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
+  filter(behav == 'Resident')
 
 
 
@@ -879,10 +881,14 @@ for (i in 1:nlyr(br.rast.pred)) {
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
-  cbi.br[[i]] <- cbi(fit = as(br.rast.pred[[i]], "Raster"),
+  cbi.br[[i]] <- cbi(fit = br.rast.pred[[i]],
                      obs = obs,
-                     nclass = 10,
-                     PEplot = FALSE)
+                     nclass = 0,
+                     window.w = "default",
+                     res = 10,
+                     PEplot = FALSE,
+                     rm.duplicate = TRUE,
+                     method = "spearman")
 }
 skrrrahh("khaled3")
 toc()  #took 34 sec
@@ -993,10 +999,14 @@ for (i in 1:nlyr(qa.rast.pred)) {
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
-  cbi.qa[[i]] <- cbi(fit = as(qa.rast.pred[[i]], "Raster"),
+  cbi.qa[[i]] <- cbi(fit = qa.rast.pred[[i]],
                      obs = obs,
-                     nclass = 10,
-                     PEplot = FALSE)
+                     nclass = 0,
+                     window.w = "default",
+                     res = 10,
+                     PEplot = FALSE,
+                     rm.duplicate = TRUE,
+                     method = "spearman")
 }
 skrrrahh("khaled3")
 toc()  #took 6 sec
