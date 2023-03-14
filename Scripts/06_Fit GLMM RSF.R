@@ -226,9 +226,9 @@ fit.RSF_10 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_10s, weights 
                      mean = 0,
                      prec = list(default = 1e-3)),
                    control.compute = list(waic = TRUE,
-                                          dic = TRUE), verbose = FALSE
+                                          dic = TRUE), num.threads = 1:1
 )
-toc()  # took 45 sec to run for x10; 76 sec on laptop
+toc()  # took 45 sec to run for x10; 76 sec on laptop; 2 min w/ threads = 1
 
 summary(fit.RSF_10)
 
@@ -240,9 +240,9 @@ fit.RSF_30 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_30s, weights 
                      mean = 0,
                      prec = list(default = 1e-3)),
                    control.compute = list(waic = TRUE,
-                                          dic = TRUE), verbose = FALSE
+                                          dic = TRUE), num.threads = 1:1
 )
-toc()  # took 3 min to run for 30x; 6.5 min on laptop
+toc()  # took 3 min to run for 30x; 6.5 min on laptop; 7.5 min w/ threads = 1
 
 summary(fit.RSF_30)
 
@@ -254,9 +254,9 @@ fit.RSF_50 <- inla(RSF.formula, family = "Poisson", data = rsf.pts_50s, weights 
                      mean = 0,
                      prec = list(default = 1e-3)),
                    control.compute = list(waic = TRUE,
-                                          dic = TRUE), verbose = FALSE
+                                          dic = TRUE), num.threads = 1:1
 )
-toc()  # took 4.5 min to run for 50x; 23 min on laptop
+toc()  # took 4.5 min to run for 50x; 23 min on laptop; 1 hr w/ threads = 1
 
 summary(fit.RSF_50)
 
@@ -272,18 +272,12 @@ summary(fit.RSF_50)
 #   mutate(param = factor(rownames(.), levels = rownames(.)))
 
 
-fixed.coeffs.list <- list(x10 = cbind(fit.RSF_10$summary.fixed[-1,],
-                                      sigma = inla_emarginal(fit.RSF_10) %>%
-                                        sqrt()),
-                          x30 = cbind(fit.RSF_30$summary.fixed[-1,],
-                                      sigma = inla_emarginal(fit.RSF_30) %>%
-                                        sqrt()),
-                          x50 = cbind(fit.RSF_50$summary.fixed[-1,],
-                                      sigma = inla_emarginal(fit.RSF_50) %>%
-                                        sqrt()))
+fixed.coeffs.list <- list(x10 = fit.RSF_10$summary.fixed[-1,],
+                          x30 = fit.RSF_30$summary.fixed[-1,],
+                          x50 = fit.RSF_50$summary.fixed[-1,])
 fixed.coeffs <- fixed.coeffs.list %>%
   map(~{.x %>%
-      mutate(lo = mean - sigma, hi = mean + sigma) %>%
+      # mutate(lo = mean - sigma, hi = mean + sigma) %>%
       mutate(param = factor(rownames(.x), levels = rownames(.x)))}) %>%
   bind_rows(.id = "dataset")
 # dplyr::slice(2:n()) %>%  #remove intercept
@@ -291,7 +285,7 @@ fixed.coeffs <- fixed.coeffs.list %>%
 
 ggplot(fixed.coeffs, aes(x = param)) +
   geom_hline(yintercept = 0, linewidth = 0.75) +
-  geom_linerange(aes(ymin = lo, ymax = hi, color = dataset), position = position_dodge(width = 0.1)) +
+  geom_linerange(aes(ymin = `0.025quant`, ymax = `0.975quant`, color = dataset), position = position_dodge(width = 0.1)) +
   geom_point(aes(y = mean, color = dataset), position = position_dodge(width = 0.1)) +
   theme_bw()
 
@@ -339,11 +333,15 @@ ggplot(random.coeffs) +
   geom_hline(yintercept = 0, linewidth = 0.75) +
   geom_linerange(aes(x = ID, ymin = `0.025quant`, ymax = `0.975quant`, color = param)) +
   geom_point(aes(y = mean, x = ID, color = param)) +
-  geom_linerange(data = fixed.coeffs, aes(ymin = lo, ymax = hi), x = 50) +
+  geom_linerange(data = fixed.coeffs, aes(ymin = `0.025quant`, ymax = `0.975quant`), x = 50) +
   geom_point(data = fixed.coeffs, aes(y = mean), x = 50) +
   theme_bw() +
   facet_grid(dataset ~ param, scales = "free")
 
+
+
+
+### 10x dataset looks comparable to 30x and 50x datasets in terms of mean and 95% CI of estimates; stick w/ this smaller dataset for all subsequent analyses
 
 
 
@@ -679,10 +677,14 @@ rast.pred.df <- as.data.frame(rast.pred, xy = TRUE)
 names(rast.pred.df)[3] <- "pred"
 bbox <- ext(rast.pred)
 
+tmp.pts <- rsf.pts_10s %>%
+  filter(month.year == "2020-09-01", obs == 1)
+
 ggplot() +
   geom_raster(data = rast.pred.df, aes(x, y, fill = log(pred))) +
   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
   geom_sf(data = gom.sf) +
+  geom_point(data = tmp.pts, aes(x, y), color = "forestgreen", alpha = 0.7, size = 2) +
   labs(x="",y="", title = "Population Mean: September 2020") +
   theme_bw() +
   coord_sf(xlim = c(bbox[1], bbox[2]),
@@ -885,7 +887,7 @@ for (i in 1:nlyr(br.rast.pred)) {
                      obs = obs,
                      nclass = 0,
                      window.w = "default",
-                     res = 10,
+                     res = 100,
                      PEplot = FALSE,
                      rm.duplicate = TRUE,
                      method = "spearman")
@@ -1003,7 +1005,7 @@ for (i in 1:nlyr(qa.rast.pred)) {
                      obs = obs,
                      nclass = 0,
                      window.w = "default",
-                     res = 10,
+                     res = 100,
                      PEplot = FALSE,
                      rm.duplicate = TRUE,
                      method = "spearman")

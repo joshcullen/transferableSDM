@@ -805,3 +805,134 @@ cbi <- function(fit, obs, nclass = 0, window.w = "default", res = 100,
   }
   return(list(F.ratio = f, cor = round(b, 3), HS = HS))
 }
+
+#--------------------------------
+
+# Slightly modified version of gbm::plot.gbm() to create partial dependency plots
+
+
+gbm.pdp.vals <- function (x, i.var = 1, n.trees = x$n.trees, continuous.resolution = 100,
+                          return.grid = TRUE, type = c("link", "response"), level.plot = TRUE,
+                          contour = FALSE, number = 4, overlap = 0.1, col.regions = viridis::viridis,
+                          ...)
+{
+  type <- match.arg(type)
+  if (all(is.character(i.var))) {
+    i <- match(i.var, x$var.names)
+    if (any(is.na(i))) {
+      stop("Requested variables not found in ", deparse(substitute(x)),
+           ": ", i.var[is.na(i)])
+    }
+    else {
+      i.var <- i
+    }
+  }
+  if ((min(i.var) < 1) || (max(i.var) > length(x$var.names))) {
+    warning("i.var must be between 1 and ", length(x$var.names))
+  }
+  if (n.trees > x$n.trees) {
+    warning(paste("n.trees exceeds the number of tree(s) in the model: ",
+                  x$n.trees, ". Using ", x$n.trees, " tree(s) instead.",
+                  sep = ""))
+    n.trees <- x$n.trees
+  }
+  if (length(i.var) > 3) {
+    warning("plot.gbm() will only create up to (and including) 3-way ",
+            "interaction plots.\nBeyond that, plot.gbm() will only return ",
+            "the plotting data structure.")
+    return.grid <- TRUE
+  }
+  grid.levels <- vector("list", length(i.var))
+  for (i in 1:length(i.var)) {
+    if (is.numeric(x$var.levels[[i.var[i]]])) {
+      grid.levels[[i]] <- seq(from = min(x$var.levels[[i.var[i]]]),
+                              to = max(x$var.levels[[i.var[i]]]), length = continuous.resolution)
+    }
+    else {
+      grid.levels[[i]] <- as.numeric(factor(x$var.levels[[i.var[i]]],
+                                            levels = x$var.levels[[i.var[i]]])) - 1
+    }
+  }
+  X <- expand.grid(grid.levels)
+  names(X) <- paste("X", 1:length(i.var), sep = "")
+  if (is.null(x$num.classes)) {
+    x$num.classes <- 1
+  }
+  y <- .Call("gbm_plot", X = as.double(data.matrix(X)), cRows = as.integer(nrow(X)),
+             cCols = as.integer(ncol(X)), n.class = as.integer(x$num.classes),
+             i.var = as.integer(i.var - 1), n.trees = as.integer(n.trees),
+             initF = as.double(x$initF), trees = x$trees, c.splits = x$c.splits,
+             var.type = as.integer(x$var.type), PACKAGE = "gbm")
+  if (x$distribution$name == "multinomial") {
+    X$y <- matrix(y, ncol = x$num.classes)
+    colnames(X$y) <- x$classes
+    if (type == "response") {
+      X$y <- exp(X$y)
+      X$y <- X$y/matrix(rowSums(X$y), ncol = ncol(X$y),
+                        nrow = nrow(X$y))
+    }
+  }
+  else if (is.element(x$distribution$name, c("bernoulli", "pairwise")) &&
+           type == "response") {
+    X$y <- 1/(1 + exp(-y))
+  }
+  else if ((x$distribution$name == "poisson") && (type == "response")) {
+    X$y <- exp(y)
+  }
+  else if (type == "response") {
+    warning("`type = \"response\"` only implemented for \"bernoulli\", ",
+            "\"poisson\", \"multinomial\", and \"pairwise\" distributions. ",
+            "Ignoring.")
+  }
+  else {
+    X$y <- y
+  }
+  f.factor <- rep(FALSE, length(i.var))
+  for (i in 1:length(i.var)) {
+    if (!is.numeric(x$var.levels[[i.var[i]]])) {
+      X[, i] <- factor(x$var.levels[[i.var[i]]][X[, i] +
+                                                  1], levels = x$var.levels[[i.var[i]]])
+      f.factor[i] <- TRUE
+    }
+  }
+  names(X)[1:length(i.var)] <- x$var.names[i.var]
+  if (return.grid) {
+    return(X)
+  }
+  # nx <- length(i.var)
+  # if (nx == 1L) {
+  #   gbm:::plotOnePredictorPDP(X, ...)
+  # }
+  # else if (nx == 2) {
+  #   gbm:::plotTwoPredictorPDP(X, level.plot = level.plot, contour = contour,
+  #                       col.regions = col.regions, ...)
+  # }
+  # else {
+  #   gbm:::plotThreePredictorPDP(X, nx = nx, level.plot = level.plot,
+  #                         contour = contour, col.regions = col.regions, number = number,
+  #                         overlap = overlap, ...)
+  # }
+}
+
+#---------------------------
+
+# Wrapper around gbm.pdp.vals() to collate predicted values for each covar
+
+gbm.pdp <- function(fit, ...) {
+
+  covars <- fit$var.names
+
+  # Store predictions in list per covar
+  tmp <- vector("list", length(covars)) %>%
+    purrr::set_names(covars)
+
+  for (i in 1:length(covars)) {
+    tmp[[i]] <- gbm.pdp.vals(fit, i.var = i, ...)
+  }
+
+  tmp.df <- bind_rows(tmp) %>%
+    pivot_longer(cols = -y, names_to = "covar", values_to = "x") %>%
+    drop_na()
+
+  return(tmp.df)
+}

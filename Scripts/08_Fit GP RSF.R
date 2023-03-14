@@ -1,5 +1,5 @@
 
-### Fit RSF as Hierarchicl Gaussian Process regression ###
+### Fit RSF as Hierarchical Gaussian Process regression ###
 
 library(tidyverse)
 library(INLA)
