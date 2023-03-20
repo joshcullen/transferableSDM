@@ -27,10 +27,10 @@ all.turts <- list(gom = gom.turts,
                   qa = qa.turts)
 
 # Remove any observations before 2012-01-02; first available data for VIIRS Kd(PAR)
-all.turts <- all.turts %>%
-  map(., ~{.x %>%
-      filter(date > "2012-01-01")}  #results only in removal of PTT 104833 from GoM
-      )
+# all.turts <- all.turts %>%
+#   map(., ~{.x %>%
+#       filter(date > "2012-01-01")}  #results only in removal of PTT 104833 from GoM
+#       )
 
 
 ### Define spatial extent for each region ###

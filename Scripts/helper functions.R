@@ -739,17 +739,21 @@ get_MAP = function(dat, nburn) {
 #-----------------------------------
 
 #### internal function calculating predicted-to-expected ratio for each class-interval (from ecospat::ecospat.boyce())
-boycei <- function(interval, obs, fit) {
-  pi <- sum(as.numeric(obs >= interval[1] & obs <= interval[2])) / length(obs)
-  ei <- sum(as.numeric(fit >= interval[1] & fit <= interval[2])) / length(fit)
-  return(round(pi/ei,10))
+boyce.internal <- function(interval, obs, fit) {
+  pi <- sum(as.numeric(obs >= interval[1] & obs < interval[2])) / length(obs)
+  ei <- sum(as.numeric(fit >= interval[1] & fit < interval[2])) / length(fit)
+
+  tmp <- data.frame(f = round(pi/ei,10),  #F-ratio for predicted over expected obs
+                    perc.use = pi)  #Percentage of total observations w/in a given bin
+  return(tmp)
 }
 
 
 #-----------------------------------
 
-# Slightly modified version of ecospat::ecospat.boyce() that accounts for NAs from extracted habitat suitability values
-cbi <- function(fit, obs, nclass = 0, window.w = "default", res = 100,
+# A modified version of ecospat::ecospat.boyce() that accounts for NAs from extracted habitat suitability values
+# Also modified to accept vector of bin breaks
+boyce <- function(fit, obs, nbins = 10, bin.method = c("seq","quantile"),
                 PEplot = TRUE, rm.duplicate = TRUE, method = 'spearman') {
 
 
@@ -767,22 +771,26 @@ cbi <- function(fit, obs, nclass = 0, window.w = "default", res = 100,
   mini <- min(fit,obs)
   maxi <- max(fit,obs)
 
-  if(length(nclass)==1){
-    if (nclass == 0) { #moving window
-      if (window.w == "default") {window.w <- (max(fit) - min(fit))/10}
-      vec.mov <- seq(from = mini, to = maxi - window.w, by = (maxi - mini - window.w)/res)
-      vec.mov[res + 1] <- vec.mov[res + 1] + 1  #Trick to avoid error with closed interval in R
-      interval <- cbind(vec.mov, vec.mov + window.w)
-    } else{ #window based on nb of class
-      vec.mov <- seq(from = mini, to = maxi + 1, length.out = nclass + 1)
-      interval <- cbind(vec.mov[-(nclass + 1)], vec.mov[-1])
-    }
-  } else{ #user defined window
-    vec.mov <- c(mini, sort(nclass[!nclass>maxi|nclass<mini]))
-    interval <- cbind(vec.mov, c(vec.mov[-1], maxi))
-  }
+  if (bin.method == "quantile"){
 
-  f <- apply(interval, 1, boycei, obs, fit)
+    bins <- quantile(fit, seq(0, 1, length.out = nbins + 1))
+      interval <- cbind(bins[-length(bins)], bins[-1])
+      interval[length(bins) - 1,2] <- interval[length(bins) - 1,2] + 0.1
+
+  } else if (bin.method == "seq") {
+
+    bins <- seq(mini, maxi, length.out = nbins + 1)
+    interval <- cbind(bins[-length(bins)], bins[-1])
+    interval[length(bins) - 1,2] <- interval[length(bins) - 1,2] + 0.1
+  } else {
+
+  stop("Need to specify bin method as either 'seq' or 'quantile'")
+}
+
+  boyce.index.res <- apply(interval, 1, boyce.internal, obs, fit) %>%
+    bind_rows()
+  f <- boyce.index.res$f
+  # f <- apply(interval, 1, boycei, obs, fit)
   to.keep <- which(f != "NaN")  # index to keep no NaN data
   f <- f[to.keep]
   if (length(f) < 2) {
@@ -792,18 +800,18 @@ cbi <- function(fit, obs, nclass = 0, window.w = "default", res = 100,
     if(rm.duplicate == TRUE){
       r <- c(1:length(f))[f != c( f[-1],TRUE)]  #index to remove successive duplicates
     }
-    b <- cor(f[r], vec.mov[to.keep][r], method = method)  # calculation of the correlation (i.e. Boyce index) after removing successive duplicated values
+    b <- cor(f[r], bins[to.keep][r], method = method)  # calculation of the correlation (i.e. Boyce index) after removing successive duplicated values
   }
   HS <- apply(interval, 1, sum)/2  # mean habitat suitability in the moving window
-  if(length(nclass)==1 & nclass == 0) {
-    HS[length(HS)] <- HS[length(HS)] - 1  #Correction of the 'trick' to deal with closed interval
-  }
+  # if(length(nclass)==1 & nclass == 0) {
+  #   HS[length(HS)] <- HS[length(HS)] - 1  #Correction of the 'trick' to deal with closed interval
+  # }
   HS <- HS[to.keep]  #exclude the NaN
   if (PEplot == TRUE) {
     plot(HS, f, xlab = "Habitat suitability", ylab = "Predicted/Expected ratio", col = "grey", cex = 0.75)
     points(HS[r], f[r], pch = 19, cex = 0.75)
   }
-  return(list(F.ratio = f, cor = round(b, 3), HS = HS))
+  return(list(F.ratio = f, cor = round(b, 3), HS = HS, perc.use = boyce.index.res$perc.use))
 }
 
 #--------------------------------

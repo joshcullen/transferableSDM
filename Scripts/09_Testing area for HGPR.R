@@ -88,6 +88,16 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
     index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
                                                 n.spde = spde.list[[i]]$n.spde,
                                                 n.group = ngroup)
+
+    # mapper.A <- inlabru::bru_mapper_multi(list(
+    #   main = inlabru::bru_mapper(mesh.list[[i]], indexed = TRUE),
+    #   group = inlabru::bru_mapper_index(n = ngroup)
+    # ))
+    #
+    # mapper.index <- inlabru::bru_mapper_multi(list(
+    #   field.main = inlabru::bru_mapper(mesh.list[[i]], indexed = TRUE),
+    #   field.group = inlabru::bru_mapper_index(n = ngroup)
+    # ))
   }
   ################################
 
@@ -174,11 +184,13 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
 
 
   data <-  inla.stack.data(st.est)
+  set.seed(2023)
   tic()
   result <-  inla(formula, data=data,  family="poisson", weights = dat$wts2,
-                  control.predictor = list(A=inla.stack.A(st.est),compute=TRUE)
+                  control.predictor = list(A=inla.stack.A(st.est),compute=TRUE),
+                  num.threads = 1:1
   )
-  toc()  #took 1 min to run; took 7.5 min on laptop
+  toc()  #took 11 min to run single-threaded; took 7.5 min on laptop
   # pred.bath.ind <- inla.stack.index(sestpred, tag='pred.bath')$data
   # pred.npp.ind <- inla.stack.index(sestpred, tag='pred.npp')$data
   # pred.sst.ind <- inla.stack.index(sestpred, tag='pred.sst')$data
@@ -214,7 +226,7 @@ A.test <- rep(A.test, each = max(dat$id1))
 # Store resulting GP coeffs per covar into a list
 pred.coeffs <- result$summary.random[4:6] %>%  #remove random intercept term
   map(., ~dplyr::select(.x, mean)) %>%
-  map(., ~mutate(.x, id = index.list.id[[1]]$log.bathym.id.repl)) %>%
+  map(., ~mutate(.x, id = index.list.id[[1]]$log.bathym.id.group)) %>%
   map(., ~split(.x, .x$id)) %>%
   flatten() %>%
   map(., pull, mean) %>%
@@ -263,7 +275,7 @@ ggplot() +
   geom_line(data = pred.test2 %>%
               filter(covar == 'bathym'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
   theme_bw() +
-  lims(x = c(0,800), y = c(0,500)) +
+  lims(x = c(0,800), y = c(0,1.5e6)) +
   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 16),
         axis.text = element_text(size = 12))
@@ -274,7 +286,7 @@ ggplot() +
   geom_line(data = pred.test2 %>%
               filter(covar == 'npp'), aes(x = x / 1000, y = mean, color = factor(id)), linewidth = 1) +
   theme_bw() +
-  lims(y = c(0,500)) +
+  lims(y = c(0,5000)) +
   labs(x = expression(paste("Net Primary Productivity (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 16),
         axis.text = element_text(size = 12))
@@ -285,7 +297,7 @@ ggplot() +
   geom_line(data = pred.test2 %>%
               filter(covar == 'sst'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
   theme_bw() +
-  lims(y = c(0,500)) +
+  lims(y = c(0,2.5e5)) +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 16),
         axis.text = element_text(size = 12))
@@ -320,39 +332,38 @@ for (i in 1:length(covars)) { #one matrix for model estimation and another for g
   A.181796[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = newdat.181796[[covars[[i]]]])
 }
 
-#### PICK BACK UP FROM HERE ####
-
-
-# Replicate list elements for mapping over lists
-A.test <- rep(A.test, each = max(dat$id1))
 
 # Store resulting GP coeffs per covar into a list
-pred.coeffs <- result$summary.random[-4] %>%  #remove random intercept term
+ind <- dat[dat$id == 181796,]$id1[1]
+pred.coeffs <- result$summary.random[4:6] %>%  #remove random intercept term
   map(., ~dplyr::select(.x, mean)) %>%
-  map(., ~mutate(.x, id = index.list[[1]]$log.bathym.group)) %>%
-  map(., ~split(.x, .x$id)) %>%
-  flatten() %>%
-  map(., pull, mean) %>%
-  set_names(paste(rep(covars, each = max(dat$id1)), rep(1:max(dat$id1), length(covars)), sep = "_"))
+  map(., ~mutate(.x, id = index.list.id[[1]]$log.bathym.id.group)) %>%
+  map(., ~dplyr::filter(.x, id == ind)) %>%
+  map(., pull, mean)
 
 
-# Specify terms for ID 181796
-ind <- which(unique(rsf.pts_10s$id) == 181796)
-coeff.181796 <- random.coeffs2 %>%
-  filter(ID == ind) %>%
-  pull(mean)
-x181796.pred <- as.matrix(newdat) %*% coeff.181796  #make predictions
+# Make predictions via linear algebra
+x181796.pred <- A.181796 %>%
+  map2(.x = ., .y = pred.coeffs,
+       ~{.x %*% .y %>%
+           as.vector()}
+  ) %>%
+  bind_cols() %>%
+  rowSums()  #sum up all predictions across covars
 
 
+# Define dummy raster for storing predictions
 rast.pred.181796 <- cov_list$bathym
-terra::values(rast.pred.181796) <- exp(x181796.pred)
+terra::values(rast.pred.181796) <- NA  # initially store all NAs for locs w/o predictions
+terra::values(rast.pred.181796)[newdat.181796$row_id] <- x181796.pred
 
 
 rast.pred.181796.df <- as.data.frame(rast.pred.181796, xy = TRUE)
 names(rast.pred.181796.df)[3] <- "pred"
+bbox <- ext(rast.pred.181796)
 
 ggplot() +
-  geom_raster(data = rast.pred.181796.df, aes(x, y, fill = log(pred))) +
+  geom_raster(data = rast.pred.181796.df, aes(x, y, fill = pred)) +
   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
   geom_sf(data = gom.sf) +
   geom_path(data = rsf.pts_10s %>%

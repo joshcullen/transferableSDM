@@ -5,6 +5,7 @@ library(tidyverse)
 library(lubridate)
 library(mgcv)
 library(gratia)
+library(bayesmove)
 library(terra)
 library(sf)
 library(sfarrow)
@@ -46,7 +47,7 @@ rsf.pts_10s <- rsf.pts_10 %>%
 #          sst.s = (sst - mean(sst[obs.ind_10])) / sd(sst))
 
 rsf.pts_30s <- rsf.pts_30 %>%
-  drop_na(bathym, k490, npp, sst)
+  drop_na(bathym, npp, sst)
 # obs.ind_30 <- which(rsf.pts_30s$obs == 1)
 # rsf.pts_30s <- rsf.pts_30s %>%
 #   mutate(bathym.s = (bathym - mean(bathym[obs.ind_30])) / sd(bathym),
@@ -55,7 +56,7 @@ rsf.pts_30s <- rsf.pts_30 %>%
 #          sst.s = (sst - mean(sst[obs.ind_30])) / sd(sst))
 
 rsf.pts_50s <- rsf.pts_50 %>%
-  drop_na(bathym, k490, npp, sst)
+  drop_na(bathym, npp, sst)
 # obs.ind_50 <- which(rsf.pts_50s$obs == 1)
 # rsf.pts_50s <- rsf.pts_50s %>%
 #   mutate(bathym.s = (bathym - mean(bathym[obs.ind_50])) / sd(bathym),
@@ -74,11 +75,30 @@ rsf.pts_50s$wts <- ifelse(rsf.pts_50s$obs == 0, 5000, 1)
 # Explore used vs available habitat values
 rsf.pts_10s %>%
   # mutate(across(c(k490, npp), log)) %>%
-  pivot_longer(cols = c(bathym, k490, npp, sst), names_to = "covar", values_to = "value") %>%
+  pivot_longer(cols = c(bathym, npp, sst), names_to = "covar", values_to = "value") %>%
   ggplot() +
   geom_density(aes(value, fill = factor(obs))) +
   theme_bw() +
-  facet_wrap(~ covar, scales = "free")
+  facet_wrap(~ covar, scales = "free", ncol = 1)
+
+# Discretize covars to increase speed and efficiency of model fit
+# bin.lims <- sapply(rsf.pts_10s[,c('bathym','npp','sst')], function(x) list(quantile(x, seq(0,1,length.out=25))))
+# rsf.pts_10s <- rsf.pts_10s %>%
+#   bayesmove::discrete_move_var(.,
+#                                lims = bin.lims,
+#                                varIn = c("bathym","npp","sst"),
+#                                varOut = c("bathym.d","npp.d","sst.d")) %>%
+#   mutate(across(bathym.d:sst.d, factor))
+#
+# bin.labs <- sapply(bin.lims, function(x) x[-1] - (diff(x) / 2)) %>%
+#   data.frame()
+# levels(rsf.pts_10s$bathym.d) <- bin.labs$bathym
+# levels(rsf.pts_10s$npp.d) <- bin.labs$npp
+# levels(rsf.pts_10s$sst.d) <- bin.labs$sst
+#
+# rsf.pts_10s <- rsf.pts_10s %>%
+#   mutate(across(bathym.d:sst.d, function(x) as.numeric(as.character(x))))
+
 
 # Log-transform skewed covars to allow model fitting
 rsf.pts_10s <- rsf.pts_10s %>%
@@ -88,13 +108,11 @@ rsf.pts_10s <- rsf.pts_10s %>%
 
 rsf.pts_30s <- rsf.pts_30s %>%
   mutate(log.bathym = log(abs(bathym)),
-         log.k490 = log(k490),
          log.npp = log(npp),
          log.sst = log(sst))
 
 rsf.pts_50s <- rsf.pts_50s %>%
   mutate(log.bathym = log(abs(bathym)),
-         log.k490 = log(k490),
          log.npp = log(npp),
          log.sst = log(sst))
 
@@ -164,10 +182,11 @@ fit.HGAM10_PI <- bam(obs/wts2 ~ s(log.bathym, bs = "cr", k = 5, m = 2) +
                     s(log.sst, bs = "cr", k = 5, m = 2) +
                     s(log.sst, by = id, bs = "cr", k = 5, m = 1) +
                     s(id, bs = "re"), data = rsf.pts_10s2, method = "fREML",
-                  family = poisson(), weights = wts2, discrete = TRUE)
-toc()  #took 16 min to run; 24 min on laptop
+                  family = poisson(), weights = rsf.pts_10s2$wts2, discrete = 500)
+toc()  #took 13 min to run
 
 summary(fit.HGAM10_PI)
+fit.HGAM10_PI$iter
 plot(fit.HGAM10_PI, select = 1, scale = 0, shade = TRUE, shade.col = "lightblue")
 plot(fit.HGAM10_PI, select = 51, scale = 0, shade = TRUE, shade.col = "lightblue")
 plot(fit.HGAM10_PI, select = 101, scale = 0, shade = TRUE, shade.col = "lightblue")
@@ -200,7 +219,7 @@ p.bathym.pop <- sm %>%
   geom_line(aes(x = exp(log.bathym), y = exp(est)), linewidth = 1.2) +
 
   labs(x = 'Depth (m)', y = "Relative Intensity of Use") +
-  # lims(x = c(0,300)) +
+  lims(x = c(0,300)) +
   theme_bw() +
   theme(axis.title = element_text(size = 30),
         axis.text = element_text(size = 24))
@@ -360,7 +379,7 @@ newdat <- data.frame(log.bathym = terra::values(cov_list$bathym) %>%
                         log(),
                       log.sst = terra::values(cov_list$sst$`2020-09-01`) %>%
                         log(),
-                     id = unique(rsf.pts_10s2$id)[41])
+                     id = unique(rsf.pts_10s2$id)[45])
 names(newdat)[1:3] <- c('log.bathym','log.npp','log.sst')
 summary(newdat)
 
@@ -422,7 +441,7 @@ summary(newdat)
 # Specify terms to include
 var.eff <- grep(x = smooths(fit.HGAM10_PI), pattern = "181796", value = T)
 
-x181796.pred <- predict.bam(fit.HGAM10_PI, newdata = newdat, type = "terms", terms = var.eff,
+x181796.pred <- predict.bam(fit.HGAM10_PI, newdata = newdat, type = "terms", terms = var.eff[1],
                          discrete = FALSE, na.action = na.pass, se.fit = TRUE)
 
 summary(x181796.pred$fit)
@@ -455,256 +474,15 @@ ggplot() +
 
 
 
-#####################
-### Validate HGAM ###
-#####################
 
-dat.br <- read_csv("Processed_data/Brazil_Cm_Tracks_behav.csv")
-dat.qa <- read_csv("Processed_data/Qatar_Cm_Tracks_behav.csv")
 
-# Create indexing column "month.year"
-dat.br <- dat.br %>%
-  mutate(month.year = as_date(date), .after = 'date') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
-  filter(behav == 'Resident')
 
-dat.qa <- dat.qa %>%
-  mutate(month.year = as_date(date), .after = 'date') %>%
-  mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01")) %>%
-  filter(behav == 'Resident')
 
+###########################
+### Export model object ###
+###########################
 
+saveRDS(fit.HGAM10_PI, "Data_products/HGAM_model_fit.rds")
 
 
 
-
-### Brazil ###
-
-## Load in environ rasters
-files <- list.files(path = 'Environ_data', pattern = "Brazil", full.names = TRUE)
-files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
-
-# Merge into list; each element is a different covariate
-cov_list_br <- sapply(files, rast)
-cov_list_br
-
-names(cov_list_br) <- c('bathym', 'npp', 'sst')
-
-# Change names for dynamic layers to match YYYY-MM-01 format
-for (var in c('npp', 'sst')) {
-  names(cov_list_br[[var]]) <- gsub(names(cov_list_br[[var]]), pattern = "-..$", replacement = "-01")
-}
-
-
-## Set all positive bathymetric values (i.e., elevation) as NA
-cov_list_br[["bathym"]][cov_list_br[["bathym"]] > 0] <- NA
-
-
-## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
-for (var in c("bathym", "sst")) {
-  cov_list_br[[var]] <- terra::resample(cov_list_br[[var]], cov_list_br$npp, method = "average")
-}
-
-## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
-cov_list_br[["bathym"]][cov_list_br[["bathym"]] > -1e-9] <- NA
-
-
-## Transform CRS to match tracks
-cov_list_br <- map(cov_list_br, terra::project, 'EPSG:3395')
-
-
-
-
-
-
-### Validate model using CBI ###
-
-my.ind.br <- names(cov_list_br$npp)
-br.rast.pred <- rep(cov_list_br$bathym, nlyr(cov_list_br$npp))
-names(br.rast.pred) <- my.ind.br
-
-tic()
-for (i in 1:nlyr(cov_list_br$npp)) {
-
-  # Subset covars by month.year
-  vars <- data.frame(log.bathym = as.vector(terra::values(cov_list_br$bathym)) %>%
-                       abs() %>%
-                       log(),
-                     log.npp = as.vector(terra::values(cov_list_br$npp[[my.ind.br[i]]])) %>%
-                       log(),
-                     log.sst = as.vector(terra::values(cov_list_br$sst[[my.ind.br[i]]])) %>%
-                       log(),
-                     id = unique(rsf.pts_10s2$id)[1])
-
-
-  # Make predictions on intensity of use from model
-  br.pred <- predict.bam(fit.HGAM10_PI, newdata = vars, type = "terms", terms = c("s(log.bathym)","s(log.npp)","s(log.sst)"),
-                         discrete = FALSE, na.action = na.pass)
-
-  terra::values(br.rast.pred[[i]]) <- rowSums(br.pred)  #keep on log-scale since response scale results in crazy large values
-
-}
-skrrrahh('khaled2')
-toc()  #took 1.5 min
-
-
-
-cbi.br <- vector("list", nlyr(br.rast.pred))
-tic()
-for (i in 1:nlyr(br.rast.pred)) {
-
-  # Subset tracks by month.year
-  obs <- dat.br %>%
-    filter(month.year == my.ind.br[i]) %>%
-    dplyr::select(x, y)
-
-  cbi.br[[i]] <- cbi(fit = br.rast.pred[[i]],
-                     obs = obs,
-                     nclass = 0,
-                     window.w = "default",
-                     res = 100,
-                     PEplot = FALSE,
-                     rm.duplicate = TRUE,
-                     method = "spearman")
-}
-skrrrahh("khaled3")
-toc()  #took 30 sec
-
-
-cbi.br <- cbi.br %>%
-  map(., pluck, "cor") %>%
-  unlist() %>%
-  data.frame(cor = .,
-             Region = "Brazil")
-
-
-
-
-
-
-
-
-### Qatar ###
-
-## Load in environ rasters
-files <- list.files(path = 'Environ_data', pattern = "Qatar", full.names = TRUE)
-files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
-
-# Merge into list; each element is a different covariate
-cov_list_qa <- sapply(files, rast)
-cov_list_qa
-
-names(cov_list_qa) <- c('bathym', 'npp', 'sst')
-
-# Change names for dynamic layers to match YYYY-MM-01 format
-for (var in c('npp', 'sst')) {
-  names(cov_list_qa[[var]]) <- gsub(names(cov_list_qa[[var]]), pattern = "-..$", replacement = "-01")
-}
-
-
-## Set all positive bathymetric values (i.e., elevation) as NA
-cov_list_qa[["bathym"]][cov_list_qa[["bathym"]] > 0] <- NA
-
-
-## Transform raster layers to match coarsest spatial resolution (i.e., NPP/Kd490)
-for (var in c("bathym", "sst")) {
-  cov_list_qa[[var]] <- terra::resample(cov_list_qa[[var]], cov_list_qa$npp, method = "average")
-}
-
-## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
-cov_list_qa[["bathym"]][cov_list_qa[["bathym"]] > -1e-9] <- NA
-
-
-## Transform CRS to match tracks
-cov_list_qa <- map(cov_list_qa, terra::project, 'EPSG:3395')
-
-
-
-
-
-
-### Validate model using CBI ###
-
-my.ind.qa <- names(cov_list_qa$npp)
-qa.rast.pred <- rep(cov_list_qa$bathym, nlyr(cov_list_qa$npp))
-names(qa.rast.pred) <- my.ind.qa
-
-tic()
-for (i in 1:nlyr(cov_list_qa$npp)) {
-
-  # Subset covars by month.year
-  vars <- data.frame(log.bathym = as.vector(terra::values(cov_list_qa$bathym)) %>%
-                       abs() %>%
-                       log(),
-                     log.npp = as.vector(terra::values(cov_list_qa$npp[[my.ind.qa[i]]])) %>%
-                       log(),
-                     log.sst = as.vector(terra::values(cov_list_qa$sst[[my.ind.qa[i]]])) %>%
-                       log(),
-                     id = unique(rsf.pts_10s2$id)[1])
-
-
-  # Make predictions on intensity of use from model
-  qa.pred <- predict.bam(fit.HGAM10_PI, newdata = vars, type = "terms", terms = c("s(log.bathym)","s(log.npp)","s(log.sst)"),
-                         discrete = FALSE, na.action = na.pass)
-
-  terra::values(qa.rast.pred[[i]]) <- rowSums(qa.pred)
-
-}
-skrrrahh('khaled2')
-toc()  #took 1 sec
-
-
-
-cbi.qa <- vector("list", nlyr(qa.rast.pred))
-tic()
-for (i in 1:nlyr(qa.rast.pred)) {
-
-  # Subset tracks by month.year
-  obs <- dat.qa %>%
-    filter(month.year == my.ind.qa[i]) %>%
-    dplyr::select(x, y)
-
-  cbi.qa[[i]] <- cbi(fit = qa.rast.pred[[i]],
-                     obs = obs,
-                     nclass = 0,
-                     window.w = "default",
-                     res = 100,
-                     PEplot = FALSE,
-                     rm.duplicate = TRUE,
-                     method = "spearman")
-}
-skrrrahh("khaled3")
-toc()  #took 6 sec
-
-
-cbi.qa <- cbi.qa %>%
-  map(., pluck, "cor") %>%
-  unlist() %>%
-  data.frame(cor = .,
-             Region = "Qatar")
-
-
-
-
-
-
-### Summarize Validation Results ###
-
-cbi.fit <- rbind(cbi.br, cbi.qa)
-
-cbi.mean <- cbi.fit %>%
-  group_by(Region) %>%
-  summarize(mean = mean(cor, na.rm = TRUE))
-
-set.seed(2023)
-ggplot(data = cbi.fit, aes(Region, cor)) +
-  # geom_boxplot(aes(fill = Region), outlier.color = NA) +
-  geom_jitter(aes(fill = Region), pch = 21, height = 0, width = 0.2, alpha = 0.7, size = 5) +
-  scale_fill_manual(values = c("#1DB100", "#00A2FF"), guide = "none") +
-  geom_point(data = cbi.mean, aes(Region, mean), fill = "black", pch = 21, size = 6) +
-  geom_hline(yintercept = 0, linewidth = 1) +
-  lims(y = c(-1,1)) +
-  labs(x="", y = "Continuous Boyce Index") +
-  theme_bw() +
-  theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 24))
