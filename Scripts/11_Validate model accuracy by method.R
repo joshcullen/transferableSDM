@@ -21,7 +21,7 @@ source('Scripts/helper functions.R')
 hglm.fit <- readRDS("Data_products/HGLM_model_fit.rds")
 hgam.fit <- readRDS("Data_products/HGAM_model_fit.rds")
 brt.fit <- readRDS("Data_products/BRT_model_fit.rds")
-# hgpr.fit <- readRDS("Data_products/HGPR_model_fit.rds")
+hgpr.fit <- readRDS("Data_products/HGPR_model_fit.rds")
 
 
 
@@ -222,7 +222,7 @@ perc.use.br.full.hglm <- boyce.br.full.hglm %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.full.hglm, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1.5 bins
+  mean()  #2.6 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.full.hglm %>%
@@ -245,7 +245,7 @@ perc.use.br.sub.hglm <- boyce.br.sub.hglm %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.hglm, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1.5 bins
+  mean()  #2.1 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.hglm %>%
@@ -353,7 +353,7 @@ perc.use.qa.hglm <- boyce.qa.hglm %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.qa.hglm, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.5 bins
+  mean()  #2.6 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.qa.hglm %>%
@@ -457,7 +457,7 @@ perc.use.br.full.hgam <- boyce.br.full.hgam %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.full.hgam, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1.6 bins
+  mean()  #4.4 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.full.hgam %>%
@@ -480,7 +480,7 @@ perc.use.br.sub.hgam <- boyce.br.sub.hgam %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.hgam, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1.9 bins
+  mean()  #3.9 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.hgam %>%
@@ -575,7 +575,7 @@ perc.use.qa.hgam <- boyce.qa.hgam %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.qa.hgam, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #3.3 bins
+  mean()  #4.5 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.qa.hgam %>%
@@ -678,7 +678,7 @@ perc.use.br.full.brt <- boyce.br.full.brt %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.full.brt, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.1 bins
+  mean()  #9.1 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.full.brt %>%
@@ -701,7 +701,7 @@ perc.use.br.sub.brt <- boyce.br.sub.brt %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.brt, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.0 bins
+  mean()  #8.3 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.brt %>%
@@ -794,7 +794,7 @@ perc.use.qa.brt <- boyce.qa.brt %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.qa.brt, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.1 bins
+  mean()  #6.5 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.qa.brt %>%
@@ -817,13 +817,342 @@ boyce.qa.brt <- boyce.qa.brt %>%
 
 
 
+
+
+
+
+#####################
+### Validate HGPR ###
+#####################
+
+
+# Define vector of covar names
+covars <- c("log.bathym","log.npp","log.sst")
+
+# Define 1D meshes to be used for prediction across sites
+mesh.seq <- list(log.bathym = c(0.001, 5500),
+                 log.npp = c(20, 200000),
+                 log.sst = c(12,38)) %>%
+  map(log)
+
+# nbasis <- 5  #number of basis functions for approximating GP
+# degree <- 2  #degree for defining 1D mesh of GP
+alpha <- 2  #for calculating Matern covariance matrix
+
+
+# Define 1D mesh per covar
+mesh.list <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                     length.out = 5),
+                                 degree = 2,
+                                 boundary = 'free')
+}
+
+
+
+
+### Brazil ###
+
+my.ind.br <- names(cov_list_br$npp)
+br.rast.hgpr <- rep(cov_list_br$bathym, nlyr(cov_list_br$npp))
+names(br.rast.hgpr) <- my.ind.br
+
+# Define coeff values from HGPR
+coeff1 <- hgpr.fit$summary.random[1:3] %>%
+  map(., ~pull(.x, mean))
+
+# Define coeff values of fixed terms from HGPR
+coeff2 <- hgpr.fit$summary.fixed$mean
+
+
+# Make spatial predictions per month.year
+tic()
+for (i in 1:nlyr(cov_list_br$npp)) {
+
+  # Subset covars by month.year
+  vars <- data.frame(log.bathym = as.vector(terra::values(cov_list_br$bathym)) %>%
+                       abs() %>%
+                       log(),
+                     log.npp = as.vector(terra::values(cov_list_br$npp[[my.ind.br[i]]])) %>%
+                       log(),
+                     log.sst = as.vector(terra::values(cov_list_br$sst[[my.ind.br[i]]])) %>%
+                       log()) %>%
+    mutate(row_id = 1:nrow(.)) %>%
+    drop_na(log.bathym, log.npp, log.sst)
+
+  vars2 <- data.frame(Intercept = 1,
+                      log.sst = as.vector(terra::values(cov_list_br$sst[[my.ind.br[i]]])) %>%
+                        log(),
+                      log.sst2 = as.vector(terra::values(cov_list_br$sst[[my.ind.br[i]]])) %>%
+                        log() %>%
+                        . ^ 2) %>%
+    mutate(row_id = 1:nrow(.)) %>%
+    filter(row_id %in% vars$row_id)
+
+
+
+  # Generate matrices for covariate raster data (for prediction)
+  A.mat <- vector("list", length(covars))
+  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.mat[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = vars[[covars[[i]]]])
+  }
+
+
+  # Make predictions on intensity of use from model for GP terms
+  br.hgpr <- A.mat %>%
+    map2(.x = ., .y = coeff1,
+         ~{.x %*% .y %>%
+             as.vector()}
+    ) %>%
+    bind_cols() %>%
+    rowSums()  #sum up all predictions across covars
+
+  # Make predictions using linear terms
+  br.hgpr2 <- as.matrix(vars2[,1:3]) %*% coeff2
+
+  # Store results in raster stack
+  terra::values(br.rast.hgpr[[i]]) <- NA  # initially store all NAs for locs w/o predictions
+  terra::values(br.rast.hgpr[[i]])[vars$row_id] <- br.hgpr + br.hgpr2[,1]
+}
+skrrrahh('khaled2')
+toc()  #took 40 sec
+
+
+
+# Assess model performance via Continuous Boyce Index
+boyce.br.full.hgpr <- vector("list", nlyr(br.rast.hgpr))
+boyce.br.sub.hgpr <- vector("list", nlyr(br.rast.hgpr))
+tic()
+for (i in 1:nlyr(br.rast.hgpr)) {
+
+  # Subset tracks by month.year
+  obs_full <- dat.br %>%
+    filter(month.year == my.ind.br[i]) %>%
+    dplyr::select(x, y)
+
+  obs_sub <- dat.br %>%
+    filter(month.year == my.ind.br[i], x < -3650000) %>%
+    dplyr::select(x, y)
+
+  boyce.br.full.hgpr[[i]] <- boyce(fit = br.rast.hgpr[[i]],
+                                   obs = obs_full,
+                                   nbins = 10,
+                                   bin.method = "seq",
+                                   PEplot = FALSE,
+                                   rm.duplicate = FALSE,
+                                   method = "spearman")
+
+  boyce.br.sub.hgpr[[i]] <- boyce(fit = br.rast.hgpr[[i]],
+                                  obs = obs_sub,
+                                  nbins = 10,
+                                  bin.method = "seq",
+                                  PEplot = FALSE,
+                                  rm.duplicate = FALSE,
+                                  method = "spearman")
+}
+skrrrahh("khaled3")
+toc()  #took 5 sec
+
+
+
+perc.use.br.full.hgpr <- boyce.br.full.hgpr %>%
+  map(., pluck, "perc.use") %>%
+  set_names(1:length(.)) %>%
+  bind_rows() %>%
+  janitor::remove_empty(which = "cols") %>%
+  apply(., 2, function(x) cumsum(rev(x)))
+
+# check fewest bins that contain >=90% of all obs
+apply(perc.use.br.full.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
+  mean()  #1 bins
+
+# Viz plot of cumulative percentage of obs per bin (highest to lowest)
+perc.use.br.full.hgpr %>%
+  data.frame() %>%
+  mutate(bin = factor(10:1, levels = 10:1)) %>%
+  pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
+  ggplot(aes(bin, cum.perc)) +
+  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+  geom_line(aes(group = month.year, color = month.year)) +
+  theme_bw()
+
+
+
+perc.use.br.sub.hgpr <- boyce.br.sub.hgpr %>%
+  map(., pluck, "perc.use") %>%
+  set_names(1:length(.)) %>%
+  bind_rows() %>%
+  janitor::remove_empty(which = "cols") %>%
+  apply(., 2, function(x) cumsum(rev(x)))
+
+# check fewest bins that contain >=90% of all obs
+apply(perc.use.br.sub.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
+  mean()  #1.5 bins
+
+# Viz plot of cumulative percentage of obs per bin (highest to lowest)
+perc.use.br.sub.hgpr %>%
+  data.frame() %>%
+  mutate(bin = factor(10:1, levels = 10:1)) %>%
+  pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
+  ggplot(aes(bin, cum.perc)) +
+  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+  geom_line(aes(group = month.year, color = month.year)) +
+  ylim(0,1) +
+  theme_bw()
+
+boyce.br.full.hgpr <- boyce.br.full.hgpr %>%
+  map(., pluck, "cor") %>%
+  unlist() %>%
+  data.frame(cor = .,
+             Region = "Brazil_all",
+             Method = "HGPR")
+
+boyce.br.sub.hgpr <- boyce.br.sub.hgpr %>%
+  map(., pluck, "cor") %>%
+  unlist() %>%
+  data.frame(cor = .,
+             Region = "Brazil_sub",
+             Method = "HGPR")
+
+
+
+
+
+### Qatar ###
+
+my.ind.qa <- names(cov_list_qa$npp)
+qa.rast.hgpr <- rep(cov_list_qa$bathym, nlyr(cov_list_qa$npp))
+names(qa.rast.hgpr) <- my.ind.qa
+
+# Define coeff values from HGPR
+coeff1 <- hgpr.fit$summary.random[1:3] %>%
+  map(., ~pull(.x, mean))
+
+# Define coeff values of fixed terms from HGPR
+coeff2 <- hgpr.fit$summary.fixed$mean
+
+
+
+# Make spatial predictions per month.year
+tic()
+for (i in 1:nlyr(cov_list_qa$npp)) {
+
+  # Subset covars by month.year
+  vars <- data.frame(log.bathym = as.vector(terra::values(cov_list_qa$bathym)) %>%
+                       abs() %>%
+                       log(),
+                     log.npp = as.vector(terra::values(cov_list_qa$npp[[my.ind.qa[i]]])) %>%
+                       log(),
+                     log.sst = as.vector(terra::values(cov_list_qa$sst[[my.ind.qa[i]]])) %>%
+                       log()) %>%
+    mutate(row_id = 1:nrow(.)) %>%
+    drop_na(log.bathym, log.npp, log.sst)
+
+  vars2 <- data.frame(Intercept = 1,
+                      log.sst = as.vector(terra::values(cov_list_qa$sst[[my.ind.qa[i]]])) %>%
+                        log(),
+                      log.sst2 = as.vector(terra::values(cov_list_qa$sst[[my.ind.qa[i]]])) %>%
+                        log() %>%
+                        . ^ 2) %>%
+    mutate(row_id = 1:nrow(.)) %>%
+    filter(row_id %in% vars$row_id)
+
+
+
+  # Generate matrices for covariate raster data (for prediction)
+  A.mat <- vector("list", length(covars))
+  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.mat[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = vars[[covars[[i]]]])
+  }
+
+
+  # Make predictions on intensity of use from model for GP terms
+  qa.hgpr <- A.mat %>%
+    map2(.x = ., .y = coeff1,
+         ~{.x %*% .y %>%
+             as.vector()}
+    ) %>%
+    bind_cols() %>%
+    rowSums()  #sum up all predictions across covars
+
+  # Make predictions using linear terms
+  qa.hgpr2 <- as.matrix(vars2[,1:3]) %*% coeff2
+
+  # Store results in raster stack
+  terra::values(qa.rast.hgpr[[i]]) <- NA  # initially store all NAs for locs w/o predictions
+  terra::values(qa.rast.hgpr[[i]])[vars$row_id] <- qa.hgpr + qa.hgpr2[,1]
+
+}
+skrrrahh('khaled2')
+toc()  #took 2 sec
+
+
+
+# Assess model performance via Continuous Boyce Index
+boyce.qa.hgpr <- vector("list", nlyr(qa.rast.hgpr))
+tic()
+for (i in 1:nlyr(qa.rast.hgpr)) {
+
+  # Subset tracks by month.year
+  obs <- dat.qa %>%
+    filter(month.year == my.ind.qa[i]) %>%
+    dplyr::select(x, y)
+
+  boyce.qa.hgpr[[i]] <- boyce(fit = qa.rast.hgpr[[i]],
+                              obs = obs,
+                              nbins = 10,
+                              bin.method = "seq",
+                              PEplot = FALSE,
+                              rm.duplicate = FALSE,
+                              method = "spearman")
+}
+skrrrahh("khaled3")
+toc()  #took 1 sec
+
+
+perc.use.qa.hgpr <- boyce.qa.hgpr %>%
+  map(., pluck, "perc.use") %>%
+  set_names(1:length(.)) %>%
+  bind_rows() %>%
+  janitor::remove_empty(which = "cols") %>%
+  apply(., 2, function(x) cumsum(rev(x)))
+
+# check fewest bins that contain >=90% of all obs
+apply(perc.use.qa.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
+  mean()  #2.2 bins
+
+# Viz plot of cumulative percentage of obs per bin (highest to lowest)
+perc.use.qa.hgpr %>%
+  data.frame() %>%
+  mutate(bin = factor(10:1, levels = 10:1)) %>%
+  pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
+  ggplot(aes(bin, cum.perc)) +
+  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+  geom_line(aes(group = month.year, color = month.year)) +
+  theme_bw()
+
+boyce.qa.hgpr <- boyce.qa.hgpr %>%
+  map(., pluck, "cor") %>%
+  unlist() %>%
+  data.frame(cor = .,
+             Region = "Qatar",
+             Method = "HGPR")
+
+
+
+
+
+
+
 ####################################
 ### Summarize Validation Results ###
 ####################################
 
 boyce.fit <- rbind(boyce.br.full.hglm, boyce.br.sub.hglm, boyce.qa.hglm,
-                 boyce.br.full.hgam, boyce.br.sub.hgam, boyce.qa.hgam,
-                 boyce.br.full.brt, boyce.br.sub.brt, boyce.qa.brt)
+                   boyce.br.full.hgam, boyce.br.sub.hgam, boyce.qa.hgam,
+                   boyce.br.full.brt, boyce.br.sub.brt, boyce.qa.brt,
+                   boyce.br.full.hgpr, boyce.br.sub.hgpr, boyce.qa.hgpr)
 
 boyce.mean <- boyce.fit %>%
   group_by(Method, Region) %>%
@@ -867,7 +1196,10 @@ cum.perc <- list(Brazil_all.HGLM = perc.use.br.full.hglm,
                  Qatar.HGAM = perc.use.qa.hgam,
                  Brazil_all.BRT = perc.use.br.full.brt,
                  Brazil_sub.BRT = perc.use.br.sub.brt,
-                 Qatar.BRT = perc.use.qa.brt)
+                 Qatar.BRT = perc.use.qa.brt,
+                 Brazil_all.HGPR = perc.use.br.full.hgpr,
+                 Brazil_sub.HGPR = perc.use.br.sub.hgpr,
+                 Qatar.HGPR = perc.use.qa.hgpr)
 
 cum.perc.mean <- cum.perc %>%
   map(., ~apply(.x, 2, function(x) which(x >= 0.9)[1])) %>%
@@ -882,7 +1214,7 @@ ggplot(data = cum.perc.mean, aes(Region, cum.perc)) +
   geom_point(aes(group = Method, color = Method),
              size = 6, position = position_dodge(width = 0.75)) +
   lims(y = c(0,10)) +
-  labs(x="", y = "Number of bins accounting for 90% of observations") +
+  labs(x="", y = "Avg # of bins accounting for 90% of obs") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 24))
+        axis.title = element_text(size = 22))
