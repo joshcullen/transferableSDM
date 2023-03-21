@@ -18,8 +18,8 @@ source('Scripts/helper functions.R')
 #################
 
 rsf.pts_10 <- read_csv("Processed_data/GoM_Cm_RSFprep_10x.csv")
-rsf.pts_30 <- read_csv("Processed_data/GoM_Cm_RSFprep_30x.csv")
-rsf.pts_50 <- read_csv("Processed_data/GoM_Cm_RSFprep_50x.csv")
+# rsf.pts_30 <- read_csv("Processed_data/GoM_Cm_RSFprep_30x.csv")
+# rsf.pts_50 <- read_csv("Processed_data/GoM_Cm_RSFprep_50x.csv")
 
 gom.sf <- st_read_parquet("Environ_data/GoM_land.parquet")
 
@@ -48,8 +48,8 @@ rsf.pts_10s <- rsf.pts_10s %>%
          sst.s = as.numeric(scale(sst))
   )
 
-rsf.pts_30s <- rsf.pts_30 %>%
-  drop_na(bathym, k490, npp, sst)
+# rsf.pts_30s <- rsf.pts_30 %>%
+#   drop_na(bathym, k490, npp, sst)
 # obs.ind_30 <- which(rsf.pts_30s$obs == 1)
 # rsf.pts_30s <- rsf.pts_30s %>%
 #   mutate(bathym.s = (bathym - mean(bathym[obs.ind_30])) / sd(bathym),
@@ -57,8 +57,8 @@ rsf.pts_30s <- rsf.pts_30 %>%
 #          npp.s = (npp - mean(npp[obs.ind_30])) / sd(npp),
 #          sst.s = (sst - mean(sst[obs.ind_30])) / sd(sst))
 
-rsf.pts_50s <- rsf.pts_50 %>%
-  drop_na(bathym, k490, npp, sst)
+# rsf.pts_50s <- rsf.pts_50 %>%
+#   drop_na(bathym, k490, npp, sst)
 # obs.ind_50 <- which(rsf.pts_50s$obs == 1)
 # rsf.pts_50s <- rsf.pts_50s %>%
 #   mutate(bathym.s = (bathym - mean(bathym[obs.ind_50])) / sd(bathym),
@@ -89,17 +89,17 @@ rsf.pts_10s <- rsf.pts_10s %>%
          log.npp = log(npp),
          log.sst = log(sst))
 
-rsf.pts_30s <- rsf.pts_30s %>%
-  mutate(log.bathym = log(abs(bathym)),
-         log.k490 = log(k490),
-         log.npp = log(npp),
-         log.sst = log(sst))
-
-rsf.pts_50s <- rsf.pts_50s %>%
-  mutate(log.bathym = log(abs(bathym)),
-         log.k490 = log(k490),
-         log.npp = log(npp),
-         log.sst = log(sst))
+# rsf.pts_30s <- rsf.pts_30s %>%
+#   mutate(log.bathym = log(abs(bathym)),
+#          log.k490 = log(k490),
+#          log.npp = log(npp),
+#          log.sst = log(sst))
+#
+# rsf.pts_50s <- rsf.pts_50s %>%
+#   mutate(log.bathym = log(abs(bathym)),
+#          log.k490 = log(k490),
+#          log.npp = log(npp),
+#          log.sst = log(sst))
 
 
 # Check Pearson corrs
@@ -118,8 +118,8 @@ rsf.pts_10s %>%
 # Down-weighted Poisson regression
 A <- 4759.836 ^ 2  #in m^2; pixel res is 4759.836 m
 rsf.pts_10s$wts2 <- ifelse(rsf.pts_10s$obs == 0, A / sum(rsf.pts_10s$obs == 0), 1e-6)
-rsf.pts_30s$wts2 <- ifelse(rsf.pts_30s$obs == 0, A / sum(rsf.pts_30s$obs == 0), 1e-6)
-rsf.pts_50s$wts2 <- ifelse(rsf.pts_50s$obs == 0, A / sum(rsf.pts_50s$obs == 0), 1e-6)
+# rsf.pts_30s$wts2 <- ifelse(rsf.pts_30s$obs == 0, A / sum(rsf.pts_30s$obs == 0), 1e-6)
+# rsf.pts_50s$wts2 <- ifelse(rsf.pts_50s$obs == 0, A / sum(rsf.pts_50s$obs == 0), 1e-6)
 
 
 

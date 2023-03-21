@@ -140,9 +140,10 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
 
   st.est <- inla.stack(data=list(y=y),
                        A=c(A.list.pop, A.list.id,
-                                1, 1),
+                                1, 1, 1),
                        effects=c(index.list.pop, index.list.id,
-                                      list(Intercept = rep(1, nrow(dat)), id1 = dat$id1)))
+                                      list(Intercept = rep(1, nrow(dat)), id1 = dat$id1,
+                                           log.sst = dat$log.sst)))
   # st.pred.bath <- inla.stack(data=list(y=NA),
   #                            A=A.list[which(1:length(A.list) %% 2 == 0)[1]],
   #                            effects=index.list[1],
@@ -156,7 +157,7 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   #                           effects=index.list[3],
   #                           tag="pred.sst")
   # st.all <- inla.stack(st.pop, st.id)
-  formula <-  y ~ -1 + Intercept +
+  formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +
     f(log.bathym.pop, model=spde.list[[1]]) +
     f(log.npp.pop, model=spde.list[[2]]) +
     f(log.sst.pop, model=spde.list[[3]]) +
@@ -188,6 +189,9 @@ bri.gpr <- function(x, y, pcprior, nbasis=5, degree=2, alpha=2, xout=x,
   tic()
   result <-  inla(formula, data=data,  family="poisson", weights = dat$wts2,
                   control.predictor = list(A=inla.stack.A(st.est),compute=TRUE),
+                  control.fixed = list(
+                    mean = c(6.592, -1),
+                    prec = c(100, 100)),
                   num.threads = 1:1
   )
   toc()  #took 11 min to run single-threaded; took 7.5 min on laptop
