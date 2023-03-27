@@ -1203,17 +1203,22 @@ cum.perc <- list(Brazil_all.HGLM = perc.use.br.full.hglm,
 
 cum.perc.mean <- cum.perc %>%
   map(., ~apply(.x, 2, function(x) which(x >= 0.9)[1])) %>%
-  map(., mean) %>%
-  bind_cols() %>%
-  pivot_longer(cols = everything(), names_to = "id", values_to = "cum.perc") %>%
+  map(., ~{data.frame(mean = mean(.x),
+                sd = sd(.x)
+                )}
+      ) %>%
+  bind_rows(.id = "id") %>%
+  # pivot_longer(cols = everything(), names_to = "id", values_to = "cum.perc") %>%
   separate(col = id, sep = "\\.", into = c("Region","Method"))
 
 
 
-ggplot(data = cum.perc.mean, aes(Region, cum.perc)) +
+ggplot(data = cum.perc.mean, aes(Region, mean)) +
+  geom_linerange(aes(ymin = (mean - sd), ymax = (mean + sd), color = Method),
+                 position = position_dodge(width = 0.75)) +
   geom_point(aes(group = Method, color = Method),
              size = 6, position = position_dodge(width = 0.75)) +
-  lims(y = c(0,10)) +
+  # lims(y = c(0,10)) +
   labs(x="", y = "Avg # of bins accounting for 90% of obs") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),

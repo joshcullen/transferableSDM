@@ -149,8 +149,8 @@ tic()
 hgpr.fit <- inla(formula, data=data, family="poisson", weights = rsf.pts_10s$wts2,
                  control.predictor = list(A = inla.stack.A(st.est), compute = TRUE),
                  control.fixed = list(  #physiologically-informed SST component
-                   mean = c(6.592, -1),
-                   prec = c(100, 100)),
+                   mean = list(log.sst = 10*6.592, `I(log.sst^2)` = 10*-1),
+                   prec = list(log.sst = 0.1, `I(log.sst^2)` = 0.1)),
                  num.threads = 1:1)  #for greater reproducibility
 toc()  #took 12.5 min to run single-threaded
 
@@ -189,6 +189,18 @@ pred.vals.pop <- A.me.pop %>%
   mutate(across(mean:x, exp))
 
 
+# Make predictions of linear SST terms
+sst.newdata <- data.frame(sst = newdat.list$log.sst,
+                          sst.2 = newdat.list$log.sst ^ 2) %>%
+  as.matrix()
+
+fixed.sst.coeff <- hgpr.fit$summary.fixed$mean[-1]
+# fixed.sst.coeff <- c(10*6.592, 10*-1)
+
+fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
+  data.frame(pred = .) %>%
+  mutate(sst = exp(sst.newdata[,1]))
+
 
 # Depth
 ggplot() +
@@ -217,6 +229,13 @@ ggplot() +
   # geom_ribbon(data = pred.vals[[3]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
   geom_line(data = pred.vals.pop %>%
               filter(covar == "log.sst"), aes(x = x, y = mean), linewidth = 1.5) +
+  theme_bw() +
+  labs(x = "SST (°C)", y = "Relative Intensity of Use") +
+  theme(axis.title = element_text(size = 30),
+        axis.text = element_text(size = 24))
+
+ggplot() +
+  geom_line(data = fixed.sst.pred, aes(x = sst, y = pred), linewidth = 1.5) +
   theme_bw() +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 30),
