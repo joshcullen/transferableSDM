@@ -944,3 +944,110 @@ gbm.pdp <- function(fit, ...) {
 
   return(tmp.df)
 }
+
+#----------------------------
+
+# Function to fit hierarchical Gaussian Process regression
+
+fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
+  #data = data.frame containing all properly formatted columns for fitting the HGPR model
+  #covars = vector of names for bathym, npp, and sst based on how used in formula expression
+  #pcprior = stores rho_0 and sigma_0, respectively
+  #mesh.seq = list of min and max values per covar for generating a sequence to create 1D mesh
+  #nbasis = number of basis functions for approximating GP
+  #degree = degree for defining 1D mesh of GP
+  #alpha = for calculating Matern covariance matrix
+
+
+  # Define weighted response variable
+  y <- data$obs / data$wts
+
+  # Define 1D mesh per covar
+  mesh.list <- vector("list", length(covars))
+  for (i in 1:length(covars)) {
+    mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                       length.out = nbasis),
+                                   degree = degree,
+                                   boundary = 'free')
+  }
+
+  # Calculate Matern covariance matrix for SPDE (using PC priors)
+  spde.list <- vector("list", length(covars))
+  for (i in 1:length(covars)) {
+    spde.list[[i]] <-  inla.spde2.pcmatern(mesh.list[[i]],
+                                           alpha = alpha,
+                                           prior.range = c(pcprior[[i]][1], 0.05),
+                                           prior.sigma = c(pcprior[[i]][2], 0.05))
+  }
+
+
+
+  ############################
+  ### Population-level GPs ###
+  A.list.pop <- vector("list", length(covars))
+  index.list.pop <- vector("list", length(covars))
+
+  for (i in 1:length(covars)) {
+    A.list.pop[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                        loc = data[[covars[[i]]]]
+    )
+    index.list.pop[[i]] <-  inla.spde.make.index(paste(covars[i], "pop", sep = "."),
+                                                 n.spde = spde.list[[i]]$n.spde)
+  }
+  ############################
+
+
+  ################################
+  ### Include random GP slopes ###
+  A.list.id <- vector("list", length(covars))
+  index.list.id <- vector("list", length(covars))
+
+  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.list.id[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                       loc = data[[covars[[i]]]],
+                                       group = data$id1,
+                                       n.group = ngroup,
+    )
+    index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
+                                                n.spde = spde.list[[i]]$n.spde,
+                                                n.group = ngroup)
+  }
+  ################################
+
+
+  # Create INLA stack of A matrices and other data
+  st.est <- inla.stack(data = list(y = y),
+                       A = c(A.list.pop, A.list.id,
+                             1, 1, 1),
+                       effects = c(index.list.pop, index.list.id,
+                                   list(Intercept = rep(1, nrow(data)), id1 = data$id1,
+                                        log.sst = data$log.sst)))
+
+  # Define formula for HGPR RSF model
+  formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
+    # pop-level terms
+    f(log.bathym.pop, model=spde.list[[1]]) +
+    f(log.npp.pop, model=spde.list[[2]]) +
+    f(log.sst.pop, model=spde.list[[3]]) +
+    # id-level terms
+    f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
+    f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+    f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+    f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+
+  ## Run model
+  stack.data <-  inla.stack.data(st.est)
+  set.seed(2023)
+  tic()
+  hgpr.fit <- inla(formula, data=stack.data, family="poisson", weights = data$wts,
+                   control.predictor = list(A = inla.stack.A(st.est), compute = TRUE),
+                   control.fixed = list(  #physiologically-informed SST component
+                     mean = list(log.sst = 10*6.592, `I(log.sst^2)` = 10*-1),
+                     prec = list(log.sst = 0.1, `I(log.sst^2)` = 0.1)),
+                   num.threads = 1:1)  #for greater reproducibility
+  toc()
+
+
+  return(hgpr.fit)
+}
