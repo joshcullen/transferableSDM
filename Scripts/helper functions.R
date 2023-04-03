@@ -977,7 +977,7 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
     spde.list[[i]] <-  inla.spde2.pcmatern(mesh.list[[i]],
                                            alpha = alpha,
                                            prior.range = c(pcprior[[i]][1], 0.05),
-                                           prior.sigma = c(pcprior[[i]][2], 0.05))
+                                           prior.sigma = c(pcprior[[i]][2], 0.95))
   }
 
 
