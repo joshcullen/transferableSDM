@@ -176,12 +176,15 @@ skrrrahh('khaled2')
 toc()  #took 1 min
 
 
+# Normalize predictions on 0-1 scale
+br.rast.hglm2 <- normalize(br.rast.hglm)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.br.full.hglm <- vector("list", nlyr(br.rast.hglm))
-boyce.br.sub.hglm <- vector("list", nlyr(br.rast.hglm))
+boyce.br.full.hglm <- vector("list", nlyr(br.rast.hglm2))
+boyce.br.sub.hglm <- vector("list", nlyr(br.rast.hglm2))
 tic()
-for (i in 1:nlyr(br.rast.hglm)) {
+for (i in 1:nlyr(br.rast.hglm2)) {
 
   # Subset tracks by month.year
   obs_full <- dat.br %>%
@@ -189,10 +192,10 @@ for (i in 1:nlyr(br.rast.hglm)) {
     dplyr::select(x, y)
 
   obs_sub <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3650000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
-  boyce.br.full.hglm[[i]] <- boyce(fit = br.rast.hglm[[i]],
+  boyce.br.full.hglm[[i]] <- boyce(fit = br.rast.hglm2[[i]],
                                    obs = obs_full,
                                    nbins = 10,
                                    bin.method = "seq",
@@ -200,7 +203,7 @@ for (i in 1:nlyr(br.rast.hglm)) {
                                    rm.duplicate = FALSE,
                                    method = "spearman")
 
-  boyce.br.sub.hglm[[i]] <- boyce(fit = br.rast.hglm[[i]],
+  boyce.br.sub.hglm[[i]] <- boyce(fit = br.rast.hglm2[[i]],
                                   obs = obs_sub,
                                   nbins = 10,
                                   bin.method = "seq",
@@ -209,7 +212,7 @@ for (i in 1:nlyr(br.rast.hglm)) {
                                   method = "spearman")
 }
 skrrrahh("khaled3")
-toc()  #took 4.8 sec
+toc()  #took 5 sec
 
 
 
@@ -245,7 +248,7 @@ perc.use.br.sub.hglm <- boyce.br.sub.hglm %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.hglm, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.1 bins
+  mean()  #1.3 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.hglm %>%
@@ -321,18 +324,21 @@ skrrrahh('khaled2')
 toc()  #took 1 sec
 
 
+# Normalize predictions on 0-1 scale
+qa.rast.hglm2 <- normalize(qa.rast.hglm)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.qa.hglm <- vector("list", nlyr(qa.rast.hglm))
+boyce.qa.hglm <- vector("list", nlyr(qa.rast.hglm2))
 tic()
-for (i in 1:nlyr(qa.rast.hglm)) {
+for (i in 1:nlyr(qa.rast.hglm2)) {
 
   # Subset tracks by month.year
   obs <- dat.qa %>%
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
-  boyce.qa.hglm[[i]] <- boyce(fit = qa.rast.hglm[[i]],
+  boyce.qa.hglm[[i]] <- boyce(fit = qa.rast.hglm2[[i]],
                               obs = obs,
                               nbins = 10,
                               bin.method = "seq",
@@ -411,12 +417,15 @@ skrrrahh('khaled2')
 toc()  #took 1.25 min
 
 
+# Normalize predictions on 0-1 scale
+br.rast.hgam2 <- normalize(br.rast.hgam)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.br.full.hgam <- vector("list", nlyr(br.rast.hgam))
-boyce.br.sub.hgam <- vector("list", nlyr(br.rast.hgam))
+boyce.br.full.hgam <- vector("list", nlyr(br.rast.hgam2))
+boyce.br.sub.hgam <- vector("list", nlyr(br.rast.hgam2))
 tic()
-for (i in 1:nlyr(br.rast.hgam)) {
+for (i in 1:nlyr(br.rast.hgam2)) {
 
   # Subset tracks by month.year
   obs_full <- dat.br %>%
@@ -424,10 +433,10 @@ for (i in 1:nlyr(br.rast.hgam)) {
     dplyr::select(x, y)
 
   obs_sub <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3650000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
-  boyce.br.full.hgam[[i]] <- boyce(fit = br.rast.hgam[[i]],
+  boyce.br.full.hgam[[i]] <- boyce(fit = br.rast.hgam2[[i]],
                                    obs = obs_full,
                                    nbins = 10,
                                    bin.method = "seq",
@@ -435,7 +444,7 @@ for (i in 1:nlyr(br.rast.hgam)) {
                                    rm.duplicate = FALSE,
                                    method = "spearman")
 
-  boyce.br.sub.hgam[[i]] <- boyce(fit = br.rast.hgam[[i]],
+  boyce.br.sub.hgam[[i]] <- boyce(fit = br.rast.hgam2[[i]],
                                   obs = obs_sub,
                                   nbins = 10,
                                   bin.method = "seq",
@@ -444,7 +453,7 @@ for (i in 1:nlyr(br.rast.hgam)) {
                                   method = "spearman")
 }
 skrrrahh("khaled3")
-toc()  #took 4.5 sec
+toc()  #took 5 sec
 
 
 
@@ -480,7 +489,7 @@ perc.use.br.sub.hgam <- boyce.br.sub.hgam %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.hgam, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #3.9 bins
+  mean()  #3.3 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.hgam %>%
@@ -491,6 +500,7 @@ perc.use.br.sub.hgam %>%
   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
   geom_line(aes(group = month.year, color = month.year)) +
   theme_bw()
+
 
 boyce.br.full.hgam <- boyce.br.full.hgam %>%
   map(., pluck, "cor") %>%
@@ -543,18 +553,21 @@ skrrrahh('khaled2')
 toc()  #took 1 sec
 
 
+# Normalize predictions on 0-1 scale
+qa.rast.hgam2 <- normalize(qa.rast.hgam)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.qa.hgam <- vector("list", nlyr(qa.rast.hgam))
+boyce.qa.hgam <- vector("list", nlyr(qa.rast.hgam2))
 tic()
-for (i in 1:nlyr(qa.rast.hgam)) {
+for (i in 1:nlyr(qa.rast.hgam2)) {
 
   # Subset tracks by month.year
   obs <- dat.qa %>%
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
-  boyce.qa.hgam[[i]] <- boyce(fit = qa.rast.hgam[[i]],
+  boyce.qa.hgam[[i]] <- boyce(fit = qa.rast.hgam2[[i]],
                               obs = obs,
                               nbins = 10,
                               bin.method = "seq",
@@ -633,12 +646,15 @@ skrrrahh('khaled2')
 toc()  #took 5.5 min
 
 
+# Normalize predictions on 0-1 scale
+br.rast.brt2 <- normalize(br.rast.brt)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.br.full.brt <- vector("list", nlyr(br.rast.brt))
-boyce.br.sub.brt <- vector("list", nlyr(br.rast.brt))
+boyce.br.full.brt <- vector("list", nlyr(br.rast.brt2))
+boyce.br.sub.brt <- vector("list", nlyr(br.rast.brt2))
 tic()
-for (i in 1:nlyr(br.rast.brt)) {
+for (i in 1:nlyr(br.rast.brt2)) {
 
   # Subset tracks by month.year
   obs_full <- dat.br %>%
@@ -646,10 +662,10 @@ for (i in 1:nlyr(br.rast.brt)) {
     dplyr::select(x, y)
 
   obs_sub <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3650000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
-  boyce.br.full.brt[[i]] <- boyce(fit = br.rast.brt[[i]],
+  boyce.br.full.brt[[i]] <- boyce(fit = br.rast.brt2[[i]],
                                   obs = obs_full,
                                   nbins = 10,
                                   bin.method = "seq",
@@ -657,7 +673,7 @@ for (i in 1:nlyr(br.rast.brt)) {
                                   rm.duplicate = FALSE,
                                   method = "spearman")
 
-  boyce.br.sub.brt[[i]] <- boyce(fit = br.rast.brt[[i]],
+  boyce.br.sub.brt[[i]] <- boyce(fit = br.rast.brt2[[i]],
                                  obs = obs_sub,
                                  nbins = 10,
                                  bin.method = "seq",
@@ -701,7 +717,7 @@ perc.use.br.sub.brt <- boyce.br.sub.brt %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.brt, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #8.3 bins
+  mean()  #8 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.brt %>%
@@ -762,18 +778,21 @@ skrrrahh('khaled2')
 toc()  #took 2 sec
 
 
+# Normalize predictions on 0-1 scale
+qa.rast.brt2 <- normalize(qa.rast.brt)
 
 
-boyce.qa.brt <- vector("list", nlyr(qa.rast.brt))
+
+boyce.qa.brt <- vector("list", nlyr(qa.rast.brt2))
 tic()
-for (i in 1:nlyr(qa.rast.brt)) {
+for (i in 1:nlyr(qa.rast.brt2)) {
 
   # Subset tracks by month.year
   obs <- dat.qa %>%
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
-  boyce.qa.brt[[i]] <- boyce(fit = qa.rast.brt[[i]],
+  boyce.qa.brt[[i]] <- boyce(fit = qa.rast.brt2[[i]],
                              obs = obs,
                              nbins = 10,
                              bin.method = "seq",
@@ -894,8 +913,8 @@ for (i in 1:nlyr(cov_list_br$npp)) {
 
   # Generate matrices for covariate raster data (for prediction)
   A.mat <- vector("list", length(covars))
-  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
-    A.mat[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = vars[[covars[[i]]]])
+  for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
   }
 
 
@@ -919,12 +938,15 @@ skrrrahh('khaled2')
 toc()  #took 40 sec
 
 
+# Normalize predictions on 0-1 scale
+br.rast.hgpr2 <- normalize(br.rast.hgpr)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.br.full.hgpr <- vector("list", nlyr(br.rast.hgpr))
-boyce.br.sub.hgpr <- vector("list", nlyr(br.rast.hgpr))
+boyce.br.full.hgpr <- vector("list", nlyr(br.rast.hgpr2))
+boyce.br.sub.hgpr <- vector("list", nlyr(br.rast.hgpr2))
 tic()
-for (i in 1:nlyr(br.rast.hgpr)) {
+for (i in 1:nlyr(br.rast.hgpr2)) {
 
   # Subset tracks by month.year
   obs_full <- dat.br %>%
@@ -932,10 +954,10 @@ for (i in 1:nlyr(br.rast.hgpr)) {
     dplyr::select(x, y)
 
   obs_sub <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3650000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
-  boyce.br.full.hgpr[[i]] <- boyce(fit = br.rast.hgpr[[i]],
+  boyce.br.full.hgpr[[i]] <- boyce(fit = br.rast.hgpr2[[i]],
                                    obs = obs_full,
                                    nbins = 10,
                                    bin.method = "seq",
@@ -943,7 +965,7 @@ for (i in 1:nlyr(br.rast.hgpr)) {
                                    rm.duplicate = FALSE,
                                    method = "spearman")
 
-  boyce.br.sub.hgpr[[i]] <- boyce(fit = br.rast.hgpr[[i]],
+  boyce.br.sub.hgpr[[i]] <- boyce(fit = br.rast.hgpr2[[i]],
                                   obs = obs_sub,
                                   nbins = 10,
                                   bin.method = "seq",
@@ -965,7 +987,7 @@ perc.use.br.full.hgpr <- boyce.br.full.hgpr %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.full.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1 bins
+  mean()  #4.1 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.full.hgpr %>%
@@ -988,7 +1010,7 @@ perc.use.br.sub.hgpr <- boyce.br.sub.hgpr %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1.5 bins
+  mean()  #2.5 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.hgpr %>%
@@ -1000,6 +1022,7 @@ perc.use.br.sub.hgpr %>%
   geom_line(aes(group = month.year, color = month.year)) +
   ylim(0,1) +
   theme_bw()
+
 
 boyce.br.full.hgpr <- boyce.br.full.hgpr %>%
   map(., pluck, "cor") %>%
@@ -1062,8 +1085,8 @@ for (i in 1:nlyr(cov_list_qa$npp)) {
 
   # Generate matrices for covariate raster data (for prediction)
   A.mat <- vector("list", length(covars))
-  for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
-    A.mat[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = vars[[covars[[i]]]])
+  for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+    A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
   }
 
 
@@ -1088,18 +1111,21 @@ skrrrahh('khaled2')
 toc()  #took 2 sec
 
 
+# Normalize predictions on 0-1 scale
+qa.rast.hgpr2 <- normalize(qa.rast.hgpr)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.qa.hgpr <- vector("list", nlyr(qa.rast.hgpr))
+boyce.qa.hgpr <- vector("list", nlyr(qa.rast.hgpr2))
 tic()
-for (i in 1:nlyr(qa.rast.hgpr)) {
+for (i in 1:nlyr(qa.rast.hgpr2)) {
 
   # Subset tracks by month.year
   obs <- dat.qa %>%
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
-  boyce.qa.hgpr[[i]] <- boyce(fit = qa.rast.hgpr[[i]],
+  boyce.qa.hgpr[[i]] <- boyce(fit = qa.rast.hgpr2[[i]],
                               obs = obs,
                               nbins = 10,
                               bin.method = "seq",
@@ -1120,7 +1146,7 @@ perc.use.qa.hgpr <- boyce.qa.hgpr %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.qa.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.2 bins
+  mean()  #4.5 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.qa.hgpr %>%
@@ -1172,19 +1198,6 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
         axis.title = element_text(size = 24))
 
 
-
-# brt.df <- as.data.frame(qa.rast.brt[[c(1:5,11:12,15)]], xy = T) %>%
-#   pivot_longer(cols = -c(x,y), names_to = "month.year", values_to = "pred")
-#
-#
-# ggplot() +
-#   geom_raster(data = brt.df, aes(x, y, fill = pred)) +
-#   scale_fill_viridis_c(option = "inferno") +
-#   geom_point(data = dat.qa %>%
-#                filter(month.year %in% my.ind.qa[c(1:5,11:12,15)]), aes(x, y), alpha = 0.4) +
-#   geom_sf(data = qa.sf) +
-#   theme_bw() +
-#   facet_wrap(~month.year)
 
 
 

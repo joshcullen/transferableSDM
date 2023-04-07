@@ -42,12 +42,12 @@ rsf.pts_10s <- rsf.pts_10 %>%
 #          k490.s = (k490 - mean(k490[obs.ind_10])) / sd(k490),
 #          npp.s = (npp - mean(npp[obs.ind_10])) / sd(npp),
 #          sst.s = (sst - mean(sst[obs.ind_10])) / sd(sst))
-rsf.pts_10s <- rsf.pts_10s %>%
-  mutate(bathym.s = as.numeric(scale(bathym)),
-         k490.s = as.numeric(scale(k490)),
-         npp.s = as.numeric(scale(npp)),
-         sst.s = as.numeric(scale(sst))
-  )
+# rsf.pts_10s <- rsf.pts_10s %>%
+#   mutate(bathym.s = as.numeric(scale(bathym)),
+#          k490.s = as.numeric(scale(k490)),
+#          npp.s = as.numeric(scale(npp)),
+#          sst.s = as.numeric(scale(sst))
+#   )
 
 rsf.pts_30s <- rsf.pts_30 %>%
   drop_na(bathym, npp, sst)

@@ -1,5 +1,5 @@
 
-### Fit HGPR RSF at different spatial scales ###
+### Fit HGLM RSF at different spatial scales ###
 
 library(tidyverse)
 library(INLA)
@@ -43,7 +43,7 @@ summary(rsf.pts_10_5km)
 
 
 #####################
-### Fit HGPR RSFs ###
+### Fit HGLM RSFs ###
 #####################
 
 # Remove rows w/ incomplete observations; log-transform covars
@@ -59,7 +59,7 @@ rsf.list2 <- rsf.list %>%
 # Now explore transformed distributions
 rsf.list2 %>%
   bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40','sc.80'))) %>%
+  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
   pivot_longer(cols = c(log.bathym, log.npp, log.sst), names_to = "covar", values_to = "value") %>%
   ggplot() +
   geom_density(aes(value, fill = factor(obs))) +
@@ -74,12 +74,16 @@ Area.list <- list(sc.5 = 4759.836 ^ 2,
                   sc.10 = 9532.72 ^ 2,
                   sc.20 = 19065.44 ^ 2,
                   sc.40 = 38130.88 ^ 2,
-                  sc.80 = 76261.76 ^ 2)
+                  sc.80 = 76261.76 ^ 2
+                  )
 rsf.list2 <- rsf.list2 %>%
-  map2(.x = ., .y = Area.list,
+  map(.x = ., #.y = Area.list,
        ~{.x %>%
-           mutate(wts = case_when(obs == 0 ~ .y / sum(obs == 0),
-                                  obs == 1 ~ 1e-6))}
+           # mutate(wts = case_when(obs == 0 ~ .y / sum(obs == 0),
+           #                        obs == 1 ~ 1e-6))
+           mutate(wts = case_when(obs == 0 ~ 5000,
+                                  obs == 1 ~ 1))
+         }
   )
 
 
@@ -88,54 +92,81 @@ rsf.list2 <- rsf.list2 %>%
 rsf.list2 <- rsf.list2 %>%
   map(.x = .,
        ~{.x %>%
-           mutate(id1 = as.integer(factor(id)))}
+           mutate(id1 = as.integer(factor(id)),
+                  id2 = id1,
+                  id3 = id1,
+                  id4 = id1,
+                  id5 = id1,
+                  id6 = id1,
+                  id7 = id1) %>%
+           arrange(id1)}
   )
 
-# Specify model params, predictors, and data
-covars <- c('log.bathym','log.npp','log.sst')
-
-pcprior <- list(bathym = c(1,5), npp = c(1,5), sst = c(1,5))  #stores rho_0 and sigma_0, respectively
-ngroup <- n_distinct(rsf.list2$sc.5$id1)
-mesh.seq <- list(log.bathym = c(0.001, 5500),
-                 log.npp = c(20, 200000),
-                 log.sst = c(12,38)) %>%
-  map(log)
-
-# nbasis <- 5  #number of basis functions for approximating GP
-# degree <- 2  #degree for defining 1D mesh of GP
-# alpha <- 2  #for calculating Matern covariance matrix
+# # create vector of ID values
+# id.vals <- unique(rsf.list2$sc.5$id1)
+#
+# RSF.formula <- obs/wts ~ log.bathym + I(log.bathym ^ 2) + log.npp + I(log.npp ^ 2) + log.sst + I(log.sst ^ 2) +
+#   f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
+#   f(id2, log.bathym, values = id.vals, model = "iid",
+#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+#   f(id3, I(log.bathym ^ 2), values = id.vals, model = "iid",
+#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+#   f(id4, log.npp, values = id.vals, model = "iid",
+#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+#   f(id5, I(log.npp ^ 2), values = id.vals, model = "iid",
+#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+#   f(id6, log.sst, values = id.vals, model = "iid",
+#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+#   f(id7, I(log.sst ^ 2), values = id.vals, model = "iid",
+#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
 
 
 # plan(multisession, workers = availableCores() - 2)
-# hgpr.res <- future_map(rsf.list2, ~fit_hgpr(data = ., covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-#                                             nbasis = 5, degree = 2, alpha = 2),
-#                       .options = furrr_options(seed = TRUE))
-# plan(sequential)
+# tic()
+# hglm.fit <- future_map(rsf.list2,
+#                        ~fit_hglm(data = .x),
+#                        .options = furrr_options(seed = TRUE))
+# toc()
+# plan(sequential)  #took 23 min to run
 
 
+tic()
+hglm.mod_5km <- fit_hglm(data = rsf.list2$sc.5)
+toc()  #took 3 min
+summary(hglm.mod_5km)
 
-hgpr.mod_5km <- fit_hgpr(data = rsf.list2$sc.5, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                         nbasis = 5, degree = 2, alpha = 2)  #took 17 min
-hgpr.mod_10km <- fit_hgpr(data = rsf.list2$sc.10, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                         nbasis = 5, degree = 2, alpha = 2)  #took 17.5 min to run
-hgpr.mod_20km <- fit_hgpr(data = rsf.list2$sc.20, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                          nbasis = 5, degree = 2, alpha = 2)  #took 16 min to run
-hgpr.mod_40km <- fit_hgpr(data = rsf.list2$sc.40, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                          nbasis = 5, degree = 2, alpha = 2)  #took 15.5 min to run
-# hgpr.mod_80km <- fit_hgpr(data = rsf.list2$sc.80, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-#                           nbasis = 5, degree = 2, alpha = 2)  #took x min to run
+tic()
+hglm.mod_10km <- fit_hglm(data = rsf.list2$sc.10)
+toc()  #took 4.5 min to run
+summary(hglm.mod_10km)
 
-summary(hgpr.mod_5km)
-summary(hgpr.mod_10km)
-summary(hgpr.mod_20km)
-summary(hgpr.mod_40km)
+tic()
+hglm.mod_20km <- fit_hglm(data = rsf.list2$sc.20)
+toc()  #took x min to run
+summary(hglm.mod_20km)
+
+tic()
+hglm.mod_40km <- fit_hglm(data = rsf.list2$sc.40)
+toc()  #took x min to run
+summary(hglm.mod_40km)
+
+tic()
+hglm.mod_80km <- fit_hglm(data = rsf.list2$sc.80)
+toc()  #took x min to run
+summary(hglm.mod_80km)
+
+
+# summary(hglm.fit$sc.5)
+# summary(hglm.fit$sc.10)
+# summary(hglm.fit$sc.20)
+# summary(hglm.fit$sc.40)
 
 
 # Store all model results in list
-hgpr.fit <- list(sc.5 = hgpr.mod_5km,
-                 sc.10 = hgpr.mod_10km,
-                 sc.20 = hgpr.mod_20km,
-                 sc.40 = hgpr.mod_40km)
+# hglm.fit <- list(sc.5 = hglm.mod_5km,
+#                  sc.10 = hglm.mod_10km,
+#                  sc.20 = hglm.mod_20km,
+#                  sc.40 = hglm.mod_40km)
 
 
 
@@ -143,6 +174,15 @@ hgpr.fit <- list(sc.5 = hgpr.mod_5km,
 ###############################################
 ### Population-level marginal effects plots ###
 ###############################################
+
+# Define 1D mesh per covar
+mesh.list <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                     length.out = 5),
+                                 degree = 2,
+                                 boundary = 'free')
+}
 
 # Generate matrices for sequences of covariate ranges
 A.me.pop <- vector("list", length(covars))

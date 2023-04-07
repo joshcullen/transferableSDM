@@ -949,7 +949,7 @@ gbm.pdp <- function(fit, ...) {
 
 # Function to fit hierarchical Gaussian Process regression
 
-fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
+fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age.class) {
   #data = data.frame containing all properly formatted columns for fitting the HGPR model
   #covars = vector of names for bathym, npp, and sst based on how used in formula expression
   #pcprior = stores rho_0 and sigma_0, respectively
@@ -957,6 +957,7 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
   #nbasis = number of basis functions for approximating GP
   #degree = degree for defining 1D mesh of GP
   #alpha = for calculating Matern covariance matrix
+  #age.class = logical; TRUE or FALSE whether the model should account for age class differences
 
 
   # Define weighted response variable
@@ -981,22 +982,6 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
   }
 
 
-
-  ############################
-  ### Population-level GPs ###
-  A.list.pop <- vector("list", length(covars))
-  index.list.pop <- vector("list", length(covars))
-
-  for (i in 1:length(covars)) {
-    A.list.pop[[i]] <- inla.spde.make.A(mesh.list[[i]],
-                                        loc = data[[covars[[i]]]]
-    )
-    index.list.pop[[i]] <-  inla.spde.make.index(paste(covars[i], "pop", sep = "."),
-                                                 n.spde = spde.list[[i]]$n.spde)
-  }
-  ############################
-
-
   ################################
   ### Include random GP slopes ###
   A.list.id <- vector("list", length(covars))
@@ -1006,7 +991,7 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
     A.list.id[[i]] <- inla.spde.make.A(mesh.list[[i]],
                                        loc = data[[covars[[i]]]],
                                        group = data$id1,
-                                       n.group = ngroup,
+                                       n.group = ngroup
     )
     index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
                                                 n.spde = spde.list[[i]]$n.spde,
@@ -1015,25 +1000,86 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
   ################################
 
 
-  # Create INLA stack of A matrices and other data
-  st.est <- inla.stack(data = list(y = y),
-                       A = c(A.list.pop, A.list.id,
-                             1, 1, 1),
-                       effects = c(index.list.pop, index.list.id,
-                                   list(Intercept = rep(1, nrow(data)), id1 = data$id1,
-                                        log.sst = data$log.sst)))
 
-  # Define formula for HGPR RSF model
-  formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
-    # pop-level terms
-    f(log.bathym.pop, model=spde.list[[1]]) +
-    f(log.npp.pop, model=spde.list[[2]]) +
-    f(log.sst.pop, model=spde.list[[3]]) +
-    # id-level terms
-    f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
-    f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
-    f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
-    f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+  # Structure remaining objects based on inclusion of age.class group (or not)
+  if (age.class == FALSE) {
+
+    # Define A matrix and index
+    A.list.pop <- vector("list", length(covars))
+    index.list.pop <- vector("list", length(covars))
+
+    for (i in 1:length(covars)) {
+      A.list.pop[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                          loc = data[[covars[[i]]]]
+      )
+      index.list.pop[[i]] <-  inla.spde.make.index(paste(covars[i], "pop", sep = "."),
+                                                   n.spde = spde.list[[i]]$n.spde)
+    }
+
+    # Create INLA stack of A matrices and other data
+    st.est <- inla.stack(data = list(y = y),
+                         A = c(A.list.pop, A.list.id,
+                               1, 1, 1),
+                         effects = c(index.list.pop, index.list.id,
+                                     list(Intercept = rep(1, nrow(data)), id1 = data$id1,
+                                          log.sst = data$log.sst)))
+
+    # Define formula for HGPR RSF model
+    formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
+      # pop-level terms
+      f(log.bathym.pop, model=spde.list[[1]]) +
+      f(log.npp.pop, model=spde.list[[2]]) +
+      f(log.sst.pop, model=spde.list[[3]]) +
+      # id-level terms
+      f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
+      f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+      f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+      f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+
+  } else if (age.class == TRUE) {
+
+    # Define A matrix and index
+    A.list.age <- vector("list", length(covars))
+    index.list.age <- vector("list", length(covars))
+
+    for (i in 1:length(covars)) {
+      A.list.age[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                          loc = rsf.pts_10_5kms[[covars[[i]]]],
+                                          group = rsf.pts_10_5kms$Age1,
+                                          n.group = ngroup.age
+      )
+      index.list.age[[i]] <-  inla.spde.make.index(paste(covars[i], "age", sep = "."),
+                                                   n.spde = spde.list[[i]]$n.spde,
+                                                   n.group = ngroup.age)
+    }
+
+
+    # Create INLA stack of A matrices and other data
+    st.est <- inla.stack(data = list(y = y),
+                         A = c(A.list.age, A.list.id,
+                               1, 1, 1),
+                         effects = c(index.list.age, index.list.id,
+                                     list(Intercept = rep(1, nrow(rsf.pts_10_5kms)), id1 = rsf.pts_10_5kms$id1,
+                                          log.sst = rsf.pts_10_5kms$log.sst)))
+
+    # Define formula for HGPR RSF model
+    formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
+      # life stage-level terms
+      f(log.bathym.age, model=spde.list[[1]], group = log.bathym.age.group, control.group = list(model = 'iid')) +
+      f(log.npp.age, model=spde.list[[2]], group = log.npp.age.group, control.group = list(model = 'iid')) +
+      f(log.sst.age, model=spde.list[[3]], group = log.sst.age.group, control.group = list(model = 'iid')) +
+      # id-level terms
+      f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
+      f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+      f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+      f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+  }
+
+
+
 
 
   ## Run model
@@ -1043,11 +1089,295 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha) {
   hgpr.fit <- inla(formula, data=stack.data, family="poisson", weights = data$wts,
                    control.predictor = list(A = inla.stack.A(st.est), compute = TRUE),
                    control.fixed = list(  #physiologically-informed SST component
-                     mean = list(log.sst = 10*6.592, `I(log.sst^2)` = 10*-1),
+                     mean = list(log.sst = 30*6.592, `I(log.sst^2)` = 30*-1),
                      prec = list(log.sst = 0.1, `I(log.sst^2)` = 0.1)),
                    num.threads = 1:1)  #for greater reproducibility
   toc()
 
 
   return(hgpr.fit)
+}
+
+#-----------------------------------
+
+predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, age.class) {
+  #cov_list = list of different environ covars as SpatRasters
+  #model_fit = a fitted HGPR INLA model object
+  #covars = character vector of covar names as used in model_fit
+  #mesh.seq = list of covar ranges as used for model_fit
+  #nbasis = number of basis functions used for model_fit
+  #degree = degree value used for model_fit
+  #alpha = alpha value used for model_fit
+  #age.class = logical; TRUE or FALSE whether the model accounts for age class differences
+
+
+  # Define 1D mesh per covar
+  mesh.list <- vector("list", length(covars))
+  for (i in 1:length(covars)) {
+    mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                       length.out = nbasis),
+                                   degree = degree,
+                                   boundary = 'free')
+  }
+
+  # Define vector of month.years for indexing
+  my.ind <- names(cov_list$npp)
+
+  # Set up rasters to store predictions
+  if (age.class == FALSE) {
+    rast.hgpr <- rep(cov_list$bathym, nlyr(cov_list$npp))
+    names(rast.hgpr) <- my.ind
+  } else if (age.class == TRUE) {
+    rast.pred.juv <- rast.pred.adult <- rep(cov_list$bathym, nlyr(cov_list$npp))
+    names(rast.pred.juv) <- names(rast.pred.adult) <- my.ind
+  }
+
+
+
+
+
+  # Make spatial predictions per month.year
+  for (i in 1:nlyr(cov_list$npp)) {
+
+    # Subset covars by month.year
+    vars <- data.frame(log.bathym = as.vector(terra::values(cov_list$bathym)) %>%
+                         abs() %>%
+                         log(),
+                       log.npp = as.vector(terra::values(cov_list$npp[[my.ind[i]]])) %>%
+                         log(),
+                       log.sst = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                         log()) %>%
+      mutate(row_id = 1:nrow(.)) %>%
+      drop_na(log.bathym, log.npp, log.sst)
+
+    vars2 <- data.frame(Intercept = 1,
+                        log.sst = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                          log(),
+                        log.sst2 = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                          log() %>%
+                          . ^ 2) %>%
+      mutate(row_id = 1:nrow(.)) %>%
+      filter(row_id %in% vars$row_id)
+
+
+
+    # Generate matrices for covariate raster data (for prediction)
+    A.mat <- vector("list", length(covars))
+    for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+      A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
+    }
+
+
+    if (age.class == FALSE) {
+
+      # Define coeff values from HGPR
+      coeff1 <- model_fit$summary.random[1:3] %>%
+        map(., ~pull(.x, mean))
+
+      # Define coeff values of fixed terms from HGPR
+      coeff2 <- model_fit$summary.fixed$mean
+
+      # Make predictions on intensity of use from model for GP terms
+      hgpr.pred <- A.mat %>%
+        map2(.x = ., .y = coeff1,
+             ~{.x %*% .y %>%
+                 as.vector()}
+        ) %>%
+        bind_cols() %>%
+        rowSums()  #sum up all predictions across covars
+
+      # Make predictions using linear terms
+      hgpr.pred2 <- as.matrix(vars2[,1:3]) %*% coeff2
+
+      # Store results in raster stack
+      terra::values(rast.hgpr[[i]]) <- NA  # initially store all NAs for locs w/o predictions
+      terra::values(rast.hgpr[[i]])[vars$row_id] <- hgpr.pred + hgpr.pred2[,1]
+
+
+    } else if (age.class == TRUE) {
+
+      # Replicate list elements for mapping over lists
+      A.mat2 <- rep(A.mat, each = 2)
+
+      # Define coeff values from HGPR
+      coeff1 <- model_fit$summary.random[1:3] %>%
+        map(., ~dplyr::select(.x, mean)) %>%
+        map(., ~mutate(.x, age = rep(1:2, each = 6))) %>%
+        map(., ~split(.x, .x$age)) %>%
+        flatten() %>%
+        map(., pull, mean) %>%
+        set_names(paste(rep(covars, each = 2), rep(1:2, length(covars)), sep = "_"))
+
+      # Define coeff values of fixed terms from HGPR
+      coeff2 <- model_fit$summary.fixed$mean
+
+
+      # Make predictions via linear algebra
+      hgpr.pred <- A.mat2 %>%
+        map2(.x = ., .y = coeff1,
+             ~{.x %*% .y %>%
+                 as.vector()}
+        ) %>%
+        set_names(names(coeff1)) %>%
+        bind_cols() %>%
+        split.default(., str_extract(names(.), "[0-9]$")) %>%  #split preds into list by age.class
+        map(., rowSums) %>%  #sum up all predictions across covars
+        set_names(c("Juv","Adult"))
+
+      # Make predictions using linear terms
+      hgpr.pred2 <- as.matrix(vars2[,1:3]) %*% coeff2
+
+
+      # Store results in raster stack
+      terra::values(rast.pred.juv[[i]]) <- terra::values(rast.pred.adult[[i]]) <- NA  # initially store all NAs for locs w/o predictions
+      terra::values(rast.pred.juv[[i]])[vars$row_id] <- hgpr.pred$Juv + hgpr.pred2[,1]
+      terra::values(rast.pred.adult[[i]])[vars$row_id] <- hgpr.pred$Adult + hgpr.pred2[,1]
+    }
+
+  }
+
+
+  if (age.class == FALSE) {
+    return(rast.hgpr)
+  } else if (age.class == TRUE) {
+    return(list(Juv = rast.pred.juv,
+                Adult = rast.pred.adult))
+  }
+
+}
+
+#------------------------
+
+#Function to normalize data (e.g., predicted raster values) via min-max scaling
+# In this case, min and max values will be determined from entire set of predictions (provided by user)
+# This function is intended to be used for values from SpatRaster stack
+normalize <- function(x) {
+
+  range <- values(x) %>%
+    as.vector() %>%
+    range(na.rm = TRUE)
+
+  (x - range[1]) / (range[2] - range[1])
+}
+
+
+#----------------------------
+
+# Function to fit hierarchical generalized linear model
+
+fit_hglm <- function(data) {
+  #data = data.frame containing all properly formatted columns for fitting the HGPR model
+  #age.class = logical; TRUE or FALSE whether the model accounts for age class differences
+
+
+  # create vector of ID values
+  id.vals <- unique(data$id1)
+
+  # Define formula expression
+  RSF.formula <- obs ~ log.bathym + I(log.bathym ^ 2) + log.npp + I(log.npp ^ 2) + log.sst + I(log.sst ^ 2) +
+    f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
+    f(id2, log.bathym, values = id.vals, model = "iid",
+      hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    f(id3, I(log.bathym ^ 2), values = id.vals, model = "iid",
+      hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    f(id4, log.npp, values = id.vals, model = "iid",
+      hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    f(id5, I(log.npp ^ 2), values = id.vals, model = "iid",
+      hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    f(id6, log.sst, values = id.vals, model = "iid",
+      hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
+    f(id7, I(log.sst ^ 2), values = id.vals, model = "iid",
+      hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
+
+
+  # Fit model
+  set.seed(2023)
+  hglm.fit <- inla(RSF.formula, family = "Binomial", Ntrials = 1, data = data, weights = data$wts,
+              control.fixed = list(
+                mean = 0,
+                prec = list(default = 1e-3)),
+              control.compute = list(waic = TRUE,
+                                     dic = TRUE), num.threads = 1:1
+  )
+
+  return(hglm.fit)
+
+}
+
+#-----------------------------------
+
+predict.hglm <- function(cov_list, model_fit, age.class) {
+  #cov_list = list of different environ covars as SpatRasters
+  #model_fit = a fitted HGPR INLA model object
+  #age.class = logical; TRUE or FALSE whether the model accounts for age class differences
+
+
+  # Define vector of month.years for indexing
+  my.ind <- names(cov_list$npp)
+
+  # Set up rasters to store predictions
+  if (age.class == FALSE) {
+    rast.pred <- rep(cov_list$bathym, nlyr(cov_list$npp))
+    names(rast.pred) <- my.ind
+  } else if (age.class == TRUE) {
+    rast.pred.juv <- rast.pred.adult <- rep(cov_list$bathym, nlyr(cov_list$npp))
+    names(rast.pred.juv) <- names(rast.pred.adult) <- my.ind
+  }
+
+
+
+
+
+  # Make spatial predictions per month.year
+  for (i in 1:nlyr(cov_list$npp)) {
+
+    # Subset covars by month.year
+    vars <- data.frame(intercept = 1,
+                       log.bathym = as.vector(terra::values(cov_list$bathym)) %>%
+                         abs() %>%
+                         log(),
+                       log.bathym2 = as.vector(terra::values(cov_list$bathym)) %>%
+                         abs() %>%
+                         log() %>%
+                         sapply(., function(x) x^2),
+                       log.npp = as.vector(terra::values(cov_list$npp[[my.ind[i]]])) %>%
+                         log(),
+                       log.npp2 = as.vector(terra::values(cov_list$npp[[my.ind[i]]])) %>%
+                         log() %>%
+                         sapply(.,function(x) x^2),
+                       log.sst = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                         log(),
+                       log.sst2 = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                         log() %>%
+                         sapply(., function(x) x^2))
+
+
+
+    if (age.class == FALSE) {
+
+      # Define coeff values
+      coeff1 <- model_fit$summary.fixed$mean
+
+      # Make predictions on intensity of use from model
+      hglm.pred <- as.matrix(vars) %*% coeff1  #make predictions
+
+      # Store results in raster stack
+      terra::values(rast.pred[[i]]) <- hglm.pred
+
+
+    } else if (age.class == TRUE) {
+
+      stop("This doesn't exist yet")
+    }
+
+  }
+
+
+  if (age.class == FALSE) {
+    return(rast.pred)
+  } else if (age.class == TRUE) {
+    return(list(Juv = rast.pred.juv,
+                Adult = rast.pred.adult))
+  }
+
 }
