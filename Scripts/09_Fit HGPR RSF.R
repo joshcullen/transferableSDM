@@ -44,28 +44,30 @@ rsf.pts_10s <- rsf.pts_10 %>%
 # Down-weighted Poisson regression
 A <- 4759.836 ^ 2  #in m^2; pixel res is 4759.836 m
 rsf.pts_10s$wts <- ifelse(rsf.pts_10s$obs == 0, A / sum(rsf.pts_10s$obs == 0), 1e-6)
+# rsf.pts_10s$wts <- ifelse(rsf.pts_10s$obs == 0, 5000, 1)
 
 
 
 
 # Add ID as integer for INLA
 rsf.pts_10s <- rsf.pts_10s %>%
-  mutate(id1 = as.integer(factor(id)))
+  mutate(id1 = as.integer(factor(id))) #%>%
+  # arrange(id1)
 
 
 
 # Specify model params, predictors, and data
 covars <- c('log.bathym','log.npp','log.sst')
 
-pcprior <- list(bathym = c(1,5), npp = c(1,5), sst = c(1,5))  #stores rho_0 and sigma_0, respectively
+pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))  #stores rho_0 and sigma_0, respectively
 ngroup <- n_distinct(rsf.pts_10s$id1)
 mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
-                 log.sst = c(12,38)) %>%
+                 log.sst = c(12,35)) %>%
   map(log)
 
 hgpr.fit <- fit_hgpr(data = rsf.pts_10s, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                         nbasis = 5, degree = 2, alpha = 2, age.class = FALSE)  #took 14.5 min
+                         nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto')  #took 3.25 min
 
 summary(hgpr.fit)
 

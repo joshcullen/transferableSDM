@@ -144,7 +144,7 @@ covars <- c("log.bathym","log.npp","log.sst")
 # Define 1D meshes to be used for prediction across sites
 mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
-                 log.sst = c(12,38)) %>%
+                 log.sst = c(12,35)) %>%
   map(log)
 
 
@@ -172,7 +172,7 @@ for (i in 1:nlyr(br.rast.no_age)) {
     dplyr::select(x, y)
 
   obs_sub <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3650000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
   boyce.br.full.no_age[[i]] <- boyce(fit = br.rast.no_age[[i]],
@@ -180,7 +180,7 @@ for (i in 1:nlyr(br.rast.no_age)) {
                                    nbins = 10,
                                    bin.method = "seq",
                                    PEplot = FALSE,
-                                   rm.duplicate = TRUE,
+                                   rm.duplicate = FALSE,
                                    method = "spearman")
 
   boyce.br.sub.no_age[[i]] <- boyce(fit = br.rast.no_age[[i]],
@@ -188,7 +188,7 @@ for (i in 1:nlyr(br.rast.no_age)) {
                                   nbins = 10,
                                   bin.method = "seq",
                                   PEplot = FALSE,
-                                  rm.duplicate = TRUE,
+                                  rm.duplicate = FALSE,
                                   method = "spearman")
 }
 skrrrahh("khaled3")
@@ -205,7 +205,7 @@ perc.use.br.full.no_age <- boyce.br.full.no_age %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.full.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1 bins
+  mean()  #1 bins; 5
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.full.no_age %>%
@@ -228,7 +228,7 @@ perc.use.br.sub.no_age <- boyce.br.sub.no_age %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1.5 bins
+  mean()  #1.5 bins; 2.2
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.no_age %>%
@@ -240,6 +240,7 @@ perc.use.br.sub.no_age %>%
   geom_line(aes(group = month.year, color = month.year)) +
   ylim(0,1) +
   theme_bw()
+
 
 boyce.br.full.no_age2 <- boyce.br.full.no_age %>%
   map(., pluck, "cor") %>%
@@ -286,7 +287,7 @@ for (i in 1:nlyr(qa.rast.no_age)) {
                                      nbins = 10,
                                      bin.method = "seq",
                                      PEplot = FALSE,
-                                     rm.duplicate = TRUE,
+                                     rm.duplicate = FALSE,
                                      method = "spearman")
 }
 skrrrahh("khaled3")
@@ -303,7 +304,7 @@ perc.use.qa.no_age <- boyce.qa.no_age %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.qa.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.2 bins
+  mean()  #2.2 bins; 2.8
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.qa.no_age %>%
@@ -341,7 +342,7 @@ covars <- c("log.bathym","log.npp","log.sst")
 # Define 1D meshes to be used for prediction across sites
 mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
-                 log.sst = c(12,38)) %>%
+                 log.sst = c(12,35)) %>%
   map(log)
 
 
@@ -373,7 +374,7 @@ for (j in 1:length(br.rast.age)) {
       dplyr::select(x, y)
 
     obs_sub <- dat.br %>%
-      filter(month.year == my.ind.br[i], x < -3650000, Age == age.class[j]) %>%
+      filter(month.year == my.ind.br[i], x < -3800000, Age == age.class[j]) %>%
       dplyr::select(x, y)
 
     boyce.br.full.age[[j]][[i]] <- boyce(fit = br.rast.age[[j]][[i]],
@@ -381,7 +382,7 @@ for (j in 1:length(br.rast.age)) {
                                      nbins = 10,
                                      bin.method = "seq",
                                      PEplot = FALSE,
-                                     rm.duplicate = TRUE,
+                                     rm.duplicate = FALSE,
                                      method = "spearman")
 
     boyce.br.sub.age[[j]][[i]] <- boyce(fit = br.rast.age[[j]][[i]],
@@ -389,12 +390,12 @@ for (j in 1:length(br.rast.age)) {
                                     nbins = 10,
                                     bin.method = "seq",
                                     PEplot = FALSE,
-                                    rm.duplicate = TRUE,
+                                    rm.duplicate = FALSE,
                                     method = "spearman")
   }
 }
 skrrrahh("khaled3")
-toc()  #took 10 sec
+toc()  #took 7 sec
 
 
 
@@ -415,7 +416,7 @@ perc.use.br.full.age <- boyce.br.full.age %>%
 # check fewest bins that contain >=90% of all obs
 map(perc.use.br.full.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
     mean()}
-)  #2.5 for Juv; 3.5 for Adult
+)  #2.5 for Juv; 3.5 for Adult; 3.7, 6.5
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.full.age %>%
@@ -449,7 +450,7 @@ perc.use.br.sub.age <- boyce.br.sub.age %>%
 # check fewest bins that contain >=90% of all obs
 map(perc.use.br.sub.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
     mean()}
-)  #2.5 for Juv; 2.5 for Adult
+)  #2.5 for Juv; 2.5 for Adult; 3.7, 1
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.age %>%
@@ -524,7 +525,7 @@ for (j in 1:length(qa.rast.age)) {
                                 nbins = 10,
                                 bin.method = "seq",
                                 PEplot = FALSE,
-                                rm.duplicate = TRUE,
+                                rm.duplicate = FALSE,
                                 method = "spearman")
   }
 }
@@ -549,7 +550,7 @@ perc.use.qa.age <- boyce.qa.age %>%
 # check fewest bins that contain >=90% of all obs
 map(perc.use.qa.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
     mean()}
-)  #4.75 bins; no adults, so remove
+)  #4.75 bins; no adults, so remove; 3.3
 
 perc.use.qa.age <- perc.use.qa.age$Juv
 
@@ -609,5 +610,5 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   labs(x="", y = "Boyce Index") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 24)) +
-  facet_wrap(~Age.Class)
+        axis.title = element_text(size = 24)) #+
+  # facet_wrap(~Age.Class)

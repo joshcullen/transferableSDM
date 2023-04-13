@@ -261,6 +261,7 @@ perc.use.br.sub.hglm %>%
   ylim(0,1) +
   theme_bw()
 
+
 boyce.br.full.hglm <- boyce.br.full.hglm %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -414,7 +415,7 @@ for (i in 1:nlyr(cov_list_br$npp)) {
 
 }
 skrrrahh('khaled2')
-toc()  #took 1.25 min
+toc()  #took 1 min
 
 
 # Normalize predictions on 0-1 scale
@@ -717,7 +718,7 @@ perc.use.br.sub.brt <- boyce.br.sub.brt %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.brt, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #8 bins
+  mean()  #8.1 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.brt %>%
@@ -851,7 +852,7 @@ covars <- c("log.bathym","log.npp","log.sst")
 # Define 1D meshes to be used for prediction across sites
 mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
-                 log.sst = c(12,38)) %>%
+                 log.sst = c(12,35)) %>%
   map(log)
 
 # nbasis <- 5  #number of basis functions for approximating GP
@@ -987,7 +988,7 @@ perc.use.br.full.hgpr <- boyce.br.full.hgpr %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.full.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #4.1 bins
+  mean()  #5 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.full.hgpr %>%
@@ -1010,7 +1011,7 @@ perc.use.br.sub.hgpr <- boyce.br.sub.hgpr %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.br.sub.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.5 bins
+  mean()  #2.2 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.br.sub.hgpr %>%
@@ -1146,7 +1147,7 @@ perc.use.qa.hgpr <- boyce.qa.hgpr %>%
 
 # check fewest bins that contain >=90% of all obs
 apply(perc.use.qa.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #4.5 bins
+  mean()  #2.6 bins
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
 perc.use.qa.hgpr %>%

@@ -25,14 +25,14 @@ rsf.pts_10_5km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x.csv")
 rsf.pts_10_10km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_10km.csv")
 rsf.pts_10_20km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_20km.csv")
 rsf.pts_10_40km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_40km.csv")
-rsf.pts_10_80km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_80km.csv")
+# rsf.pts_10_80km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_80km.csv")
 
 rsf.list <- list(
   sc.5 = rsf.pts_10_5km,
   sc.10 = rsf.pts_10_10km,
   sc.20 = rsf.pts_10_20km,
-  sc.40 = rsf.pts_10_40km,
-  sc.80 = rsf.pts_10_80km
+  sc.40 = rsf.pts_10_40km#,
+  # sc.80 = rsf.pts_10_80km
 )
 
 gom.sf <- st_read_parquet("Environ_data/GoM_land.parquet")
@@ -73,16 +73,16 @@ rsf.list2 %>%
 Area.list <- list(sc.5 = 4759.836 ^ 2,
                   sc.10 = 9532.72 ^ 2,
                   sc.20 = 19065.44 ^ 2,
-                  sc.40 = 38130.88 ^ 2,
-                  sc.80 = 76261.76 ^ 2
+                  sc.40 = 38130.88 ^ 2#,
+                  # sc.80 = 76261.76 ^ 2
                   )
 rsf.list2 <- rsf.list2 %>%
-  map(.x = ., #.y = Area.list,
+  map2(.x = ., .y = Area.list,
        ~{.x %>%
-           # mutate(wts = case_when(obs == 0 ~ .y / sum(obs == 0),
-           #                        obs == 1 ~ 1e-6))
-           mutate(wts = case_when(obs == 0 ~ 5000,
-                                  obs == 1 ~ 1))
+           mutate(wts = case_when(obs == 0 ~ .y / sum(obs == 0),
+                                  obs == 1 ~ 1e-6))
+           # mutate(wts = case_when(obs == 0 ~ 5000,
+           #                        obs == 1 ~ 1))
          }
   )
 
@@ -98,8 +98,9 @@ rsf.list2 <- rsf.list2 %>%
                   id4 = id1,
                   id5 = id1,
                   id6 = id1,
-                  id7 = id1) %>%
-           arrange(id1)}
+                  id7 = id1) #%>%
+           # arrange(id1)
+         }
   )
 
 # # create vector of ID values
@@ -130,30 +131,41 @@ rsf.list2 <- rsf.list2 %>%
 # plan(sequential)  #took 23 min to run
 
 
-tic()
-hglm.mod_5km <- fit_hglm(data = rsf.list2$sc.5)
-toc()  #took 3 min
-summary(hglm.mod_5km)
+# Specify model params, predictors, and data
+covars <- c('log.bathym','log.npp','log.sst')
 
-tic()
-hglm.mod_10km <- fit_hglm(data = rsf.list2$sc.10)
-toc()  #took 4.5 min to run
-summary(hglm.mod_10km)
+pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))  #stores rho_0 and sigma_0, respectively
+ngroup <- n_distinct(rsf.list2$sc.5$id1)
+mesh.seq <- list(log.bathym = c(0.001, 5500),
+                 log.npp = c(20, 200000),
+                 log.sst = c(12,35)) %>%
+  map(log)
 
-tic()
-hglm.mod_20km <- fit_hglm(data = rsf.list2$sc.20)
-toc()  #took x min to run
-summary(hglm.mod_20km)
 
-tic()
-hglm.mod_40km <- fit_hglm(data = rsf.list2$sc.40)
-toc()  #took x min to run
-summary(hglm.mod_40km)
+hgpr.mod_5km <- fit_hgpr(data = rsf.list2$sc.5, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
+                         nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto')
+#took 4 min
+summary(hgpr.mod_5km)
 
-tic()
-hglm.mod_80km <- fit_hglm(data = rsf.list2$sc.80)
-toc()  #took x min to run
-summary(hglm.mod_80km)
+hgpr.mod_10km <- fit_hgpr(data = rsf.list2$sc.10, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
+                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto')
+#took 5 min to run
+summary(hgpr.mod_10km)
+
+hgpr.mod_20km <- fit_hgpr(data = rsf.list2$sc.20, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
+                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'eb')
+#took 4.3 min to run
+summary(hgpr.mod_20km)
+
+hgpr.mod_40km <- fit_hgpr(data = rsf.list2$sc.40, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
+                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto')
+#took 3.5 min to run
+summary(hgpr.mod_40km)
+
+# hgpr.mod_80km <- fit_hgpr(data = rsf.list2$sc.80, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
+#                           nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'eb')
+# #took x min to run
+# summary(hgpr.mod_80km)
 
 
 # summary(hglm.fit$sc.5)
@@ -163,10 +175,10 @@ summary(hglm.mod_80km)
 
 
 # Store all model results in list
-# hglm.fit <- list(sc.5 = hglm.mod_5km,
-#                  sc.10 = hglm.mod_10km,
-#                  sc.20 = hglm.mod_20km,
-#                  sc.40 = hglm.mod_40km)
+hgpr.fit <- list(sc.5 = hgpr.mod_5km,
+                 sc.10 = hgpr.mod_10km,
+                 sc.20 = hgpr.mod_20km,
+                 sc.40 = hgpr.mod_40km)
 
 
 
@@ -216,7 +228,7 @@ pred.vals.pop[[i]] <- A.me.pop %>%
 }
 pred.vals.pop <- pred.vals.pop %>%
   bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
+  mutate(across(scale, \(x) factor(x, levels = c('sc.5','sc.10','sc.20','sc.40'))))
 
 
 # Make predictions of linear SST terms

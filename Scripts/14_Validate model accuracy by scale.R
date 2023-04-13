@@ -156,7 +156,7 @@ covars <- c("log.bathym","log.npp","log.sst")
 # Define 1D meshes to be used for prediction across sites
 mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
-                 log.sst = c(12,38)) %>%
+                 log.sst = c(12,35)) %>%
   map(log)
 
 # nbasis <- 5  #number of basis functions for approximating GP
@@ -174,7 +174,7 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
 tic()
 br.rast.hgpr <- map2(.x = cov_coarse_br, .y = hgpr.fit,
                             ~predict.hgpr(cov_list = .x, model_fit = .y, covars = covars,
-                                          mesh.seq = mesh.seq, nbasis = 5, degree = 2)
+                                          mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE)
                      )
 skrrrahh('khaled2')
 toc()  #took 1.5 min to run
@@ -197,7 +197,7 @@ for (j in 1:length(br.rast.hgpr)) {
       dplyr::select(x, y)
 
     obs_sub <- dat.br %>%
-      filter(month.year == my.ind.br[i], x < -3650000) %>%
+      filter(month.year == my.ind.br[i], x < -3800000) %>%
       dplyr::select(x, y)
 
     boyce.br.full[[j]][[i]] <- boyce(fit = br.rast.hgpr[[j]][[i]],
@@ -205,7 +205,7 @@ for (j in 1:length(br.rast.hgpr)) {
                                      nbins = 10,
                                      bin.method = "seq",
                                      PEplot = FALSE,
-                                     rm.duplicate = TRUE,
+                                     rm.duplicate = FALSE,
                                      method = "spearman")
 
     boyce.br.sub[[j]][[i]] <- boyce(fit = br.rast.hgpr[[j]][[i]],
@@ -213,12 +213,12 @@ for (j in 1:length(br.rast.hgpr)) {
                                     nbins = 10,
                                     bin.method = "seq",
                                     PEplot = FALSE,
-                                    rm.duplicate = TRUE,
+                                    rm.duplicate = FALSE,
                                     method = "spearman")
   }
 }
 skrrrahh("khaled3")
-toc()  #took 14 sec
+toc()  #took 10 sec
 
 
 
@@ -321,7 +321,7 @@ boyce.br.sub2 <- boyce.br.sub %>%
 tic()
 qa.rast.hgpr <- map2(.x = cov_coarse_qa, .y = hgpr.fit,
                      ~predict.hgpr(cov_list = .x, model_fit = .y, covars = covars,
-                                   mesh.seq = mesh.seq, nbasis = 5, degree = 2)
+                                   mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE)
 )
 skrrrahh('khaled2')
 toc()  #took 8 sec to run
@@ -348,7 +348,7 @@ for (j in 1:length(qa.rast.hgpr)) {
                                 nbins = 10,
                                 bin.method = "seq",
                                 PEplot = FALSE,
-                                rm.duplicate = TRUE,
+                                rm.duplicate = FALSE,
                                 method = "spearman")
   }
 }

@@ -949,7 +949,7 @@ gbm.pdp <- function(fit, ...) {
 
 # Function to fit hierarchical Gaussian Process regression
 
-fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age.class) {
+fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age.class, int.strategy) {
   #data = data.frame containing all properly formatted columns for fitting the HGPR model
   #covars = vector of names for bathym, npp, and sst based on how used in formula expression
   #pcprior = stores rho_0 and sigma_0, respectively
@@ -958,10 +958,14 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
   #degree = degree for defining 1D mesh of GP
   #alpha = for calculating Matern covariance matrix
   #age.class = logical; TRUE or FALSE whether the model should account for age class differences
+  #int.strategy  = character for integration strategy to use from INLA (see ?control.inla); use 'auto' in most cases and 'eb' when model is failing
 
 
   # Define weighted response variable
   y <- data$obs / data$wts
+
+  # Define groups by id1
+  ngroup <- n_distinct(data$id1)
 
   # Define 1D mesh per covar
   mesh.list <- vector("list", length(covars))
@@ -978,7 +982,7 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
     spde.list[[i]] <-  inla.spde2.pcmatern(mesh.list[[i]],
                                            alpha = alpha,
                                            prior.range = c(pcprior[[i]][1], 0.05),
-                                           prior.sigma = c(pcprior[[i]][2], 0.95))
+                                           prior.sigma = c(pcprior[[i]][2], 0.05))
   }
 
 
@@ -1040,14 +1044,17 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
 
   } else if (age.class == TRUE) {
 
+    # Define groups by Age1
+    ngroup.age <- n_distinct(data$Age1)
+
     # Define A matrix and index
     A.list.age <- vector("list", length(covars))
     index.list.age <- vector("list", length(covars))
 
     for (i in 1:length(covars)) {
       A.list.age[[i]] <- inla.spde.make.A(mesh.list[[i]],
-                                          loc = rsf.pts_10_5kms[[covars[[i]]]],
-                                          group = rsf.pts_10_5kms$Age1,
+                                          loc = data[[covars[[i]]]],
+                                          group = data$Age1,
                                           n.group = ngroup.age
       )
       index.list.age[[i]] <-  inla.spde.make.index(paste(covars[i], "age", sep = "."),
@@ -1061,8 +1068,8 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
                          A = c(A.list.age, A.list.id,
                                1, 1, 1),
                          effects = c(index.list.age, index.list.id,
-                                     list(Intercept = rep(1, nrow(rsf.pts_10_5kms)), id1 = rsf.pts_10_5kms$id1,
-                                          log.sst = rsf.pts_10_5kms$log.sst)))
+                                     list(Intercept = rep(1, nrow(data)), id1 = data$id1,
+                                          log.sst = data$log.sst)))
 
     # Define formula for HGPR RSF model
     formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
@@ -1086,12 +1093,16 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
   stack.data <-  inla.stack.data(st.est)
   set.seed(2023)
   tic()
-  hgpr.fit <- inla(formula, data=stack.data, family="poisson", weights = data$wts,
-                   control.predictor = list(A = inla.stack.A(st.est), compute = TRUE),
+  hgpr.fit <- inla(formula, data=stack.data, family="Poisson", #Ntrials = 1,
+                   control.predictor = list(A = inla.stack.A(st.est), compute = FALSE),
                    control.fixed = list(  #physiologically-informed SST component
-                     mean = list(log.sst = 30*6.592, `I(log.sst^2)` = 30*-1),
-                     prec = list(log.sst = 0.1, `I(log.sst^2)` = 0.1)),
-                   num.threads = 1:1)  #for greater reproducibility
+                     mean = list(log.sst = 30*6.592, `I(log.sst^2)` = 31*-1),
+                     prec = list(log.sst = 100, `I(log.sst^2)` = 100)),
+                   weights = data$wts,
+                   # num.threads = 1:1,
+                   # inla.mode="experimental",
+                   control.inla = list(int.strategy = int.strategy)
+                   )  #for greater reproducibility
   toc()
 
 
@@ -1292,12 +1303,12 @@ fit_hglm <- function(data) {
 
   # Fit model
   set.seed(2023)
-  hglm.fit <- inla(RSF.formula, family = "Binomial", Ntrials = 1, data = data, weights = data$wts,
+  hglm.fit <- inla(RSF.formula, family = "Binomial", Ntrials = 1, data = data, #weights = data$wts,
               control.fixed = list(
                 mean = 0,
                 prec = list(default = 1e-3)),
               control.compute = list(waic = TRUE,
-                                     dic = TRUE), num.threads = 1:1
+                                     dic = TRUE)#, num.threads = 1:1
   )
 
   return(hglm.fit)

@@ -72,7 +72,7 @@ rsf.pts_10_5kms <- rsf.pts_10_5kms %>%
 # Specify model params, predictors, and data
 covars <- c('log.bathym','log.npp','log.sst')
 
-pcprior <- list(bathym = c(1,5), npp = c(1,5), sst = c(1,5))  #stores rho_0 and sigma_0, respectively
+pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))  #stores rho_0 and sigma_0, respectively
 ngroup.age <- n_distinct(rsf.pts_10_5kms$Age1)
 ngroup.id <- n_distinct(rsf.pts_10_5kms$id1)
 mesh.seq <- list(log.bathym = c(0.001, 5500),
@@ -80,103 +80,110 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.sst = c(12,38)) %>%
   map(log)
 
-nbasis <- 5  #number of basis functions for approximating GP
-degree <- 2  #degree for defining 1D mesh of GP
-alpha <- 2  #for calculating Matern covariance matrix
+
+hgpr.age <- fit_hgpr(data = rsf.pts_10_5kms, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
+                     nbasis = 5, degree = 2, alpha = 2, age.class = TRUE, int.strategy = 'auto')  # took 3 min to run
 
 
 
-# Define weighted response variable
-y <- rsf.pts_10_5kms$obs / rsf.pts_10_5kms$wts
 
-# Define 1D mesh per covar
-mesh.list <- vector("list", length(covars))
-for (i in 1:length(covars)) {
-  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
-                                     length.out = nbasis),
-                                 degree = degree,
-                                 boundary = 'free')
-}
-
-# Calculate Matern covariance matrix for SPDE (using PC priors)
-spde.list <- vector("list", length(covars))
-for (i in 1:length(covars)) {
-  spde.list[[i]] <-  inla.spde2.pcmatern(mesh.list[[i]],
-                                         alpha = alpha,
-                                         prior.range = c(pcprior[[i]][1], 0.05),
-                                         prior.sigma = c(pcprior[[i]][2], 0.95))
-}
-
-
-
-############################
-### Life stage-level GPs ###
-A.list.age <- vector("list", length(covars))
-index.list.age <- vector("list", length(covars))
-
-for (i in 1:length(covars)) {
-  A.list.age[[i]] <- inla.spde.make.A(mesh.list[[i]],
-                                      loc = rsf.pts_10_5kms[[covars[[i]]]],
-                                     group = rsf.pts_10_5kms$Age1,
-                                     n.group = ngroup.age
-  )
-  index.list.age[[i]] <-  inla.spde.make.index(paste(covars[i], "age", sep = "."),
-                                              n.spde = spde.list[[i]]$n.spde,
-                                              n.group = ngroup.age)
-}
-############################
-
-
-################################
-### Include random GP slopes ###
-A.list.id <- vector("list", length(covars))
-index.list.id <- vector("list", length(covars))
-
-for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
-  A.list.id[[i]] <- inla.spde.make.A(mesh.list[[i]],
-                                     loc = rsf.pts_10_5kms[[covars[[i]]]],
-                                     group = rsf.pts_10_5kms$id1,
-                                     n.group = ngroup.id
-  )
-  index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
-                                              n.spde = spde.list[[i]]$n.spde,
-                                              n.group = ngroup.id)
-}
-################################
-
-
-# Create INLA stack of A matrices and other data
-st.est <- inla.stack(data = list(y = y),
-                     A = c(A.list.age, A.list.id,
-                           1, 1, 1),
-                     effects = c(index.list.age, index.list.id,
-                                 list(Intercept = rep(1, nrow(rsf.pts_10_5kms)), id1 = rsf.pts_10_5kms$id1,
-                                      log.sst = rsf.pts_10_5kms$log.sst)))
-
-# Define formula for HGPR RSF model
-formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
-  # life stage-level terms
-  f(log.bathym.age, model=spde.list[[1]], group = log.bathym.age.group, control.group = list(model = 'iid')) +
-  f(log.npp.age, model=spde.list[[2]], group = log.npp.age.group, control.group = list(model = 'iid')) +
-  f(log.sst.age, model=spde.list[[3]], group = log.sst.age.group, control.group = list(model = 'iid')) +
-  # id-level terms
-  f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
-  f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
-  f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
-  f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
-
-
-## Run model
-stack.data <-  inla.stack.data(st.est)
-set.seed(2023)
-tic()
-hgpr.age <- inla(formula, data=stack.data, family="poisson", weights = rsf.pts_10_5kms$wts,
-                 control.predictor = list(A = inla.stack.A(st.est), compute = TRUE),
-                 control.fixed = list(  #physiologically-informed SST component
-                   mean = list(log.sst = 10*6.592, `I(log.sst^2)` = 10*-1),
-                   prec = list(log.sst = 0.1, `I(log.sst^2)` = 0.1)),
-                 num.threads = 1:1)  #for greater reproducibility
-toc()  #took 14 min to run
+# nbasis <- 5  #number of basis functions for approximating GP
+# degree <- 2  #degree for defining 1D mesh of GP
+# alpha <- 2  #for calculating Matern covariance matrix
+#
+#
+#
+# # Define weighted response variable
+# y <- rsf.pts_10_5kms$obs / rsf.pts_10_5kms$wts
+#
+# # Define 1D mesh per covar
+# mesh.list <- vector("list", length(covars))
+# for (i in 1:length(covars)) {
+#   mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+#                                      length.out = nbasis),
+#                                  degree = degree,
+#                                  boundary = 'free')
+# }
+#
+# # Calculate Matern covariance matrix for SPDE (using PC priors)
+# spde.list <- vector("list", length(covars))
+# for (i in 1:length(covars)) {
+#   spde.list[[i]] <-  inla.spde2.pcmatern(mesh.list[[i]],
+#                                          alpha = alpha,
+#                                          prior.range = c(pcprior[[i]][1], 0.05),
+#                                          prior.sigma = c(pcprior[[i]][2], 0.95))
+# }
+#
+#
+#
+# ############################
+# ### Life stage-level GPs ###
+# A.list.age <- vector("list", length(covars))
+# index.list.age <- vector("list", length(covars))
+#
+# for (i in 1:length(covars)) {
+#   A.list.age[[i]] <- inla.spde.make.A(mesh.list[[i]],
+#                                       loc = rsf.pts_10_5kms[[covars[[i]]]],
+#                                      group = rsf.pts_10_5kms$Age1,
+#                                      n.group = ngroup.age
+#   )
+#   index.list.age[[i]] <-  inla.spde.make.index(paste(covars[i], "age", sep = "."),
+#                                               n.spde = spde.list[[i]]$n.spde,
+#                                               n.group = ngroup.age)
+# }
+# ############################
+#
+#
+# ################################
+# ### Include random GP slopes ###
+# A.list.id <- vector("list", length(covars))
+# index.list.id <- vector("list", length(covars))
+#
+# for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+#   A.list.id[[i]] <- inla.spde.make.A(mesh.list[[i]],
+#                                      loc = rsf.pts_10_5kms[[covars[[i]]]],
+#                                      group = rsf.pts_10_5kms$id1,
+#                                      n.group = ngroup.id
+#   )
+#   index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
+#                                               n.spde = spde.list[[i]]$n.spde,
+#                                               n.group = ngroup.id)
+# }
+# ################################
+#
+#
+# # Create INLA stack of A matrices and other data
+# st.est <- inla.stack(data = list(y = y),
+#                      A = c(A.list.age, A.list.id,
+#                            1, 1, 1),
+#                      effects = c(index.list.age, index.list.id,
+#                                  list(Intercept = rep(1, nrow(rsf.pts_10_5kms)), id1 = rsf.pts_10_5kms$id1,
+#                                       log.sst = rsf.pts_10_5kms$log.sst)))
+#
+# # Define formula for HGPR RSF model
+# formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
+#   # life stage-level terms
+#   f(log.bathym.age, model=spde.list[[1]], group = log.bathym.age.group, control.group = list(model = 'iid')) +
+#   f(log.npp.age, model=spde.list[[2]], group = log.npp.age.group, control.group = list(model = 'iid')) +
+#   f(log.sst.age, model=spde.list[[3]], group = log.sst.age.group, control.group = list(model = 'iid')) +
+#   # id-level terms
+#   f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
+#   f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+#   f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+#   f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+#
+#
+# ## Run model
+# stack.data <-  inla.stack.data(st.est)
+# set.seed(2023)
+# tic()
+# hgpr.age <- inla(formula, data=stack.data, family="poisson", weights = rsf.pts_10_5kms$wts,
+#                  control.predictor = list(A = inla.stack.A(st.est), compute = TRUE),
+#                  control.fixed = list(  #physiologically-informed SST component
+#                    mean = list(log.sst = 10*6.592, `I(log.sst^2)` = 10*-1),
+#                    prec = list(log.sst = 0.1, `I(log.sst^2)` = 0.1)),
+#                  num.threads = 1:1)  #for greater reproducibility
+# toc()  #took 14 min to run
 
 summary(hgpr.age)
 
@@ -187,6 +194,16 @@ summary(hgpr.age)
 ##############################################
 ### Age class-level marginal effects plots ###
 ##############################################
+
+# Define 1D mesh per covar
+mesh.list <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                     length.out = 5),
+                                 degree = 2,
+                                 boundary = 'free')
+}
+
 
 # Generate matrices for covariate raster data (for prediction)
 A.me.age <- vector("list", length(covars))
@@ -247,7 +264,7 @@ fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
 
 # Facet of all IDs and covars
 ggplot() +
-  geom_line(data = pred.vals.age, aes(x = x, y = log(mean), color = age), linewidth = 1.5) +
+  geom_line(data = pred.vals.age, aes(x = x, y = mean, color = age), linewidth = 1.5) +
   theme_bw() +
   # lims(x = c(0,300)) +
   labs(y = "Relative Intensity of Use") +
