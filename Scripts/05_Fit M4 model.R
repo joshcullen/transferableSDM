@@ -15,6 +15,7 @@ library(rnaturalearth)
 library(sf)
 library(sfarrow)
 library(plotly)
+library(patchwork)
 
 source('Scripts/helper functions.R')
 
@@ -54,12 +55,23 @@ dat.sf <- dat %>%
          lat = st_coordinates(.)[,2]) %>%
   st_drop_geometry()
 
-ggplot() +
+# Generate color palette for tracks
+set.seed(123)
+col.pal <- sapply(names(MetPalettes), function(x) met.brewer(palette_name = x, n = 5, type = "continuous")) %>%
+  as.vector() %>%
+  sample(., size = n_distinct(dat.sf$id))
+
+p.world <- ggplot() +
   geom_sf(data = world) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id)) +
+  geom_rect(aes(xmin = -98, xmax = -77, ymin = 18, ymax = 32), color = "#009ACD", fill = NA, linewidth = 1) +  #inset rect for GoM
+  geom_rect(aes(xmin = -49, xmax = -31, ymin = -26, ymax = -2), color = "#00CD00", fill = NA, linewidth = 1) +  #inset rect for Brazil
+  geom_rect(aes(xmin = 50.25, xmax = 53, ymin = 23.8, ymax = 27.2), color = "#CD4F39", fill = NA, linewidth = 1) +  #inset rect for Qatar
+  scale_color_manual(values = col.pal) +
   labs(x="",y="") +
   theme_bw() +
-  theme(legend.position = "none") +
+  theme(legend.position = "none",
+        axis.text = element_text(size = 16)) +
   coord_sf(xlim = c(-100,60), ylim = c(-50,50))
 
 # ggsave("../../Conference Presentations/SERSTM 2023/world_map.png", width = 8, height = 6,
@@ -74,40 +86,75 @@ br.sf <- st_read_parquet("Environ_data/Brazil_land.parquet") %>%
 qa.sf <- st_read_parquet("Environ_data/Qatar_land.parquet") %>%
   st_transform(4326)
 
-ggplot() +
+p.gom <- ggplot() +
   geom_sf(data = gom.sf) +
-  geom_path(data = dat.sf %>%
-              filter(Region == 'GoM'), aes(lon, lat, group = id, color = id)) +
+  geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
+  scale_color_manual(values = col.pal) +
+  annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic", size = 8, x = -92, y = 25) +
   labs(x="",y="") +
-  theme_bw() +
-  theme(legend.position = "none") +
+  theme_void() +
+  theme(legend.position = "none",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_rect(color = "#009ACD", fill = NA, linewidth = 2),
+        panel.background = element_rect(fill = "white")
+        ) +
   coord_sf(xlim = c(-98,-77), ylim = c(18,32))
 # ggsave("../../Conference Presentations/SERSTM 2023/gom_map.png", width = 8, height = 6,
 #        units = "in", dpi = 400)
 
 
-ggplot() +
+p.br <- ggplot() +
   geom_sf(data = br.sf) +
-  geom_path(data = dat.sf %>%
-              filter(Region == 'Brazil'), aes(lon, lat, group = id, color = id)) +
+  geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
+  scale_color_manual(values = col.pal) +
+  annotate(geom = "text", label = "Brazil", fontface = "italic", size = 8, x = -43, y = -8) +
   labs(x="",y="") +
-  theme_bw() +
-  theme(legend.position = "none") +
+  theme_void() +
+  theme(legend.position = "none",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_rect(color = "#00CD00", fill = NA, linewidth = 2),
+        panel.background = element_rect(fill = "white")
+        ) +
   coord_sf(xlim = c(-49,-31), ylim = c(-26,-2))
 # ggsave("../../Conference Presentations/SERSTM 2023/br_map.png", width = 8, height = 6,
 #        units = "in", dpi = 400)
 
 
-ggplot() +
+p.qa <- ggplot() +
   geom_sf(data = qa.sf) +
-  geom_path(data = dat.sf %>%
-              filter(Region == 'Qatar'), aes(lon, lat, group = id, color = id)) +
+  geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
+  scale_color_manual(values = col.pal) +
+  annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8, x = 52.25, y = 26.5) +
   labs(x="",y="") +
-  theme_bw() +
-  theme(legend.position = "none") +
+  theme_void() +
+  theme(legend.position = "none",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_rect(color = "#CD4F39", fill = NA, linewidth = 2),
+        panel.background = element_rect(fill = "white")
+  ) +
   coord_sf(xlim = c(50.25,53), ylim = c(23.8,27.2))
 # ggsave("../../Conference Presentations/SERSTM 2023/qa_map.png", width = 4, height = 6,
 #        units = "in", dpi = 400)
+
+
+
+
+### Create composite map ###
+
+p.world +
+  inset_element(p.gom, left = 0.23, bottom = 0.64, right = 0.65, top = 0.97, align_to = "plot") +
+  inset_element(p.br, left = 0.1, bottom = 0.1, right = 0.35, top = 0.6, align_to = "plot") +
+  inset_element(p.qa, left = 0.75, bottom = 0.15, right = 0.95, top = 0.65, align_to = "plot")
+
+# ggsave("Tables_Figs/Figure_1.png", width = 10, height = 6, units = "in", dpi = 400)
+
+
 
 
 ##############################
