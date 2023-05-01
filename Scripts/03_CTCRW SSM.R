@@ -9,6 +9,7 @@ library(sfarrow)
 library(tictoc)
 library(plotly)
 library(trelliscopejs)
+library(patchwork)
 
 source('Scripts/helper functions.R')
 
@@ -42,14 +43,16 @@ glimpse(dat2)
 
 ## Define bouts per PTT where gap > 3 days (for splitting fitted tracks)
 int_tbl <- dat2 %>%
+  rename(datetime = date) %>%
   split(.$id) %>%
-  purrr::map(., ~mutate(.x, bout = crawlUtils::cu_get_bouts(x = .$date, gap = 3, time_unit = "days"))) %>%
+  purrr::map(., ~mutate(.x, bout = crawlUtils::cu_add_bouts(x = ., gap = 3, time_unit = "days") %>%
+                          pull(bout_id))) %>%
   purrr::map(., function (x)
   {
     date <- NULL
     x <- x %>%
       group_by(.data[["bout"]]) %>%
-      summarize(start = min(date), end = max(date))
+      summarize(start = min(datetime), end = max(datetime))
   })
 
 
@@ -89,7 +92,7 @@ tmp %>%
 
 #### Account for location error at observed irregular time interval ####
 
-# Estimate 'true' locations regularized at 2 hr time step
+# Estimate 'true' locations regularized at 4 hr time step
 set.seed(2022)
 tic()
 fit_crw <- fit_ssm(dat2, vmax = 3, model = "crw", time.step = 4,
@@ -255,6 +258,81 @@ ggplot(data = qa.tracks3, aes(x, y, color = factor(bout))) +
 
 
 
+### Map tracks by age class ###
+
+age.df <- dat %>%
+  dplyr::select(Ptt, Age) %>%
+  rename(id = Ptt) %>%
+  distinct()
+
+dat3 <- rbind(gom.tracks3, br.tracks3, qa.tracks3) %>%
+  drop_na(x, y) %>%
+  st_as_sf(., coords = c('x','y'), crs = 3395) %>%
+  st_transform(4326) %>%
+  left_join(., age.df, by = "id")
+
+
+
+p.gom <- ggplot() +
+  geom_sf(data = gom.sf) +
+  geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
+  scale_color_brewer(palette = "Dark2") +
+  annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic",
+           size = 8, x = -92, y = 25) +
+  geom_text(aes(x = -98, y = 30, label = "A"), size = 10, fontface = "bold") +
+  labs(x="",y="") +
+  theme_void() +
+  theme(legend.position = "top",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+        panel.background = element_rect(fill = "white")
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 3, alpha = 1))) +
+  coord_sf(xlim = c(-98,-77), ylim = c(20,30.5))
+
+
+p.br <- ggplot() +
+  geom_sf(data = br.sf) +
+  geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
+  scale_color_brewer(palette = "Dark2") +
+  annotate(geom = "text", label = "Brazil", fontface = "italic", size = 8, x = -43, y = -8) +
+  geom_text(aes(x = -48.5, y = -2.5, label = "B"), size = 10, fontface = "bold") +
+  labs(x="",y="") +
+  theme_void() +
+  theme(legend.position = "none",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+        panel.background = element_rect(fill = "white")
+  ) +
+  coord_sf(xlim = c(-49,-31), ylim = c(-26,-2))
+
+
+p.qa <- ggplot() +
+  geom_sf(data = qa.sf) +
+  geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
+  scale_color_brewer(palette = "Dark2") +
+  annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8,
+           x = 51.0, y = 25.3) +
+  geom_text(aes(x = 50.33, y = 27.1, label = "C"), size = 10, fontface = "bold") +
+  labs(x="",y="") +
+  theme_void() +
+  theme(legend.position = "none",
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+        panel.background = element_rect(fill = "white")
+  ) +
+  coord_sf(xlim = c(50.25,53), ylim = c(23.8,27.2))
+
+
+p.gom / (p.br + p.qa)
+
+# ggsave("Tables_Figs/Figure S1.png", width = 5, height = 7, units = "in", dpi = 400)
 
 
 

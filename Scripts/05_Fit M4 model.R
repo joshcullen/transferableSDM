@@ -4,7 +4,7 @@
 
 library(tidyverse)
 library(lubridate)
-library(bayesmove)  #v2.0.0
+library(bayesmove)
 library(tictoc)
 library(future)
 library(furrr)
@@ -62,24 +62,24 @@ col.pal <- sapply(names(MetPalettes), function(x) met.brewer(palette_name = x, n
   as.vector() %>%
   sample(., size = n_distinct(dat.sf$id))
 
-p.world <- ggplot() +
-  geom_sf(data = world) +
+ggplot() +
+  geom_sf(data = world, color = "grey70") +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id)) +
-  geom_rect(aes(xmin = -98, xmax = -77, ymin = 18, ymax = 32), color = "#009ACD", fill = NA, linewidth = 1) +  #inset rect for GoM
+  geom_rect(aes(xmin = -98, xmax = -77, ymin = 20, ymax = 30.5), color = "#009ACD", fill = NA, linewidth = 1) +  #inset rect for GoM
   geom_rect(aes(xmin = -49, xmax = -31, ymin = -26, ymax = -2), color = "#00CD00", fill = NA, linewidth = 1) +  #inset rect for Brazil
   geom_rect(aes(xmin = 50.25, xmax = 53, ymin = 23.8, ymax = 27.2), color = "#CD4F39", fill = NA, linewidth = 1) +  #inset rect for Qatar
-  geom_text(aes(x = -95, y = 29, label = "A"), size = 8, fontface = "bold") +  #label for GoM subplot
+  geom_text(aes(x = -95, y = 27, label = "A"), size = 8, fontface = "bold") +  #label for GoM subplot
   geom_text(aes(x = -46, y = -5, label = "B"), size = 8, fontface = "bold") +  #label for Brazil subplot
   geom_text(aes(x = 47, y = 25.5, label = "C"), size = 8, fontface = "bold") +  #label for Qatar subplot
+  geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.25) +
   scale_color_manual(values = col.pal) +
   labs(x="",y="") +
   theme_bw() +
   theme(legend.position = "none",
-        axis.text = element_text(size = 16)) +
+        axis.text = element_text(size = 12)) +
   coord_sf(xlim = c(-100,60), ylim = c(-35,35))
 
-# ggsave("../../Conference Presentations/SERSTM 2023/world_map.png", width = 8, height = 6,
-#        units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure_1_world-map.png", width = 7, height = 4, units = "in", dpi = 400)
 
 
 # Map tracks by region
@@ -90,12 +90,12 @@ br.sf <- st_read_parquet("Environ_data/Brazil_land.parquet") %>%
 qa.sf <- st_read_parquet("Environ_data/Qatar_land.parquet") %>%
   st_transform(4326)
 
-p.gom <- ggplot() +
+ggplot() +
   geom_sf(data = gom.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic", size = 8, x = -92, y = 25) +
-  geom_text(aes(x = -98, y = 32, label = "A"), size = 10, fontface = "bold") +
+  geom_text(aes(x = -98, y = 30, label = "A"), size = 10, fontface = "bold") +
   annotation_scale(location = "br", width_hint = 0.5, style = "ticks", tick_height = 1,
                    line_col = "black", text_col = "black", line_width = 3,
                    text_cex = 1.5, text_face = "bold") +
@@ -108,17 +108,18 @@ p.gom <- ggplot() +
         panel.border = element_rect(color = "#009ACD", fill = NA, linewidth = 2),
         panel.background = element_rect(fill = "white")
         ) +
-  coord_sf(xlim = c(-98,-77), ylim = c(18,32))
-# ggsave("../../Conference Presentations/SERSTM 2023/gom_map.png", width = 8, height = 6,
-#        units = "in", dpi = 400)
+  coord_sf(xlim = c(-98,-77), ylim = c(20,30.5))
+
+# ggsave("Tables_Figs/Figure_1_GoM.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
-p.br <- ggplot() +
+
+ggplot() +
   geom_sf(data = br.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Brazil", fontface = "italic", size = 8, x = -43, y = -8) +
-  geom_text(aes(x = -49, y = -2, label = "B"), size = 10, fontface = "bold") +
+  geom_text(aes(x = -48.5, y = -2.5, label = "B"), size = 10, fontface = "bold") +
   annotation_scale(location = "br", width_hint = 0.5, style = "ticks", tick_height = 1,
                    line_col = "black", text_col = "black", line_width = 3,
                    text_cex = 1.5, text_face = "bold") +
@@ -132,16 +133,16 @@ p.br <- ggplot() +
         panel.background = element_rect(fill = "white")
         ) +
   coord_sf(xlim = c(-49,-31), ylim = c(-26,-2))
-# ggsave("../../Conference Presentations/SERSTM 2023/br_map.png", width = 8, height = 6,
-#        units = "in", dpi = 400)
+
+# ggsave("Tables_Figs/Figure_1_Brazil.png", width = 3.5, height = 5, units = "in", dpi = 400)
 
 
-p.qa <- ggplot() +
+ggplot() +
   geom_sf(data = qa.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8, x = 52.25, y = 26.5) +
-  geom_text(aes(x = 50.25, y = 27.2, label = "C"), size = 10, fontface = "bold") +
+  geom_text(aes(x = 50.33, y = 27.1, label = "C"), size = 10, fontface = "bold") +
   annotation_scale(location = "br", width_hint = 0.5, style = "ticks", tick_height = 1,
                    line_col = "black", text_col = "black", line_width = 3,
                    text_cex = 1.5, text_face = "bold") +
@@ -155,28 +156,12 @@ p.qa <- ggplot() +
         panel.background = element_rect(fill = "white")
   ) +
   coord_sf(xlim = c(50.25,53), ylim = c(23.8,27.2))
-# ggsave("../../Conference Presentations/SERSTM 2023/qa_map.png", width = 4, height = 6,
-#        units = "in", dpi = 400)
+
+# ggsave("Tables_Figs/Figure_1_Qatar.png", width = 3.5, height = 5, units = "in", dpi = 400)
 
 
 
 
-### Create composite map ###
-
-library(cowplot)
-
-bottom_row <- plot_grid(p.br, p.qa)
-plot_grid(p.world, p.gom, bottom_row, nrow = 3, align = "v")
-
-
-p.world / (p.gom / (p.br + p.qa)) +
-  plot_layout(widths = c(2, 2, 1), byrow = TRUE)
-  # inset_element(p.gom, left = 0.23, bottom = 0.64, right = 0.65, top = 0.97, align_to = "plot") +
-  # inset_element(p.br, left = 0.1, bottom = 0.1, right = 0.35, top = 0.6, align_to = "plot") +
-  # inset_element(p.qa, left = 0.75, bottom = 0.15, right = 0.95, top = 0.65, align_to = "plot")
-
-
-ggsave("Tables_Figs/Figure_1a.png", width = 6, height = 10, units = "in", dpi = 400)
 
 
 
@@ -238,6 +223,41 @@ disp.bin.lims <- c(0, 50, 100, max(dat3$disp, na.rm = TRUE))  #3 bins
 
 step.bin.lims
 disp.bin.lims
+
+
+# Viz density distribs w/ bin limits
+p.step <- ggplot(dat3, aes(step)) +
+  geom_density(fill = "cadetblue") +
+  geom_vline(data = data.frame(lims = step.bin.lims), aes(xintercept = lims),
+             linetype = "dashed") +
+  labs(x = "Step Length (km)", y = "Density") +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 12),
+        plot.margin = unit(c(30, 5.5, 5.5, 5.5), "pt"))
+
+
+p.disp <- ggplot(dat3, aes(disp)) +
+  geom_density(fill = "goldenrod") +
+  geom_vline(data = data.frame(lims = disp.bin.lims), aes(xintercept = lims),
+             linetype = "dashed") +
+  labs(x = "Displacement (km)", y = "Density") +
+  scale_x_continuous(breaks = c(0,100,500,1000,1500)) +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 12))
+
+
+## Create composite plot
+p.step / p.disp + plot_annotation(tag_levels = 'A') &
+  theme(plot.tag.position = c(0.08, 1),
+        plot.tag = element_text(size = 18, hjust = 0, vjust = -0.4, face = 'bold'))
+
+# ggsave("Tables_Figs/Figure S2.png", width = 5, height = 7, units = "in", dpi = 400)
+
+
 
 
 # Discretize data streams
@@ -413,16 +433,17 @@ behav.res.seg <- left_join(behav.res.seg, lims, by = c('var','bin'))
 behav.res.seg$bin.vals <- factor(behav.res.seg$bin.vals, levels = unique(behav.res.seg$bin.vals))
 
 # Plot state-dependent distributions
-ggplot(behav.res.seg, aes(x = bin.vals, y = prop, fill = as.factor(behav))) +
+p.statedep <- ggplot(behav.res.seg, aes(x = bin.vals, y = prop, fill = as.factor(behav))) +
   geom_bar(stat = 'identity') +
   labs(x = "\nBin", y = "Proportion\n") +
   theme_bw() +
-  theme(axis.title = element_text(size = 16),
-        axis.text.y = element_text(size = 14),
-        axis.text.x.bottom = element_text(size = 12, angle = 45, vjust = 1, hjust=1),
-        strip.text = element_text(size = 14),
+  # theme(axis.title = element_text(size = 16),
+  #       axis.text.y = element_text(size = 14),
+  #       axis.text.x.bottom = element_text(size = 12, angle = 45, vjust = 1, hjust=1),
+  #       strip.text = element_text(size = 14),
+  theme(axis.text.x.bottom = element_text(angle = 45, vjust = 1, hjust=1),
         strip.text.x = element_text(face = "bold")) +
-  scale_fill_manual(values = MetPalettes$Egypt[[1]], guide = 'none') +
+  scale_fill_manual(values = MetPalettes$Egypt[[1]][c(1,2,1,1)], guide = 'none') +
   scale_y_continuous(breaks = c(0.00, 0.50, 1.00)) +
   facet_grid(behav ~ var, scales = "free_x")
 
@@ -503,6 +524,39 @@ br.dat.out <- dat.out %>%
   filter(Region == "Brazil")
 qa.dat.out <- dat.out %>%
   filter(Region == "Qatar")
+
+
+
+
+### Viz behavior for GoM ###
+
+# Convert coords to lon/lat
+gom.dat.sf <- gom.dat.out %>%
+  st_as_sf(., coords = c('x','y'), crs = 3395) %>%
+  st_transform(4326)
+
+p.behav_map <- ggplot() +
+  geom_sf(data = gom.sf) +
+  geom_sf(data = gom.dat.sf, aes(color = behav), size = 0.5, alpha = 0.6) +
+  scale_color_manual("State", values = MetPalettes$Egypt[[1]][c(1,2)]) +
+  labs(x="",y="") +
+  theme_bw() +
+  theme(panel.grid = element_blank()) +
+  guides(color = guide_legend(override.aes = list(size = 3, alpha = 1))) +
+  coord_sf(xlim = c(-95,-79), ylim = c(20,30.5))
+
+
+
+### Make composite plot of map and state-dependent distributions
+
+p.statedep + p.behav_map +
+  plot_annotation(tag_levels = 'A') +
+  plot_layout(guides = 'collect') &
+  theme(plot.tag.position = c(0.08, 0.81),
+        plot.tag = element_text(size = 18, hjust = 0, vjust = -0.4, face = 'bold'),
+        legend.position = 'top')
+
+# ggsave("Tables_Figs/Figure 2.png", width = 6, height = 4, units = "in", dpi = 400)
 
 
 ###############################
