@@ -8,6 +8,7 @@ library(sfarrow)
 library(tictoc)
 library(lubridate)
 library(BRRR)
+library(patchwork)
 
 source('Scripts/helper functions.R')
 
@@ -127,26 +128,28 @@ fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
 
 
 # Depth
-ggplot() +
+p.depth <- ggplot() +
   # geom_ribbon(data = pred.vals[[1]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
   geom_line(data = pred.vals.pop %>%
-              filter(covar == "log.bathym"), aes(x = x, y = mean), linewidth = 1.5) +
+              filter(covar == "log.bathym"), aes(x = x, y = mean), linewidth = 1, lineend = "round") +
   theme_bw() +
   lims(x = c(0,300)) +
   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 30),
-        axis.text = element_text(size = 24))
+  theme(#axis.title = element_text(size = 30),
+        # axis.text = element_text(size = 24),
+        panel.grid = element_blank())
 
 # NPP
-ggplot() +
+p.npp <- ggplot() +
   # geom_ribbon(data = pred.vals[[2]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
   geom_line(data = pred.vals.pop %>%
-              filter(covar == "log.npp"), aes(x = x / 1000, y = mean), linewidth = 1.5) +
+              filter(covar == "log.npp"), aes(x = x / 1000, y = mean), linewidth = 1, lineend = "round") +
   theme_bw() +
   # lims(x = c(0,300)) +
   labs(x = expression(paste("NPP (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 30),
-        axis.text = element_text(size = 24))
+  theme(#axis.title = element_text(size = 30),
+        # axis.text = element_text(size = 24),
+        panel.grid = element_blank())
 
 # SST
 ggplot() +
@@ -164,6 +167,17 @@ ggplot() +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 30),
         axis.text = element_text(size = 24))
+
+# Joint plot for SST
+p.sst <- ggplot() +
+  geom_line(data = pred.vals.pop %>%
+              filter(covar == "log.sst"), aes(x = x, y = mean + fixed.sst.pred$pred), linewidth = 1,
+            lineend = "round") +
+  theme_bw() +
+  labs(x = "SST (°C)", y = "Relative Intensity of Use") +
+  theme(#axis.title = element_text(size = 30),
+        # axis.text = element_text(size = 24),
+        panel.grid = element_blank())
 
 
 
@@ -355,23 +369,28 @@ bbox <- ext(rast.pred)
 
 
 # Generate predictive surface for GP at pop-level
-ggplot() +
+p.pred_map <- ggplot() +
   geom_raster(data = rast.pred.df, aes(x, y, fill = pred)) +
   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
   geom_sf(data = gom.sf) +
-  labs(x="",y="", title = "Population Mean: September 2020") +
-  theme_bw() +
+  labs(x="",y="") +
+  theme_void() +
   coord_sf(xlim = c(bbox[1], bbox[2]),
            ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(axis.text = element_text(size = 12),
-        plot.title = element_text(size = 26, face = "bold"),
-        legend.title = element_text(size = 18),
-        legend.text = element_text(size = 16)) +
-  guides(fill = guide_colourbar(barwidth = 2, barheight = 20))
+           expand = FALSE) #+
+  # theme(axis.text = element_text(size = 12),
+  #       plot.title = element_text(size = 26, face = "bold"),
+  #       legend.title = element_text(size = 18),
+  #       legend.text = element_text(size = 16)) +
+  # guides(fill = guide_colourbar(barwidth = 2, barheight = 20))
 
 
 
+## Create composite plot w/ marginal effects and mapped prediction
+p.depth + p.npp + p.sst + p.pred_map +
+  plot_layout(ncol = 2, nrow = 2)
+
+# ggsave("Tables_Figs/Figure 6.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
 

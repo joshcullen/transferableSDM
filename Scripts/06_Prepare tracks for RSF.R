@@ -11,6 +11,9 @@ library(sf)
 library(sfarrow)
 library(tictoc)
 library(amt)
+library(tidyterra)
+library(cmocean)
+library(patchwork)
 
 source('Scripts/helper functions.R')
 
@@ -91,6 +94,50 @@ cov_list[["bathym"]][cov_list[["bathym"]] > -1e-9] <- NA
 cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 
 
+
+## Map example of environmental covariates
+
+# Define map extent
+bbox <- ext(cov_list$bathym)
+
+p.gom.bathym <- ggplot() +
+  geom_spatraster(data = cov_list$bathym, aes(fill = `GoM bathymetry`)) +
+  scale_fill_cmocean("Depth (m)", name = "deep", direction = -1, breaks = c(0, -2000, -4000)) +
+  geom_sf(data = gom.sf, linewidth = 0.25) +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE,
+           label_axes = "----") +
+  theme_bw() +
+  theme(legend.position = "top")
+
+p.gom.npp <- ggplot() +
+  geom_spatraster(data = cov_list$npp / 1000, aes(fill = `2019-10-01`)) +
+  scale_fill_cmocean(expression(paste("NPP (", g~C~m^-2~d^-1, ")")), name = "algae", direction = 1) +
+  geom_sf(data = gom.sf, linewidth = 0.25) +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE,
+           label_axes = "----") +
+  theme_bw() +
+  theme(legend.position = "top")
+
+p.gom.sst <- ggplot() +
+  geom_spatraster(data = cov_list$sst, aes(fill = `2019-10-01`)) +
+  scale_fill_cmocean("SST (°C)", name = "thermal", direction = 1) +
+  geom_sf(data = gom.sf, linewidth = 0.25) +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE,
+           label_axes = "----") +
+  theme_bw() +
+  theme(legend.position = "top")
+
+# Make composite plot
+p.gom.bathym + p.gom.npp + p.gom.sst +
+  plot_layout(nrow = 1)
+
+# ggsave("Tables_Figs/Figure 3.png", width = 8, height = 3, units = "in", dpi = 400)
 
 
 #####################################################################

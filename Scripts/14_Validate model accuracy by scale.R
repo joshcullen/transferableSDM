@@ -12,6 +12,7 @@ library(tidyterra)
 library(patchwork)
 library(future)
 library(furrr)
+library(wesanderson)
 
 source('Scripts/helper functions.R')
 
@@ -415,6 +416,7 @@ boyce.qa2 <- boyce.qa %>%
 
 boyce.fit <- rbind(boyce.br.full2, boyce.br.sub2, boyce.qa2) %>%
   mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
+levels(boyce.fit$scale) <- c(5, 10, 20, 40)
 
 boyce.mean <- boyce.fit %>%
   group_by(scale, Region) %>%
@@ -426,12 +428,91 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   geom_violin(aes(color = scale), fill = "transparent", position = position_dodge(width = 0.75)) +
   geom_point(data = boyce.mean, aes(x = Region, y = mean, group = scale),
              size = 6, position = position_dodge(width = 0.75)) +
+  scale_color_viridis_d(option = "mako", guide = "none", begin = 0.5, end = 0.95, direction = -1) +
+  scale_fill_viridis_d("Scale (km)", option = "mako", begin = 0.5, end = 0.95, direction = -1) +
   geom_hline(yintercept = 0, linewidth = 1) +
   lims(y = c(-1,1)) +
   labs(x="", y = "Boyce Index") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 24))
+        axis.title = element_text(size = 24)) +
+  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+
+# ggsave("Tables_Figs/Figure 8.png", width = 7, height = 5, units = "in", dpi = 400)
+
+
+
+
+# Create example prediction maps per method
+
+bbox <- ext(qa.rast.hgpr$sc.5)
+
+
+p.5km.qa <- ggplot() +
+  geom_spatraster(data = qa.rast.hgpr$sc.5, aes(fill = `2014-03-01`)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = qa.sf) +
+  labs(x="",y="", title = "5 km") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+p.10km.qa <- ggplot() +
+  geom_spatraster(data = qa.rast.hgpr$sc.10, aes(fill = `2014-03-01`)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = qa.sf) +
+  labs(x="",y="", title = "10 km") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+p.20km.qa <- ggplot() +
+  geom_spatraster(data = qa.rast.hgpr$sc.20, aes(fill = `2014-03-01`)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = qa.sf) +
+  labs(x="",y="", title = "20 km") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+p.40km.qa <- ggplot() +
+  geom_spatraster(data = qa.rast.hgpr$sc.40, aes(fill = `2014-03-01`)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = qa.sf) +
+  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+  labs(x="",y="", title = "40 km") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+
+# Make composite plot
+p.5km.qa + p.10km.qa + p.20km.qa + p.40km.qa +
+  plot_layout(ncol = 2)
+
+# ggsave("Tables_Figs/Figure 7.png", width = 6, height = 5, units = "in", dpi = 400)
+
+
 
 
 
