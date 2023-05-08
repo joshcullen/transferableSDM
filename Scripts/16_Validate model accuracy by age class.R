@@ -13,6 +13,7 @@ library(patchwork)
 library(future)
 library(furrr)
 library(patchwork)
+library(MetBrewer)
 
 source('Scripts/helper functions.R')
 
@@ -367,7 +368,7 @@ toc()  #took 1 min to run
 
 
 # Normalize predictions on 0-1 scale
-br.rast.age2 <- normalize(br.rast.age)
+br.rast.age2 <- map(br.rast.age, normalize)
 
 
 # Assess model performance via Continuous Boyce Index
@@ -518,7 +519,7 @@ toc()  #took 2 sec to run
 
 
 # Normalize predictions on 0-1 scale
-qa.rast.age2 <- normalize(qa.rast.age)
+qa.rast.age2 <- map(qa.rast.age, normalize)
 
 
 # Assess model performance via Continuous Boyce Index
@@ -621,13 +622,17 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   geom_violin(aes(color = Method), fill = "transparent", position = position_dodge(width = 0.75)) +
   geom_point(data = boyce.mean, aes(x = Region, y = mean, group = Method),
              size = 6, position = position_dodge(width = 0.75)) +
+  scale_color_manual(values = met.brewer("Isfahan1")[c(3,6)], guide = "none") +
+  scale_fill_manual(values = met.brewer("Isfahan1")[c(3,6)], labels = c("Age", "No Age")) +
   geom_hline(yintercept = 0, linewidth = 1) +
   lims(y = c(-1,1)) +
   labs(x="", y = "Boyce Index") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 24)) #+
-  # facet_wrap(~Age.Class)
+        axis.title = element_text(size = 24))  +
+  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+
+# ggsave("Tables_Figs/Figure 10.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
 
@@ -644,17 +649,33 @@ br.rast.no_age3 <- br.rast.no_age3 + 1
 br.rast.no_age3.df <- as.data.frame(br.rast.no_age3, xy = TRUE) %>%
   mutate(across(3:ncol(.), factor, levels = 10:1))
 
+br.rast.age3 <- map(br.rast.age2, classify, seq(0, 1, by = 0.1))
+br.rast.age3 <- map(br.rast.age3, function(x) x + 1)
+br.rast.age3.df <- map(br.rast.age3, ~{.x %>%
+    as.data.frame(., xy = TRUE) %>%
+  mutate(across(3:ncol(.), factor, levels = 10:1))
+}) %>%
+  bind_rows(.id = "Age")
+
 
 qa.rast.no_age3 <- classify(qa.rast.no_age2, seq(0, 1, by = 0.1))
 qa.rast.no_age3 <- qa.rast.no_age3 + 1
 qa.rast.no_age3.df <- as.data.frame(qa.rast.no_age3, xy = TRUE) %>%
   mutate(across(3:ncol(.), factor, levels = 10:1))
 
+qa.rast.age3 <- classify(qa.rast.age2$Juv, seq(0, 1, by = 0.1))
+qa.rast.age3 <- qa.rast.age3 + 1
+qa.rast.age3.df <- as.data.frame(qa.rast.age3, xy = TRUE) %>%
+  mutate(across(3:ncol(.), factor, levels = 10:1))
+
+
+
 
 p.pop.br <- ggplot() +
   geom_raster(data = br.rast.no_age3.df, aes(x, y, fill = `2022-02-01`)) +
   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = br.sf) +
+  geom_text(aes(x = -4786738, y = -887521.1, label = "Brazil"), size = 5, fontface = "italic") +
   labs(x="",y="", title = "Population") +
   theme_bw() +
   coord_sf(xlim = c(bbox.br[1], bbox.br[2]),
@@ -662,13 +683,46 @@ p.pop.br <- ggplot() +
            expand = FALSE) +
   theme(plot.title = element_text(size = 16, face = "bold"),
         axis.text = element_blank(),
-        axis.ticks = element_blank())
+        axis.ticks = element_blank(),
+        legend.title = element_text(size = 12, face = "bold"))
+
+p.juv.br <- ggplot() +
+  geom_raster(data = br.rast.age3.df %>%
+                filter(Age == "Juv"), aes(x, y, fill = `2022-02-01`)) +
+  scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+  geom_sf(data = br.sf) +
+  labs(x="",y="", title = "Juv") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox.br[1], bbox.br[2]),
+           ylim = c(bbox.br[3], bbox.br[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.title = element_text(size = 12, face = "bold"))
+
+p.adult.br <- ggplot() +
+  geom_raster(data = br.rast.age3.df %>%
+                filter(Age == "Adult"), aes(x, y, fill = `2022-02-01`)) +
+  scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+  geom_sf(data = br.sf) +
+  labs(x="",y="", title = "Adult") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox.br[1], bbox.br[2]),
+           ylim = c(bbox.br[3], bbox.br[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.title = element_text(size = 12, face = "bold"))
+
 
 
 p.pop.qa <- ggplot() +
   geom_raster(data = qa.rast.no_age3.df, aes(x, y, fill = `2014-03-01`)) +
   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = qa.sf) +
+  geom_text(aes(x = 5700000, y = 2870000, label = "Qatar"), size = 5, fontface = "italic") +
   labs(x="",y="", title = "Population") +
   theme_bw() +
   coord_sf(xlim = c(bbox.qa[1], bbox.qa[2]),
@@ -676,42 +730,28 @@ p.pop.qa <- ggplot() +
            expand = FALSE) +
   theme(plot.title = element_text(size = 16, face = "bold"),
         axis.text = element_blank(),
-        axis.ticks = element_blank())
+        axis.ticks = element_blank(),
+        legend.title = element_text(size = 12, face = "bold"))
 
 
-p.brt.br <- ggplot() +
-  geom_spatraster(data = br.rast.brt, aes(fill = `2022-02-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = br.sf) +
-  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-  labs(x="",y="", title = "BRT") +
+p.juv.qa <- ggplot() +
+  geom_raster(data = qa.rast.age3.df, aes(x, y, fill = `2014-03-01`)) +
+  scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+  geom_sf(data = qa.sf) +
+  labs(x="",y="", title = "Juv") +
   theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
+  coord_sf(xlim = c(bbox.qa[1], bbox.qa[2]),
+           ylim = c(bbox.qa[3], bbox.qa[4]),
            expand = FALSE) +
   theme(plot.title = element_text(size = 16, face = "bold"),
         axis.text = element_blank(),
-        axis.ticks = element_blank())
-
-
-p.hgpr.br <- ggplot() +
-  geom_spatraster(data = br.rast.hgpr, aes(fill = `2022-02-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = br.sf) +
-  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-  labs(x="",y="", title = "HGPR") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_blank(),
-        axis.ticks = element_blank())
+        axis.ticks = element_blank(),
+        legend.title = element_text(size = 12, face = "bold"))
 
 
 
 # Make composite plot
-p.pop.br + p.pop.qa +
-  plot_layout(ncol = 2)
+p.pop.br + p.juv.br + p.adult.br + p.pop.qa + p.juv.qa + guide_area() +
+  plot_layout(nrow = 2, guides = "collect")
 
-# ggsave("Tables_Figs/Figure 4.png", width = 7, height = 5, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure 9.png", width = 5, height = 5.5, units = "in", dpi = 400)
