@@ -12,6 +12,7 @@ library(tidyterra)
 library(patchwork)
 library(future)
 library(furrr)
+library(patchwork)
 
 source('Scripts/helper functions.R')
 
@@ -160,11 +161,15 @@ skrrrahh('khaled2')
 toc()  #took 40 sec to run
 
 
+# Normalize predictions on 0-1 scale
+br.rast.no_age2 <- normalize(br.rast.no_age)
+
+
 # Assess model performance via Continuous Boyce Index
-boyce.br.full.no_age <- vector("list", nlyr(br.rast.no_age))
-boyce.br.sub.no_age <- vector("list", nlyr(br.rast.no_age))
+boyce.br.full.no_age <- vector("list", nlyr(br.rast.no_age2))
+boyce.br.sub.no_age <- vector("list", nlyr(br.rast.no_age2))
 tic()
-for (i in 1:nlyr(br.rast.no_age)) {
+for (i in 1:nlyr(br.rast.no_age2)) {
 
   # Subset tracks by month.year
   obs_full <- dat.br %>%
@@ -175,7 +180,7 @@ for (i in 1:nlyr(br.rast.no_age)) {
     filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
-  boyce.br.full.no_age[[i]] <- boyce(fit = br.rast.no_age[[i]],
+  boyce.br.full.no_age[[i]] <- boyce(fit = br.rast.no_age2[[i]],
                                    obs = obs_full,
                                    nbins = 10,
                                    bin.method = "seq",
@@ -183,7 +188,7 @@ for (i in 1:nlyr(br.rast.no_age)) {
                                    rm.duplicate = FALSE,
                                    method = "spearman")
 
-  boyce.br.sub.no_age[[i]] <- boyce(fit = br.rast.no_age[[i]],
+  boyce.br.sub.no_age[[i]] <- boyce(fit = br.rast.no_age2[[i]],
                                   obs = obs_sub,
                                   nbins = 10,
                                   bin.method = "seq",
@@ -272,17 +277,21 @@ skrrrahh('khaled2')
 toc()  #took 2 sec to run
 
 
+# Normalize predictions on 0-1 scale
+qa.rast.no_age2 <- normalize(qa.rast.no_age)
+
+
 # Assess model performance via Continuous Boyce Index
-boyce.qa.no_age <- vector("list", nlyr(qa.rast.no_age))
+boyce.qa.no_age <- vector("list", nlyr(qa.rast.no_age2))
 tic()
-for (i in 1:nlyr(qa.rast.no_age)) {
+for (i in 1:nlyr(qa.rast.no_age2)) {
 
   # Subset tracks by month.year
   obs <- dat.qa %>%
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
-  boyce.qa.no_age[[i]] <- boyce(fit = qa.rast.no_age[[i]],
+  boyce.qa.no_age[[i]] <- boyce(fit = qa.rast.no_age2[[i]],
                                      obs = obs,
                                      nbins = 10,
                                      bin.method = "seq",
@@ -357,16 +366,20 @@ skrrrahh('khaled2')
 toc()  #took 1 min to run
 
 
+# Normalize predictions on 0-1 scale
+br.rast.age2 <- normalize(br.rast.age)
+
+
 # Assess model performance via Continuous Boyce Index
-boyce.br.full.age <- boyce.br.sub.age <- vector("list", length(br.rast.age)) %>%
-  set_names(names(br.rast.age))
+boyce.br.full.age <- boyce.br.sub.age <- vector("list", length(br.rast.age2)) %>%
+  set_names(names(br.rast.age2))
 
 my.ind.br <- names(cov_list_br$npp)
 age.class <- c("Juv","Adult")
 
 tic()
-for (j in 1:length(br.rast.age)) {
-  for (i in 1:nlyr(br.rast.age[[j]])) {
+for (j in 1:length(br.rast.age2)) {
+  for (i in 1:nlyr(br.rast.age2[[j]])) {
 
     # Subset tracks by month.year
     obs_full <- dat.br %>%
@@ -377,7 +390,7 @@ for (j in 1:length(br.rast.age)) {
       filter(month.year == my.ind.br[i], x < -3800000, Age == age.class[j]) %>%
       dplyr::select(x, y)
 
-    boyce.br.full.age[[j]][[i]] <- boyce(fit = br.rast.age[[j]][[i]],
+    boyce.br.full.age[[j]][[i]] <- boyce(fit = br.rast.age2[[j]][[i]],
                                      obs = obs_full,
                                      nbins = 10,
                                      bin.method = "seq",
@@ -385,7 +398,7 @@ for (j in 1:length(br.rast.age)) {
                                      rm.duplicate = FALSE,
                                      method = "spearman")
 
-    boyce.br.sub.age[[j]][[i]] <- boyce(fit = br.rast.age[[j]][[i]],
+    boyce.br.sub.age[[j]][[i]] <- boyce(fit = br.rast.age2[[j]][[i]],
                                     obs = obs_sub,
                                     nbins = 10,
                                     bin.method = "seq",
@@ -504,23 +517,26 @@ skrrrahh('khaled2')
 toc()  #took 2 sec to run
 
 
+# Normalize predictions on 0-1 scale
+qa.rast.age2 <- normalize(qa.rast.age)
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.qa.age <- vector("list", length(qa.rast.age)) %>%
-  set_names(names(qa.rast.age))
+boyce.qa.age <- vector("list", length(qa.rast.age2)) %>%
+  set_names(names(qa.rast.age2))
 
 my.ind.qa <- names(cov_list_qa$npp)
 
 tic()
-for (j in 1:length(qa.rast.age)) {
-  for (i in 1:nlyr(qa.rast.age[[j]])) {
+for (j in 1:length(qa.rast.age2)) {
+  for (i in 1:nlyr(qa.rast.age2[[j]])) {
 
     # Subset tracks by month.year
     obs <- dat.qa %>%
       filter(month.year == my.ind.qa[i], Age == age.class[j]) %>%
       dplyr::select(x, y)
 
-    boyce.qa.age[[j]][[i]] <- boyce(fit = qa.rast.age[[j]][[i]],
+    boyce.qa.age[[j]][[i]] <- boyce(fit = qa.rast.age2[[j]][[i]],
                                 obs = obs,
                                 nbins = 10,
                                 bin.method = "seq",
@@ -612,3 +628,90 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   theme(axis.text = element_text(size = 20),
         axis.title = element_text(size = 24)) #+
   # facet_wrap(~Age.Class)
+
+
+
+
+
+### Create example prediction maps per method ###
+
+bbox.br <- ext(br.rast.no_age$`2016-05-01`)
+bbox.qa <- ext(qa.rast.no_age$`2014-02-01`)
+
+# Break rasters into bins used for Boyce Index
+br.rast.no_age3 <- classify(br.rast.no_age2, seq(0, 1, by = 0.1))
+br.rast.no_age3 <- br.rast.no_age3 + 1
+br.rast.no_age3.df <- as.data.frame(br.rast.no_age3, xy = TRUE) %>%
+  mutate(across(3:ncol(.), factor, levels = 10:1))
+
+
+qa.rast.no_age3 <- classify(qa.rast.no_age2, seq(0, 1, by = 0.1))
+qa.rast.no_age3 <- qa.rast.no_age3 + 1
+qa.rast.no_age3.df <- as.data.frame(qa.rast.no_age3, xy = TRUE) %>%
+  mutate(across(3:ncol(.), factor, levels = 10:1))
+
+
+p.pop.br <- ggplot() +
+  geom_raster(data = br.rast.no_age3.df, aes(x, y, fill = `2022-02-01`)) +
+  scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+  geom_sf(data = br.sf) +
+  labs(x="",y="", title = "Population") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox.br[1], bbox.br[2]),
+           ylim = c(bbox.br[3], bbox.br[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+p.pop.qa <- ggplot() +
+  geom_raster(data = qa.rast.no_age3.df, aes(x, y, fill = `2014-03-01`)) +
+  scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+  geom_sf(data = qa.sf) +
+  labs(x="",y="", title = "Population") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox.qa[1], bbox.qa[2]),
+           ylim = c(bbox.qa[3], bbox.qa[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+p.brt.br <- ggplot() +
+  geom_spatraster(data = br.rast.brt, aes(fill = `2022-02-01`)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = br.sf) +
+  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+  labs(x="",y="", title = "BRT") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+p.hgpr.br <- ggplot() +
+  geom_spatraster(data = br.rast.hgpr, aes(fill = `2022-02-01`)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = br.sf) +
+  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+  labs(x="",y="", title = "HGPR") +
+  theme_bw() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE) +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+
+
+
+# Make composite plot
+p.pop.br + p.pop.qa +
+  plot_layout(ncol = 2)
+
+# ggsave("Tables_Figs/Figure 4.png", width = 7, height = 5, units = "in", dpi = 400)
