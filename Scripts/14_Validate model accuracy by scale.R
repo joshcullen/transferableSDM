@@ -181,16 +181,20 @@ skrrrahh('khaled2')
 toc()  #took 1.5 min to run
 
 
+# Normalize predictions on 0-1 scale
+br.rast.hgpr2 <- map(br.rast.hgpr, normalize)
+
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.br.full <- boyce.br.sub <- vector("list", length(br.rast.hgpr)) %>%
+boyce.br.full <- boyce.br.sub <- vector("list", length(br.rast.hgpr2)) %>%
   set_names(names(cov_coarse_br))
 
 my.ind.br <- names(cov_coarse_br$sc.5$npp)
 
 tic()
-for (j in 1:length(br.rast.hgpr)) {
-  for (i in 1:nlyr(br.rast.hgpr[[j]])) {
+for (j in 1:length(br.rast.hgpr2)) {
+  for (i in 1:nlyr(br.rast.hgpr2[[j]])) {
 
     # Subset tracks by month.year
     obs_full <- dat.br %>%
@@ -201,7 +205,7 @@ for (j in 1:length(br.rast.hgpr)) {
       filter(month.year == my.ind.br[i], x < -3800000) %>%
       dplyr::select(x, y)
 
-    boyce.br.full[[j]][[i]] <- boyce(fit = br.rast.hgpr[[j]][[i]],
+    boyce.br.full[[j]][[i]] <- boyce(fit = br.rast.hgpr2[[j]][[i]],
                                      obs = obs_full,
                                      nbins = 10,
                                      bin.method = "seq",
@@ -209,7 +213,7 @@ for (j in 1:length(br.rast.hgpr)) {
                                      rm.duplicate = FALSE,
                                      method = "spearman")
 
-    boyce.br.sub[[j]][[i]] <- boyce(fit = br.rast.hgpr[[j]][[i]],
+    boyce.br.sub[[j]][[i]] <- boyce(fit = br.rast.hgpr2[[j]][[i]],
                                     obs = obs_sub,
                                     nbins = 10,
                                     bin.method = "seq",
@@ -328,23 +332,27 @@ skrrrahh('khaled2')
 toc()  #took 8 sec to run
 
 
+# Normalize predictions on 0-1 scale
+qa.rast.hgpr2 <- map(qa.rast.hgpr, normalize)
+
+
 
 # Assess model performance via Continuous Boyce Index
-boyce.qa <- vector("list", length(qa.rast.hgpr)) %>%
+boyce.qa <- vector("list", length(qa.rast.hgpr2)) %>%
   set_names(names(cov_coarse_qa))
 
 my.ind.qa <- names(cov_coarse_qa$sc.5$npp)
 
 tic()
-for (j in 1:length(qa.rast.hgpr)) {
-  for (i in 1:nlyr(qa.rast.hgpr[[j]])) {
+for (j in 1:length(qa.rast.hgpr2)) {
+  for (i in 1:nlyr(qa.rast.hgpr2[[j]])) {
 
     # Subset tracks by month.year
     obs <- dat.qa %>%
       filter(month.year == my.ind.qa[i]) %>%
       dplyr::select(x, y)
 
-    boyce.qa[[j]][[i]] <- boyce(fit = qa.rast.hgpr[[j]][[i]],
+    boyce.qa[[j]][[i]] <- boyce(fit = qa.rast.hgpr2[[j]][[i]],
                                 obs = obs,
                                 nbins = 10,
                                 bin.method = "seq",
@@ -445,70 +453,102 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
 
 # Create example prediction maps per method
 
-bbox <- ext(qa.rast.hgpr$sc.5)
+bbox <- ext(qa.rast.hgpr2$sc.5)
+
+# Break rasters into bins used for Boyce Index
+qa.rast.hgpr.d <- map(qa.rast.hgpr2,
+                      ~classify(.x, seq(0, 1, by = 0.1)))
+qa.rast.hgpr.d <- map(qa.rast.hgpr.d, function(x) x + 1)
+qa.rast.hgpr.df <- map(qa.rast.hgpr.d,
+                       ~{as.data.frame(.x, xy = TRUE) %>%
+                           mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1)))
+                         }) %>%
+  bind_rows(.id = 'Scale') %>%
+  mutate(across(Scale, \(x) factor(x, levels = c("sc.5","sc.10","sc.20","sc.40"))))
+levels(qa.rast.hgpr.df$Scale) <- c('5 km', '10 km', '20 km', '40 km')
 
 
-p.5km.qa <- ggplot() +
-  geom_spatraster(data = qa.rast.hgpr$sc.5, aes(fill = `2014-03-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = qa.sf) +
-  labs(x="",y="", title = "5 km") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_blank(),
-        axis.ticks = element_blank())
-
-
-p.10km.qa <- ggplot() +
-  geom_spatraster(data = qa.rast.hgpr$sc.10, aes(fill = `2014-03-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = qa.sf) +
-  labs(x="",y="", title = "10 km") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_blank(),
-        axis.ticks = element_blank())
-
-
-p.20km.qa <- ggplot() +
-  geom_spatraster(data = qa.rast.hgpr$sc.20, aes(fill = `2014-03-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = qa.sf) +
-  labs(x="",y="", title = "20 km") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_blank(),
-        axis.ticks = element_blank())
-
-
-p.40km.qa <- ggplot() +
-  geom_spatraster(data = qa.rast.hgpr$sc.40, aes(fill = `2014-03-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+ggplot() +
+  geom_raster(data = qa.rast.hgpr.df, aes(x, y, fill = `2014-03-01`)) +
+  scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = qa.sf) +
   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-  labs(x="",y="", title = "40 km") +
+  labs(x="",y="", title = "March 2014") +
   theme_bw() +
   coord_sf(xlim = c(bbox[1], bbox[2]),
            ylim = c(bbox[3], bbox[4]),
            expand = FALSE) +
   theme(plot.title = element_text(size = 16, face = "bold"),
         axis.text = element_blank(),
-        axis.ticks = element_blank())
+        axis.ticks = element_blank(),
+        strip.background = element_rect(fill = NA, color = NA),
+        strip.text = element_text(size = 10, face = "bold", hjust = 0)) +
+  facet_wrap(~ Scale)
+
+# ggsave("Tables_Figs/Figure 7.png", width = 4, height = 5, units = "in", dpi = 400)
 
 
-
-# Make composite plot
-p.5km.qa + p.10km.qa + p.20km.qa + p.40km.qa +
-  plot_layout(ncol = 2)
+# p.5km.qa <- ggplot() +
+#   geom_spatraster(data = qa.rast.hgpr$sc.5, aes(fill = `2014-03-01`)) +
+#   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+#   geom_sf(data = qa.sf) +
+#   labs(x="",y="", title = "5 km") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+# p.10km.qa <- ggplot() +
+#   geom_spatraster(data = qa.rast.hgpr$sc.10, aes(fill = `2014-03-01`)) +
+#   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+#   geom_sf(data = qa.sf) +
+#   labs(x="",y="", title = "10 km") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+# p.20km.qa <- ggplot() +
+#   geom_spatraster(data = qa.rast.hgpr$sc.20, aes(fill = `2014-03-01`)) +
+#   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+#   geom_sf(data = qa.sf) +
+#   labs(x="",y="", title = "20 km") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+# p.40km.qa <- ggplot() +
+#   geom_spatraster(data = qa.rast.hgpr$sc.40, aes(fill = `2014-03-01`)) +
+#   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+#   geom_sf(data = qa.sf) +
+#   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+#   labs(x="",y="", title = "40 km") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+#
+# # Make composite plot
+# p.5km.qa + p.10km.qa + p.20km.qa + p.40km.qa +
+#   plot_layout(ncol = 2)
 
 # ggsave("Tables_Figs/Figure 7.png", width = 6, height = 5, units = "in", dpi = 400)
 

@@ -387,8 +387,11 @@ p.pred_map <- ggplot() +
 
 
 ## Create composite plot w/ marginal effects and mapped prediction
-p.depth + p.npp + p.sst + p.pred_map +
-  plot_layout(ncol = 2, nrow = 2)
+plot_spacer() + plot_spacer() + p.depth + p.npp + p.sst + p.pred_map +
+  plot_layout(ncol = 2, nrow = 3, heights = c(0.5, 5, 5)) +
+  plot_annotation(tag_levels = 'A') &
+  theme(plot.tag.position = c(0.08, 1),
+        plot.tag = element_text(size = 18, hjust = 0, vjust = -0.4, face = 'bold'))
 
 # ggsave("Tables_Figs/Figure 6.png", width = 7, height = 5, units = "in", dpi = 400)
 

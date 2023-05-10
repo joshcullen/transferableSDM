@@ -1194,7 +1194,7 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   geom_violin(aes(color = Method), fill = "transparent", position = position_dodge(width = 0.75)) +
   geom_point(data = boyce.mean, aes(x = Region, y = mean, group = Method),
              size = 6, position = position_dodge(width = 0.75)) +
-  scale_color_met_d(palette_name = 'Egypt') +
+  scale_color_met_d(palette_name = 'Egypt', guide = "none") +
   scale_fill_met_d(palette_name = 'Egypt') +
   geom_hline(yintercept = 0, linewidth = 1) +
   lims(y = c(-1,1)) +
@@ -1202,7 +1202,7 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
         axis.title = element_text(size = 24)) +
-  guides(color = guide_legend(override.aes = list(linetype = 0)))
+  guides(fill = guide_legend(override.aes = list(alpha = 1)))
 
 # ggsave("Tables_Figs/Figure 5.png", width = 7, height = 5, units = "in", dpi = 400)
 
@@ -1215,76 +1215,122 @@ bbox <- ext(br.rast.hglm)
 # tmp.br <- dat.br %>%
 #   filter(month.year == "2022-02-01")
 
+# Break rasters into bins used for Boyce Index
+br.rast.hglm.d <- classify(br.rast.hglm2, seq(0, 1, by = 0.1))
+br.rast.hglm.d <- br.rast.hglm.d + 1
+br.rast.hglm.df <- as.data.frame(br.rast.hglm.d, xy = TRUE) %>%
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1))) %>%
+  mutate(Method = "HGLM")
+
+br.rast.hgam.d <- classify(br.rast.hgam2, seq(0, 1, by = 0.1))
+br.rast.hgam.d <- br.rast.hgam.d + 1
+br.rast.hgam.df <- as.data.frame(br.rast.hgam.d, xy = TRUE) %>%
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1))) %>%
+  mutate(Method = "HGAM")
+
+br.rast.brt.d <- classify(br.rast.brt2, seq(0, 1, by = 0.1))
+br.rast.brt.d <- br.rast.brt.d + 1
+br.rast.brt.df <- as.data.frame(br.rast.brt.d, xy = TRUE) %>%
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1))) %>%
+  mutate(Method = "BRT")
+
+br.rast.hgpr.d <- classify(br.rast.hgpr2, seq(0, 1, by = 0.1))
+br.rast.hgpr.d <- br.rast.hgpr.d + 1
+br.rast.hgpr.df <- as.data.frame(br.rast.hgpr.d, xy = TRUE) %>%
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1))) %>%
+  mutate(Method = "HGPR")
 
 
-p.hglm.br <- ggplot() +
-  geom_spatraster(data = br.rast.hglm, aes(fill = `2022-02-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = br.sf) +
-  # geom_point(data = tmp.br, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-  labs(x="",y="", title = "HGLM") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_blank(),
-        axis.ticks = element_blank())
+
+# p.hglm.br <- ggplot() +
+#   geom_raster(data = br.rast.hglm.df, aes(x, y, fill = `2022-02-01`)) +
+#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+#   geom_sf(data = br.sf) +
+#   # geom_point(data = tmp.br, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+#   labs(x="",y="", title = "HGLM") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+# p.hgam.br <- ggplot() +
+#   geom_raster(data = br.rast.hgam.df, aes(x, y, fill = `2022-02-01`)) +
+#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+#   geom_sf(data = br.sf) +
+#   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+#   labs(x="",y="", title = "HGAM") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+# p.brt.br <- ggplot() +
+#   geom_raster(data = br.rast.brt.df, aes(x, y, fill = `2022-02-01`)) +
+#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+#   geom_sf(data = br.sf) +
+#   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+#   labs(x="",y="", title = "BRT") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+# p.hgpr.br <- ggplot() +
+#   geom_raster(data = br.rast.hgpr.df, aes(x, y, fill = `2022-02-01`)) +
+#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
+#   geom_sf(data = br.sf) +
+#   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+#   labs(x="",y="", title = "HGPR") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(plot.title = element_text(size = 16, face = "bold"),
+#         axis.text = element_blank(),
+#         axis.ticks = element_blank())
+#
+#
+#
+# # Make composite plot
+# p.hglm.br + p.hgam.br + p.brt.br + p.hgpr.br +
+#   plot_layout(ncol = 2, guides = "collect")
+#
+# ggsave("Tables_Figs/Figure 4.png", width = 4, height = 5, units = "in", dpi = 400)
 
 
-p.hgam.br <- ggplot() +
-  geom_spatraster(data = br.rast.hgam, aes(fill = `2022-02-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+spat.preds <- rbind(br.rast.hglm.df, br.rast.hgam.df, br.rast.brt.df, br.rast.hgpr.df) %>%
+  mutate(across(Method, \(x) factor(x, levels = c("HGLM","HGAM","BRT","HGPR"))))
+
+ggplot() +
+  geom_raster(data = spat.preds, aes(x, y, fill = `2022-02-01`)) +
+  scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = br.sf) +
   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-  labs(x="",y="", title = "HGAM") +
+  labs(x="",y="", title = "February 2022") +
   theme_bw() +
   coord_sf(xlim = c(bbox[1], bbox[2]),
            ylim = c(bbox[3], bbox[4]),
            expand = FALSE) +
   theme(plot.title = element_text(size = 16, face = "bold"),
         axis.text = element_blank(),
-        axis.ticks = element_blank())
+        axis.ticks = element_blank(),
+        strip.background = element_rect(fill = NA, color = NA),
+        strip.text = element_text(size = 10, face = "bold", hjust = 0)) +
+  facet_wrap(~ Method)
 
-
-p.brt.br <- ggplot() +
-  geom_spatraster(data = br.rast.brt, aes(fill = `2022-02-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = br.sf) +
-  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-  labs(x="",y="", title = "BRT") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_blank(),
-        axis.ticks = element_blank())
-
-
-p.hgpr.br <- ggplot() +
-  geom_spatraster(data = br.rast.hgpr, aes(fill = `2022-02-01`)) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = br.sf) +
-  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-  labs(x="",y="", title = "HGPR") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(plot.title = element_text(size = 16, face = "bold"),
-        axis.text = element_blank(),
-        axis.ticks = element_blank())
-
-
-
-# Make composite plot
-p.hglm.br + p.hgam.br + p.brt.br + p.hgpr.br +
-  plot_layout(ncol = 2)
-
-# ggsave("Tables_Figs/Figure 4.png", width = 7, height = 5, units = "in", dpi = 400)
-
-
+# ggsave("Tables_Figs/Figure 4.png", width = 4, height = 5, units = "in", dpi = 400)
 
 
 
