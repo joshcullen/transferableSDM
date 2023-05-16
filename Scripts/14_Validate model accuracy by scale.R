@@ -568,30 +568,147 @@ ggplot() +
 #   bind_rows(.id = "scale") %>%
 #   mutate(Region = "Qatar")
 
-cum.perc <- list(Brazil_all = perc.use.br.full,
-                 Brazil_sub = perc.use.br.sub,
-                 Qatar = perc.use.qa)
+# cum.perc <- list(Brazil_all = perc.use.br.full,
+#                  Brazil_sub = perc.use.br.sub,
+#                  Qatar = perc.use.qa)
+#
+# cum.perc.mean <- cum.perc %>%
+#   map_depth(., 2, ~apply(.x, 2, function(x) which(x >= 0.9)[1])) %>%
+#   map_depth(., 2, ~{data.frame(mean = mean(.x),
+#                       sd = sd(.x)
+#   )}
+#   ) %>%
+#   map(., bind_rows, .id = "scale") %>%
+#   bind_rows(.id = "Region") %>%
+#   mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
+#
+#
+#
+# ggplot(data = cum.perc.mean, aes(Region, mean)) +
+#   geom_linerange(aes(ymin = (mean - sd), ymax = (mean + sd), color = scale),
+#                  position = position_dodge(width = 0.75)) +
+#   geom_point(aes(group = scale, color = scale),
+#              size = 6, position = position_dodge(width = 0.75)) +
+#   # lims(y = c(0,10)) +
+#   labs(x="", y = "Avg # of bins accounting for 90% of obs") +
+#   theme_bw() +
+#   theme(axis.text = element_text(size = 20),
+#         axis.title = element_text(size = 22))
 
-cum.perc.mean <- cum.perc %>%
-  map_depth(., 2, ~apply(.x, 2, function(x) which(x >= 0.9)[1])) %>%
-  map_depth(., 2, ~{data.frame(mean = mean(.x),
-                      sd = sd(.x)
-  )}
-  ) %>%
-  map(., bind_rows, .id = "scale") %>%
-  bind_rows(.id = "Region") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
 
 
 
-ggplot(data = cum.perc.mean, aes(Region, mean)) +
-  geom_linerange(aes(ymin = (mean - sd), ymax = (mean + sd), color = scale),
-                 position = position_dodge(width = 0.75)) +
-  geom_point(aes(group = scale, color = scale),
-             size = 6, position = position_dodge(width = 0.75)) +
-  # lims(y = c(0,10)) +
-  labs(x="", y = "Avg # of bins accounting for 90% of obs") +
+
+###############################################################
+### Create composite plot of marginal effects across models ###
+###############################################################
+
+
+# Define 1D mesh per covar
+mesh.list <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                     length.out = 5),
+                                 degree = 2,
+                                 boundary = 'free')
+}
+
+
+
+
+# Define predictive seq of covars
+vars <- data.frame(log.bathym = seq(mesh.seq$log.bathym[1], mesh.seq$log.bathym[2], length.out = 500),
+                   log.npp = seq(mesh.seq$log.npp[1], mesh.seq$log.npp[2], length.out = 500),
+                   log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500))
+
+vars2 <- data.frame(Intercept = 1,
+                    log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500),
+                    log.sst2 = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500) ^ 2)
+
+
+# Generate A matrices for prediction
+A.mat <- vector("list", length(covars))
+for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+  A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
+}
+names(A.mat) <- covars
+
+
+
+
+### Predict across models w/ different scales ###
+
+marg.eff.list <- vector("list", length = length(hgpr.fit)) %>%
+  set_names(names(hgpr.fit))
+
+
+for (i in seq_along(hgpr.fit)) {
+  # Define coeff values from HGPR
+  coeff1 <- hgpr.fit[[i]]$summary.random[1:3] %>%
+    map(., ~pull(.x, mean))
+
+  # Define coeff values of fixed terms from HGPR
+  coeff2 <- hgpr.fit[[i]]$summary.fixed$mean
+
+  # Make predictions on intensity of use from model for GP terms
+  hgpr.pred <- A.mat %>%
+    map2(.x = ., .y = coeff1,
+         ~{.x %*% .y %>%
+             as.vector()}
+    ) %>%
+    bind_cols() %>%
+    pivot_longer(cols = everything(), names_to = "covar", values_to = "mean") %>%
+    arrange(covar) %>%
+    mutate(x = c(vars$log.bathym, vars$log.npp, vars$log.sst)) %>%
+    mutate(across(c(mean, x), \(z) exp(z))) %>%
+    mutate(covar = case_when(covar == "log.bathym" ~ "depth",
+                             covar == "log.npp" ~ "npp",
+                             covar == "log.sst" ~ "sst")) %>%
+    filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
+
+  # Make predictions using linear terms
+  hgpr.pred2 <- as.matrix(vars2) %*% coeff2 %>%
+    exp() %>%
+    as.vector()
+
+
+  # Add linear SST predictions to GP SST predictions
+  hgpr.pred[hgpr.pred$covar == "sst",]$mean <- hgpr.pred[hgpr.pred$covar == "sst",]$mean +
+    hgpr.pred2
+
+
+  marg.eff.list[[i]] <- hgpr.pred
+}
+
+
+
+marg.eff <- bind_rows(marg.eff.list, .id = "Scale") %>%
+  mutate(Scale = case_when(Scale == "sc.5" ~ "5 km",
+                           Scale == "sc.10" ~ "10 km",
+                           Scale == "sc.20" ~ "20 km",
+                           Scale == "sc.40" ~ "40 km"),
+         x = case_when(covar == "npp" ~ x / 1000,
+                       TRUE ~ x),
+         covar = case_when(covar == "depth" ~ "Depth (m)",
+                           covar == "npp" ~ "NPP (g C m^-2 d^-1)",
+                           covar == "sst" ~ "SST (°C)")) %>%
+  mutate(Scale = factor(Scale, levels = unique(Scale)))
+
+
+
+
+
+# Plot pop-level marginal effects
+ggplot() +
+  geom_line(data = marg.eff, aes(x = x, y = mean, color = Scale), linewidth = 1) +
+  scale_color_viridis_d(option = "mako", begin = 0.5, end = 0.95, direction = -1) +
   theme_bw() +
-  theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 22))
+  labs(x = "", y = "Relative Intensity of Use") +
+  theme(strip.background = element_rect(fill = NA, color = NA),
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold"),
+        axis.title = element_text(face = "bold")
+  ) +
+  facet_wrap(Scale ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
 
+# ggsave("Tables_Figs/Figure S4.png", width = 11, height = 9, units = "in", dpi = 400)

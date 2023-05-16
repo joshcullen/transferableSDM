@@ -755,3 +755,132 @@ p.pop.br + p.juv.br + p.adult.br + p.pop.qa + p.juv.qa + guide_area() +
   plot_layout(nrow = 2, guides = "collect")
 
 # ggsave("Tables_Figs/Figure 9.png", width = 5, height = 5.5, units = "in", dpi = 400)
+
+
+
+
+
+
+
+
+
+
+###############################################################
+### Create composite plot of marginal effects across models ###
+###############################################################
+
+
+# Define 1D mesh per covar
+mesh.list <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                     length.out = 5),
+                                 degree = 2,
+                                 boundary = 'free')
+}
+
+
+
+# Define predictive seq of covars
+vars <- data.frame(log.bathym = seq(mesh.seq$log.bathym[1], mesh.seq$log.bathym[2], length.out = 500),
+                   log.npp = seq(mesh.seq$log.npp[1], mesh.seq$log.npp[2], length.out = 500),
+                   log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500))
+
+vars2 <- data.frame(Intercept = 1,
+                    log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500),
+                    log.sst2 = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500) ^ 2)
+
+
+# Generate A matrices for prediction
+A.mat <- vector("list", length(covars))
+for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+  A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
+}
+names(A.mat) <- covars
+
+# Replicate list elements for mapping over lists
+A.mat2 <- rep(A.mat, each = 2)
+
+
+
+
+
+
+### Predict across models w/ different scales ###
+
+# Define coeff values from HGPR
+coeff1 <- hgpr.age$summary.random[1:3] %>%
+  map(., ~dplyr::select(.x, mean)) %>%
+  map(., ~mutate(.x, age = rep(1:2, each = 6))) %>%
+  map(., ~split(.x, .x$age)) %>%
+  flatten() %>%
+  map(., pull, mean) %>%
+  set_names(paste(rep(covars, each = 2), rep(1:2, length(covars)), sep = "_"))
+
+# Define coeff values of fixed terms from HGPR
+coeff2 <- hgpr.age$summary.fixed$mean
+
+
+# Make predictions via linear algebra
+marg.eff <- A.mat2 %>%
+  map2(.x = ., .y = coeff1,
+       ~{.x %*% .y %>%
+           as.vector()}
+  ) %>%
+  set_names(names(coeff1)) %>%
+  bind_cols() %>%
+  split.default(., str_extract(names(.), "[0-9]$")) %>%  #split preds into list by age.class
+  set_names(c("Juv","Adult")) %>%
+  map(~{.x %>%
+      pivot_longer(cols = everything(), names_to = "covar", values_to = "mean") %>%
+      arrange(covar) %>%
+      mutate(x = c(vars$log.bathym, vars$log.npp, vars$log.sst)) %>%
+      mutate(across(c(mean, x), \(z) exp(z))) %>%
+      mutate(covar = case_when(str_detect(covar, "log.bathym_.") ~ "depth",
+                               str_detect(covar, "log.npp_.") ~ "npp",
+                               str_detect(covar, "log.sst_.") ~ "sst")) %>%
+      filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
+    })
+
+# Make predictions using linear terms
+hgpr.pred2 <- as.matrix(vars2) %*% coeff2 %>%
+  exp() %>%
+  as.vector()
+
+
+# Add linear SST predictions to GP SST predictions
+for (i in seq_along(marg.eff)) {
+  marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean <- marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean +
+    hgpr.pred2
+}
+
+
+
+
+
+marg.eff2 <- bind_rows(marg.eff, .id = "Age Class") %>%
+  mutate(x = case_when(covar == "npp" ~ x / 1000,
+                       TRUE ~ x),
+         covar = case_when(covar == "depth" ~ "Depth (m)",
+                           covar == "npp" ~ "NPP (g C m^-2 d^-1)",
+                           covar == "sst" ~ "SST (°C)")) %>%
+  mutate(`Age Class` = factor(`Age Class`, levels = c("Juv","Adult")))
+
+
+
+
+
+# Plot pop-level marginal effects
+ggplot() +
+  geom_line(data = marg.eff2, aes(x = x, y = mean, color = `Age Class`), linewidth = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  theme_bw() +
+  labs(x = "", y = "Relative Intensity of Use") +
+  theme(strip.background = element_rect(fill = NA, color = NA),
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold"),
+        axis.title = element_text(face = "bold")
+  ) +
+  facet_wrap(`Age Class` ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
+
+# ggsave("Tables_Figs/Figure S5.png", width = 11, height = 9, units = "in", dpi = 400)
