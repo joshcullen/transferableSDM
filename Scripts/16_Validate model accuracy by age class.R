@@ -610,7 +610,7 @@ boyce.qa.age2 <- boyce.qa.age %>%
 
 boyce.fit <- rbind(boyce.br.full.no_age2, boyce.br.sub.no_age2, boyce.qa.no_age2,
                    boyce.br.full.age2, boyce.br.sub.age2, boyce.qa.age2) %>%
-  mutate(across(Age.Class, factor, levels = c(age.class, "Pop")))
+  mutate(across(Age.Class, \(x) factor(x, levels = c(age.class, "Pop"))))
 
 boyce.mean <- boyce.fit %>%
   group_by(Method, Region) %>%
@@ -633,6 +633,34 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   guides(fill = guide_legend(override.aes = list(alpha = 1)))
 
 # ggsave("Tables_Figs/Figure 10.png", width = 7, height = 5, units = "in", dpi = 400)
+
+
+
+
+# Create plot of Boyce Index broken out by age class (or pop.) for Supplement
+boyce.mean2 <- boyce.fit %>%
+  group_by(Method, Region, Age.Class) %>%
+  summarize(mean = mean(cor, na.rm = TRUE)) %>%
+  ungroup()
+
+ggplot(data = boyce.fit, aes(Region, cor)) +
+  geom_point(aes(fill = Age.Class), pch = 21, alpha = 0.7, size = 5, position = position_dodge(width = 0.75, preserve = "total")) +
+  geom_violin(aes(color = Age.Class), fill = "transparent", position = position_dodge(width = 0.75, preserve = "total")) +
+  geom_point(data = boyce.mean2, aes(x = Region, y = mean, group = Age.Class),
+             size = 6, position = position_dodge(width = 0.75, preserve = "total")) +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  scale_fill_brewer("Group", palette = "Dark2") +
+  geom_hline(yintercept = 0, linewidth = 1) +
+  lims(y = c(-1,1)) +
+  labs(x="", y = "Boyce Index") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 20),
+        axis.title = element_text(size = 24))  +
+  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+
+# ggsave("Tables_Figs/Figure S6.png", width = 7, height = 5, units = "in", dpi = 400)
+
+
 
 
 
