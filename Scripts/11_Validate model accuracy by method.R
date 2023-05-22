@@ -4,6 +4,7 @@
 library(tidyverse)
 library(INLA)
 library(mgcv)
+library(gratia)
 library(gbm)
 library(terra)
 library(sfarrow)
@@ -1335,38 +1336,221 @@ ggplot() +
 
 
 
-cum.perc <- list(Brazil_all.HGLM = perc.use.br.full.hglm,
-                 Brazil_sub.HGLM = perc.use.br.sub.hglm,
-                 Qatar.HGLM = perc.use.qa.hglm,
-                 Brazil_all.HGAM = perc.use.br.full.hgam,
-                 Brazil_sub.HGAM = perc.use.br.sub.hgam,
-                 Qatar.HGAM = perc.use.qa.hgam,
-                 Brazil_all.BRT = perc.use.br.full.brt,
-                 Brazil_sub.BRT = perc.use.br.sub.brt,
-                 Qatar.BRT = perc.use.qa.brt,
-                 Brazil_all.HGPR = perc.use.br.full.hgpr,
-                 Brazil_sub.HGPR = perc.use.br.sub.hgpr,
-                 Qatar.HGPR = perc.use.qa.hgpr)
 
-cum.perc.mean <- cum.perc %>%
-  map(., ~apply(.x, 2, function(x) which(x >= 0.9)[1])) %>%
-  map(., ~{data.frame(mean = mean(.x),
-                sd = sd(.x)
-                )}
-      ) %>%
-  bind_rows(.id = "id") %>%
-  # pivot_longer(cols = everything(), names_to = "id", values_to = "cum.perc") %>%
-  separate(col = id, sep = "\\.", into = c("Region","Method"))
+###############################################################
+### Create composite plot of marginal effects across models ###
+###############################################################
+
+# Load analysis dataset
+rsf.pts_10s <- read_csv("Processed_data/GoM_Cm_RSFprep_10x.csv") %>%
+  drop_na(bathym, npp, sst) %>%
+  mutate(log.bathym = log(abs(bathym)),
+         log.npp = log(npp),
+         log.sst = log(sst))
 
 
+### HGLM ###
 
-ggplot(data = cum.perc.mean, aes(Region, mean)) +
-  geom_linerange(aes(ymin = (mean - sd), ymax = (mean + sd), color = Method),
-                 position = position_dodge(width = 0.75)) +
-  geom_point(aes(group = Method, color = Method),
-             size = 6, position = position_dodge(width = 0.75)) +
-  # lims(y = c(0,10)) +
-  labs(x="", y = "Avg # of bins accounting for 90% of obs") +
+# Store model coeffs
+tmp.hglm <- hglm.fit$summary.fixed$mean[-1] %>%
+  as.matrix()
+
+# Create seq of predictor values
+newdat.hglm <- list(depth = data.frame(bathym = seq(min(rsf.pts_10s$log.bathym),
+                                                     max(rsf.pts_10s$log.bathym),
+                                                     length.out = 500),
+                                        bathym.2 = seq(min(rsf.pts_10s$log.bathym),
+                                                       max(rsf.pts_10s$log.bathym),
+                                                       length.out = 500) ^ 2,
+                                        npp = 0,
+                                        npp.2 = 0,
+                                        sst = 0,
+                                        sst.2 = 0) %>%
+                      as.matrix(),
+                    npp = data.frame(bathym = 0,
+                                     bathym.2 = 0,
+                                     npp = seq(min(rsf.pts_10s$log.npp),
+                                               max(rsf.pts_10s$log.npp),
+                                               length.out = 500),
+                                     npp.2 = seq(min(rsf.pts_10s$log.npp),
+                                                 max(rsf.pts_10s$log.npp),
+                                                 length.out = 500) ^ 2,
+                                     sst = 0,
+                                     sst.2 = 0) %>%
+                      as.matrix(),
+                    sst = data.frame(bathym = 0,
+                                     bathym.2 = 0,
+                                     npp = 0,
+                                     npp.2 = 0,
+                                     sst = seq(min(rsf.pts_10s$log.sst),
+                                               max(rsf.pts_10s$log.sst),
+                                               length.out = 500),
+                                     sst.2 = seq(min(rsf.pts_10s$log.sst),
+                                                 max(rsf.pts_10s$log.sst),
+                                                 length.out = 500) ^ 2) %>%
+                      as.matrix())
+
+
+# Store predictions
+marg.eff.hglm <- vector("list", length = 3) %>%
+  set_names(names(newdat.hglm))
+
+for (i in seq_along(newdat.hglm)) {
+
+  # Find first column per covariate to add for x-axis
+  ind.col <- which(newdat.hglm[[i]][1,] != 0) %>%
+    min()
+
+  marg.eff.hglm[[i]] <- newdat.hglm[[i]] %*% tmp.hglm %>%
+    data.frame() %>%
+    mutate(x = exp(newdat.hglm[[i]][,ind.col]))
+}
+
+marg.eff.hglm2 <- bind_rows(marg.eff.hglm, .id = "covar") %>%
+  filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
+names(marg.eff.hglm2)[2] <- "mean"
+marg.eff.hglm2$mean <- exp(marg.eff.hglm2$mean)  #change to natural response scale
+
+
+
+
+
+
+
+### HGAM ###
+
+# Evaluate the smooths
+sm <- smooth_estimates(hgam.fit, n = 500) %>%
+  add_confint() %>%
+  filter(smooth %in% c("s(log.bathym)", "s(log.npp)", "s(log.sst)"))
+
+marg.eff.hgam <- sm %>%
+  rename(depth = log.bathym,
+         npp = log.npp,
+         sst = log.sst,
+         mean = est) %>%
+  mutate(across(c(mean, depth, npp, sst), \(x) exp(x))) %>%
+  dplyr::select(mean, depth, npp, sst) %>%
+  pivot_longer(cols = c(depth, npp, sst), names_to = "covar", values_to = "x") %>%
+  dplyr::relocate(covar, mean, x) %>%
+  drop_na(x) %>%
+  filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
+
+
+
+
+
+
+### BRT ###
+marg.eff.brt <- gbm.pdp(brt.fit, continuous.resolution = 500) %>%
+  rename(mean = y) %>%
+  dplyr::relocate(covar, mean, x) %>%
+  mutate(covar = case_when(covar == "bathym" ~ "depth",
+                           TRUE ~ covar),
+         mean = exp(mean)) %>%
+  filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
+
+
+
+
+
+
+
+### HGPR ###
+
+# Specify model params, predictors, and data
+covars <- c('log.bathym','log.npp','log.sst')
+mesh.seq <- list(log.bathym = c(0.001, 5500),
+                 log.npp = c(20, 200000),
+                 log.sst = c(12,35)) %>%
+  map(log)
+
+
+# Define 1D mesh per covar
+mesh.list <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                     length.out = 5),
+                                 degree = 2,
+                                 boundary = 'free')
+}
+
+# Generate matrices for sequences of covariate ranges
+A.me.pop <- vector("list", length(covars))
+newdat.list <- map(mesh.seq, function(x) {seq(from = x[1], to = x[2], length.out = 500)})
+for (i in 1:length(covars)) { #make marginal predictions to viz response by covar
+  A.me.pop[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = newdat.list[[covars[[i]]]])
+}
+
+
+# Store resulting GP coeffs per covar into a list
+tmp.hgpr <- hgpr.fit$summary.random[1:3] %>%
+  map(., ~pull(.x, mean))
+
+# Make predictions via linear algebra
+marg.eff.hgpr <- A.me.pop %>%
+  map2(.x = ., .y = tmp.hgpr,
+       ~{.x %*% .y %>%
+           as.vector() %>%
+           data.frame(mean = .)
+       }
+  ) %>%
+  set_names(covars) %>%
+  bind_rows(.id = 'covar') %>%
+  mutate(x = unlist(newdat.list)) %>%
+  mutate(across(mean:x, exp)) %>%
+  mutate(covar = case_when(covar == "log.bathym" ~ "depth",
+                           covar == "log.npp" ~ "npp",
+                           covar == "log.sst" ~ "sst")) %>%
+  filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
+
+
+# Make predictions of linear SST terms
+sst.newdata <- data.frame(sst = newdat.list$log.sst,
+                          sst.2 = newdat.list$log.sst ^ 2) %>%
+  as.matrix()
+fixed.sst.coeff <- hgpr.fit$summary.fixed$mean[-1]
+
+fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
+  data.frame(mean = .) %>%
+  mutate(sst = exp(sst.newdata[,1]),
+         mean = exp(mean))
+
+# Add linear SST predictions to GP SST predictions
+marg.eff.hgpr2 <- marg.eff.hgpr
+marg.eff.hgpr2[marg.eff.hgpr2$covar == "sst",]$mean <- marg.eff.hgpr2[marg.eff.hgpr2$covar == "sst",]$mean +
+  fixed.sst.pred$mean
+
+
+
+
+### Combine all predictions into single DF and plot
+
+marg.eff <- list(HGLM = marg.eff.hglm2,
+                 HGAM = marg.eff.hgam,
+                 BRT = marg.eff.brt,
+                 HGPR = marg.eff.hgpr2) %>%
+  bind_rows(.id = "Method") %>%
+  mutate(method = factor(Method, levels = unique(Method)),
+         x = case_when(covar == "npp" ~ x / 1000,
+                       TRUE ~ x),
+         covar = case_when(covar == "depth" ~ "Depth (m)",
+                           covar == "npp" ~ "NPP (g C m^-2 d^-1)",
+                           covar == "sst" ~ "SST (°C)"))
+
+
+
+# Plot pop-level marginal effects
+ggplot() +
+  geom_line(data = marg.eff, aes(x = x, y = mean, color = Method), linewidth = 1) +
+  scale_color_met_d(palette_name = 'Egypt') +
   theme_bw() +
-  theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 22))
+  labs(x = "", y = "Relative Intensity of Use") +
+  theme(strip.background = element_rect(fill = NA, color = NA),
+        strip.placement = "outside",
+        strip.text = element_text(face = "bold"),
+        axis.title = element_text(face = "bold")
+        ) +
+  facet_wrap(Method ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
+
+# ggsave("Tables_Figs/Figure S3.png", width = 11, height = 9, units = "in", dpi = 400)
