@@ -1502,8 +1502,10 @@ marg.eff.hgpr <- A.me.pop %>%
   mutate(covar = case_when(covar == "log.bathym" ~ "depth",
                            covar == "log.npp" ~ "npp",
                            covar == "log.sst" ~ "sst")) %>%
-  filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
-
+  filter(!(covar == "depth" & x > 300)) %>%  #to constrain plot to only show depth up to 300 m
+  filter(!(covar == "npp" & x > max(rsf.pts_10s$npp))) %>%  #to match range of other models
+  filter(!(covar == "sst" & x > max(rsf.pts_10s$sst) |
+             covar == "sst" & x < min(rsf.pts_10s$sst)))  #to match range of other models
 
 # Make predictions of linear SST terms
 sst.newdata <- data.frame(sst = newdat.list$log.sst,
@@ -1514,7 +1516,9 @@ fixed.sst.coeff <- hgpr.fit$summary.fixed$mean[-1]
 fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
   data.frame(mean = .) %>%
   mutate(sst = exp(sst.newdata[,1]),
-         mean = exp(mean))
+         mean = exp(mean)) %>%
+  filter(!(sst > max(rsf.pts_10s$sst) |
+             sst < min(rsf.pts_10s$sst)))  #to match range of other models
 
 # Add linear SST predictions to GP SST predictions
 marg.eff.hgpr2 <- marg.eff.hgpr
