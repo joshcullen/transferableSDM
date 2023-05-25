@@ -68,9 +68,9 @@ ggplot() +
   geom_rect(aes(xmin = -98, xmax = -77, ymin = 20, ymax = 30.5), color = "#009ACD", fill = NA, linewidth = 1) +  #inset rect for GoM
   geom_rect(aes(xmin = -49, xmax = -31, ymin = -26, ymax = -2), color = "#00CD00", fill = NA, linewidth = 1) +  #inset rect for Brazil
   geom_rect(aes(xmin = 50.25, xmax = 53, ymin = 23.8, ymax = 27.2), color = "#CD4F39", fill = NA, linewidth = 1) +  #inset rect for Qatar
-  geom_text(aes(x = -95, y = 27, label = "A"), size = 8, fontface = "bold") +  #label for GoM subplot
-  geom_text(aes(x = -46, y = -5, label = "B"), size = 8, fontface = "bold") +  #label for Brazil subplot
-  geom_text(aes(x = 47, y = 25.5, label = "C"), size = 8, fontface = "bold") +  #label for Qatar subplot
+  geom_text(aes(x = -93, y = 27, label = "(a)"), size = 7, fontface = "bold") +  #label for GoM subplot
+  geom_text(aes(x = -44, y = -6, label = "(b)"), size = 7, fontface = "bold") +  #label for Brazil subplot
+  geom_text(aes(x = 45, y = 25.5, label = "(c)"), size = 7, fontface = "bold") +  #label for Qatar subplot
   geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.25) +
   scale_color_manual(values = col.pal) +
   labs(x="",y="") +
@@ -95,7 +95,7 @@ ggplot() +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic", size = 8, x = -92, y = 25) +
-  geom_text(aes(x = -98, y = 30, label = "A"), size = 10, fontface = "bold") +
+  geom_text(aes(x = -98, y = 30, label = "(a)"), size = 10, fontface = "bold") +
   annotation_scale(location = "br", width_hint = 0.5, style = "ticks", tick_height = 1,
                    line_col = "black", text_col = "black", line_width = 3,
                    text_cex = 1.5, text_face = "bold") +
@@ -119,7 +119,7 @@ ggplot() +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Brazil", fontface = "italic", size = 8, x = -43, y = -8) +
-  geom_text(aes(x = -48.5, y = -2.5, label = "B"), size = 10, fontface = "bold") +
+  geom_text(aes(x = -48, y = -2.5, label = "(b)"), size = 10, fontface = "bold") +
   annotation_scale(location = "br", width_hint = 0.5, style = "ticks", tick_height = 1,
                    line_col = "black", text_col = "black", line_width = 3,
                    text_cex = 1.5, text_face = "bold") +
@@ -141,8 +141,8 @@ ggplot() +
   geom_sf(data = qa.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
   scale_color_manual(values = col.pal) +
-  annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8, x = 52.25, y = 26.5) +
-  geom_text(aes(x = 50.33, y = 27.1, label = "C"), size = 10, fontface = "bold") +
+  annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8, x = 51.1, y = 25.3) +
+  geom_text(aes(x = 50.43, y = 27.1, label = "(c)"), size = 10, fontface = "bold") +
   annotation_scale(location = "br", width_hint = 0.5, style = "ticks", tick_height = 1,
                    line_col = "black", text_col = "black", line_width = 3,
                    text_cex = 1.5, text_face = "bold") +
@@ -251,7 +251,7 @@ p.disp <- ggplot(dat3, aes(disp)) +
 
 
 ## Create composite plot
-p.step / p.disp + plot_annotation(tag_levels = 'A') &
+p.step / p.disp + plot_annotation(tag_levels = 'a', tag_prefix = '(', tag_suffix = ')') &
   theme(plot.tag.position = c(0.08, 1),
         plot.tag = element_text(size = 18, hjust = 0, vjust = -0.4, face = 'bold'))
 
@@ -550,7 +550,7 @@ p.behav_map <- ggplot() +
 ### Make composite plot of map and state-dependent distributions
 
 p.statedep + p.behav_map +
-  plot_annotation(tag_levels = 'A') +
+  plot_annotation(tag_levels = 'a', tag_prefix = "(", tag_suffix = ")") +
   plot_layout(guides = 'collect') &
   theme(plot.tag.position = c(0.08, 0.81),
         plot.tag = element_text(size = 18, hjust = 0, vjust = -0.4, face = 'bold'),
@@ -563,6 +563,6 @@ p.statedep + p.behav_map +
 ### Export annotated tracks ###
 ###############################
 
-write_csv(gom.dat.out, "Processed_data/GoM_Cm_Tracks_behav.csv")
-write_csv(br.dat.out, "Processed_data/Brazil_Cm_Tracks_behav.csv")
-write_csv(qa.dat.out, "Processed_data/Qatar_Cm_Tracks_behav.csv")
+# write_csv(gom.dat.out, "Processed_data/GoM_Cm_Tracks_behav.csv")
+# write_csv(br.dat.out, "Processed_data/Brazil_Cm_Tracks_behav.csv")
+# write_csv(qa.dat.out, "Processed_data/Qatar_Cm_Tracks_behav.csv")

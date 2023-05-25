@@ -269,7 +269,8 @@ dat3 <- rbind(gom.tracks3, br.tracks3, qa.tracks3) %>%
   drop_na(x, y) %>%
   st_as_sf(., coords = c('x','y'), crs = 3395) %>%
   st_transform(4326) %>%
-  left_join(., age.df, by = "id")
+  left_join(., age.df, by = "id") %>%
+  mutate(Age = factor(Age, levels = c("Juv","Adult")))
 
 
 
@@ -279,7 +280,7 @@ p.gom <- ggplot() +
   scale_color_brewer(palette = "Dark2") +
   annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic",
            size = 8, x = -92, y = 25) +
-  geom_text(aes(x = -98, y = 30, label = "A"), size = 10, fontface = "bold") +
+  geom_text(aes(x = -97.5, y = 30, label = "(a)"), size = 10, fontface = "bold") +
   labs(x="",y="") +
   theme_void() +
   theme(legend.position = "top",
@@ -298,7 +299,7 @@ p.br <- ggplot() +
   geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
   scale_color_brewer(palette = "Dark2") +
   annotate(geom = "text", label = "Brazil", fontface = "italic", size = 8, x = -43, y = -8) +
-  geom_text(aes(x = -48.5, y = -2.5, label = "B"), size = 10, fontface = "bold") +
+  geom_text(aes(x = -47, y = -2.5, label = "(b)"), size = 10, fontface = "bold") +
   labs(x="",y="") +
   theme_void() +
   theme(legend.position = "none",
@@ -317,7 +318,7 @@ p.qa <- ggplot() +
   scale_color_brewer(palette = "Dark2") +
   annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8,
            x = 51.0, y = 25.3) +
-  geom_text(aes(x = 50.33, y = 27.1, label = "C"), size = 10, fontface = "bold") +
+  geom_text(aes(x = 50.5, y = 27.1, label = "(c)"), size = 10, fontface = "bold") +
   labs(x="",y="") +
   theme_void() +
   theme(legend.position = "none",
@@ -332,18 +333,18 @@ p.qa <- ggplot() +
 
 p.gom / (p.br + p.qa)
 
-# ggsave("Tables_Figs/Figure S1.png", width = 5, height = 7, units = "in", dpi = 400)
+ggsave("Tables_Figs/Figure S1.png", width = 5, height = 7, units = "in", dpi = 400)
 
 
 
 ### Export fitted tracks ###
 
-write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
-write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
-write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+# write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+# write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+# write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
 
 
 ## Write files for coastline spatial layers
-st_write_parquet(gom.sf, 'Environ_data/GoM_land.parquet')
-st_write_parquet(br.sf, 'Environ_data/Brazil_land.parquet')
-st_write_parquet(qa.sf, 'Environ_data/Qatar_land.parquet')
+# st_write_parquet(gom.sf, 'Environ_data/GoM_land.parquet')
+# st_write_parquet(br.sf, 'Environ_data/Brazil_land.parquet')
+# st_write_parquet(qa.sf, 'Environ_data/Qatar_land.parquet')
