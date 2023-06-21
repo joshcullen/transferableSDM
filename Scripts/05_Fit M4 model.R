@@ -93,6 +93,10 @@ qa.sf <- st_read_parquet("Environ_data/Qatar_land.parquet") %>%
 ggplot() +
   geom_sf(data = gom.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
+  geom_point(data = dat.sf %>%
+               split(.$id) %>%
+               map(., slice, 1) %>%
+               bind_rows(), aes(lon, lat), size = 3, shape = 25, fill = "gold", alpha = 0.6) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic", size = 8, x = -92, y = 25) +
   geom_text(aes(x = -98, y = 30, label = "(a)"), size = 10, fontface = "bold") +
@@ -117,6 +121,10 @@ ggplot() +
 ggplot() +
   geom_sf(data = br.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
+  geom_point(data = dat.sf %>%
+               split(.$id) %>%
+               map(., slice, 1) %>%
+               bind_rows(), aes(lon, lat), size = 3, shape = 25, fill = "gold", alpha = 0.6) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Brazil", fontface = "italic", size = 8, x = -43, y = -8) +
   geom_text(aes(x = -48, y = -2.5, label = "(b)"), size = 10, fontface = "bold") +
@@ -140,6 +148,10 @@ ggplot() +
 ggplot() +
   geom_sf(data = qa.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
+  geom_point(data = dat.sf %>%
+               split(.$id) %>%
+               map(., slice, 1) %>%
+               bind_rows(), aes(lon, lat), size = 3, shape = 25, fill = "gold", alpha = 0.6) +
   scale_color_manual(values = col.pal) +
   annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8, x = 51.1, y = 25.3) +
   geom_text(aes(x = 50.43, y = 27.1, label = "(c)"), size = 10, fontface = "bold") +
@@ -435,7 +447,7 @@ behav.res.seg$bin.vals <- factor(behav.res.seg$bin.vals, levels = unique(behav.r
 # Plot state-dependent distributions
 p.statedep <- ggplot(behav.res.seg, aes(x = bin.vals, y = prop, fill = as.factor(behav))) +
   geom_bar(stat = 'identity') +
-  labs(x = "\nBin", y = "Proportion\n") +
+  labs(x = "Bin", y = "Proportion\n") +
   theme_bw() +
   # theme(axis.title = element_text(size = 16),
   #       axis.text.y = element_text(size = 14),
@@ -554,9 +566,10 @@ p.statedep + p.behav_map +
   plot_layout(guides = 'collect') &
   theme(plot.tag.position = c(0.08, 0.81),
         plot.tag = element_text(size = 18, hjust = 0, vjust = -0.4, face = 'bold'),
-        legend.position = 'top')
+        legend.position = 'top',
+        legend.background = element_rect(fill = NA))
 
-# ggsave("Tables_Figs/Figure 2.png", width = 6, height = 4, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure 2.png", width = 6, height = 3.5, units = "in", dpi = 400)
 
 
 ###############################

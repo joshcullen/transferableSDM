@@ -261,7 +261,7 @@ boyce.br.sub.no_age2 <- boyce.br.sub.no_age %>%
   unlist() %>%
   data.frame(Age.Class = "Pop",
              cor = .,
-             Region = "Brazil_sub",
+             Region = "Brazil_main",
              Method = "No_Age")
 
 
@@ -500,7 +500,7 @@ boyce.br.sub.age2 <- boyce.br.sub.age %>%
   map(., ~{.x %>%
       unlist() %>%
       data.frame(cor = .,
-                 Region = "Brazil_sub",
+                 Region = "Brazil_main",
                  Method = "Age")}
   ) %>%
   bind_rows(.id = "Age.Class")
@@ -649,7 +649,7 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   geom_point(data = boyce.mean2, aes(x = Region, y = mean, group = Age.Class),
              size = 6, position = position_dodge(width = 0.75, preserve = "total")) +
   scale_color_brewer(palette = "Dark2", guide = "none") +
-  scale_fill_brewer("Group", palette = "Dark2") +
+  scale_fill_brewer("Group", palette = "Dark2", labels = c("Juvenile","Adult","Population")) +
   geom_hline(yintercept = 0, linewidth = 1) +
   lims(y = c(-1,1)) +
   labs(x="", y = "Boyce Index") +
@@ -675,13 +675,13 @@ bbox.qa <- ext(qa.rast.no_age$`2014-02-01`)
 br.rast.no_age3 <- classify(br.rast.no_age2, seq(0, 1, by = 0.1))
 br.rast.no_age3 <- br.rast.no_age3 + 1
 br.rast.no_age3.df <- as.data.frame(br.rast.no_age3, xy = TRUE) %>%
-  mutate(across(3:ncol(.), factor, levels = 10:1))
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1)))
 
 br.rast.age3 <- map(br.rast.age2, classify, seq(0, 1, by = 0.1))
 br.rast.age3 <- map(br.rast.age3, function(x) x + 1)
 br.rast.age3.df <- map(br.rast.age3, ~{.x %>%
     as.data.frame(., xy = TRUE) %>%
-  mutate(across(3:ncol(.), factor, levels = 10:1))
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1)))
 }) %>%
   bind_rows(.id = "Age")
 
@@ -689,12 +689,12 @@ br.rast.age3.df <- map(br.rast.age3, ~{.x %>%
 qa.rast.no_age3 <- classify(qa.rast.no_age2, seq(0, 1, by = 0.1))
 qa.rast.no_age3 <- qa.rast.no_age3 + 1
 qa.rast.no_age3.df <- as.data.frame(qa.rast.no_age3, xy = TRUE) %>%
-  mutate(across(3:ncol(.), factor, levels = 10:1))
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1)))
 
 qa.rast.age3 <- classify(qa.rast.age2$Juv, seq(0, 1, by = 0.1))
 qa.rast.age3 <- qa.rast.age3 + 1
 qa.rast.age3.df <- as.data.frame(qa.rast.age3, xy = TRUE) %>%
-  mutate(across(3:ncol(.), factor, levels = 10:1))
+  mutate(across(3:ncol(.), \(x) factor(x, levels = 10:1)))
 
 
 
@@ -719,7 +719,7 @@ p.juv.br <- ggplot() +
                 filter(Age == "Juv"), aes(x, y, fill = `2022-02-01`)) +
   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = br.sf) +
-  labs(x="",y="", title = "Juv") +
+  labs(x="",y="", title = "Juvenile") +
   theme_bw() +
   coord_sf(xlim = c(bbox.br[1], bbox.br[2]),
            ylim = c(bbox.br[3], bbox.br[4]),
@@ -766,7 +766,7 @@ p.juv.qa <- ggplot() +
   geom_raster(data = qa.rast.age3.df, aes(x, y, fill = `2014-03-01`)) +
   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = qa.sf) +
-  labs(x="",y="", title = "Juv") +
+  labs(x="",y="", title = "Juvenile") +
   theme_bw() +
   coord_sf(xlim = c(bbox.qa[1], bbox.qa[2]),
            ylim = c(bbox.qa[3], bbox.qa[4]),

@@ -195,7 +195,7 @@ for (i in 1:nlyr(br.rast.hglm2)) {
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
-  obs_sub <- dat.br %>%
+  obs_main <- dat.br %>%
     filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
@@ -208,7 +208,7 @@ for (i in 1:nlyr(br.rast.hglm2)) {
                                    method = "spearman")
 
   boyce.br.sub.hglm[[i]] <- boyce(fit = br.rast.hglm2[[i]],
-                                  obs = obs_sub,
+                                  obs = obs_main,
                                   nbins = 10,
                                   bin.method = "seq",
                                   PEplot = FALSE,
@@ -277,7 +277,7 @@ boyce.br.sub.hglm <- boyce.br.sub.hglm %>%
   map(., pluck, "cor") %>%
   unlist() %>%
   data.frame(cor = .,
-             Region = "Brazil_sub",
+             Region = "Brazil_main",
              Method = "HGLM")
 
 
@@ -437,7 +437,7 @@ for (i in 1:nlyr(br.rast.hgam2)) {
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
-  obs_sub <- dat.br %>%
+  obs_main <- dat.br %>%
     filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
@@ -450,7 +450,7 @@ for (i in 1:nlyr(br.rast.hgam2)) {
                                    method = "spearman")
 
   boyce.br.sub.hgam[[i]] <- boyce(fit = br.rast.hgam2[[i]],
-                                  obs = obs_sub,
+                                  obs = obs_main,
                                   nbins = 10,
                                   bin.method = "seq",
                                   PEplot = FALSE,
@@ -518,7 +518,7 @@ boyce.br.sub.hgam <- boyce.br.sub.hgam %>%
   map(., pluck, "cor") %>%
   unlist() %>%
   data.frame(cor = .,
-             Region = "Brazil_sub",
+             Region = "Brazil_main",
              Method = "HGAM")
 
 
@@ -666,7 +666,7 @@ for (i in 1:nlyr(br.rast.brt2)) {
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
-  obs_sub <- dat.br %>%
+  obs_main <- dat.br %>%
     filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
@@ -679,7 +679,7 @@ for (i in 1:nlyr(br.rast.brt2)) {
                                   method = "spearman")
 
   boyce.br.sub.brt[[i]] <- boyce(fit = br.rast.brt2[[i]],
-                                 obs = obs_sub,
+                                 obs = obs_main,
                                  nbins = 10,
                                  bin.method = "seq",
                                  PEplot = FALSE,
@@ -748,7 +748,7 @@ boyce.br.sub.brt <- boyce.br.sub.brt %>%
   map(., pluck, "cor") %>%
   unlist() %>%
   data.frame(cor = .,
-             Region = "Brazil_sub",
+             Region = "Brazil_main",
              Method = "BRT")
 
 
@@ -958,7 +958,7 @@ for (i in 1:nlyr(br.rast.hgpr2)) {
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
-  obs_sub <- dat.br %>%
+  obs_main <- dat.br %>%
     filter(month.year == my.ind.br[i], x < -3800000) %>%
     dplyr::select(x, y)
 
@@ -971,7 +971,7 @@ for (i in 1:nlyr(br.rast.hgpr2)) {
                                    method = "spearman")
 
   boyce.br.sub.hgpr[[i]] <- boyce(fit = br.rast.hgpr2[[i]],
-                                  obs = obs_sub,
+                                  obs = obs_main,
                                   nbins = 10,
                                   bin.method = "seq",
                                   PEplot = FALSE,
@@ -1040,7 +1040,7 @@ boyce.br.sub.hgpr <- boyce.br.sub.hgpr %>%
   map(., pluck, "cor") %>%
   unlist() %>%
   data.frame(cor = .,
-             Region = "Brazil_sub",
+             Region = "Brazil_main",
              Method = "HGPR")
 
 
@@ -1213,8 +1213,9 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
 
 bbox <- ext(br.rast.hglm)
 
-# tmp.br <- dat.br %>%
-#   filter(month.year == "2022-02-01")
+# time-matched observations
+tmp.br <- dat.br %>%
+  filter(month.year == "2022-02-01")
 
 # Break rasters into bins used for Boyce Index
 br.rast.hglm.d <- classify(br.rast.hglm2, seq(0, 1, by = 0.1))
@@ -1318,7 +1319,14 @@ ggplot() +
   geom_raster(data = spat.preds, aes(x, y, fill = `2022-02-01`)) +
   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = br.sf) +
-  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+  geom_text(data = data.frame(x = c(-4802714,0,0,0),
+                              y = c(-1000000,0,0,0),
+                              Method = factor(c("HGLM","HGAM","BRT","HGPR"),
+                                              levels = c("HGLM","HGAM","BRT","HGPR")),
+                              lab = c("Brazil","","","")), aes(x, y, label = lab),
+            size = 5, fontface = "italic") +
+  geom_point(data = tmp.br, aes(x, y), fill = "chartreuse", alpha = 0.6, size = 1,
+             shape = 21, stroke = 0.25) +
   labs(x="",y="", title = "February 2022") +
   theme_bw() +
   coord_sf(xlim = c(bbox[1], bbox[2]),

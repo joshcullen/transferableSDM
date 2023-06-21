@@ -4,6 +4,7 @@
 library(tidyverse)
 library(INLA)
 library(terra)
+library(sf)
 library(sfarrow)
 library(tictoc)
 library(lubridate)
@@ -313,7 +314,7 @@ boyce.br.sub2 <- boyce.br.sub %>%
   map(., ~{.x %>%
       unlist() %>%
       data.frame(cor = .,
-                 Region = "Brazil_sub")}
+                 Region = "Brazil_main")}
   ) %>%
   bind_rows(.id = "scale")
 
@@ -423,7 +424,7 @@ boyce.qa2 <- boyce.qa %>%
 ####################################
 
 boyce.fit <- rbind(boyce.br.full2, boyce.br.sub2, boyce.qa2) %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
+  mutate(across(scale, \(x) factor(x, levels = c('sc.5','sc.10','sc.20','sc.40'))))
 levels(boyce.fit$scale) <- c(5, 10, 20, 40)
 
 boyce.mean <- boyce.fit %>%
@@ -468,12 +469,25 @@ qa.rast.hgpr.df <- map(qa.rast.hgpr.d,
 levels(qa.rast.hgpr.df$Scale) <- c('5 km', '10 km', '20 km', '40 km')
 
 
+# time-matched observations
+tmp.qa <- dat.qa %>%
+  filter(month.year == "2014-03-01") %>%
+  st_as_sf(., coords = c('x','y'), crs = 3395, remove = FALSE) %>%
+  .[lengths(st_intersects(., qa.sf)) == 0,]  #remove all pts overlapping land
+
 ggplot() +
   geom_raster(data = qa.rast.hgpr.df, aes(x, y, fill = `2014-03-01`)) +
   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
   geom_sf(data = qa.sf) +
-  # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
+  geom_point(data = tmp.qa, aes(x, y), fill = "chartreuse", alpha = 0.4, size = 1,
+             shape = 21, stroke = 0.25) +
   labs(x="",y="", title = "March 2014") +
+  geom_text(data = data.frame(x = c(5700000,0,0,0),
+                              y = c(2870000,0,0,0),
+                              Scale = factor(c('5 km','10 km','20 km','40 km'),
+                                              levels = c('5 km','10 km','20 km','40 km')),
+                              lab = c("Qatar","","","")), aes(x, y, label = lab),
+            size = 5, fontface = "italic") +
   theme_bw() +
   coord_sf(xlim = c(bbox[1], bbox[2]),
            ylim = c(bbox[3], bbox[4]),

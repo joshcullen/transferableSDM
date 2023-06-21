@@ -369,10 +369,15 @@ bbox <- ext(rast.pred)
 
 
 # Generate predictive surface for GP at pop-level
+tmp.pts <- rsf.pts_10s %>%
+  filter(obs == 1, month.year == "2020-09-01")
+
 p.pred_map <- ggplot() +
   geom_raster(data = rast.pred.df, aes(x, y, fill = pred)) +
   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
   geom_sf(data = gom.sf) +
+  geom_point(data = tmp.pts, aes(x, y), fill = "chartreuse", alpha = 0.8, size = 2,
+             shape = 21, stroke = 0.25) +
   labs(x="",y="") +
   theme_void() +
   coord_sf(xlim = c(bbox[1], bbox[2]),
@@ -393,7 +398,7 @@ plot_spacer() + plot_spacer() + p.depth + p.npp + p.sst + p.pred_map +
   theme(plot.tag.position = c(0.08, 1),
         plot.tag = element_text(size = 18, hjust = 0, vjust = -0.4, face = 'bold'))
 
-ggsave("Tables_Figs/Figure 6.png", width = 7, height = 5, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure 6.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
 

@@ -277,7 +277,7 @@ dat3 <- rbind(gom.tracks3, br.tracks3, qa.tracks3) %>%
 p.gom <- ggplot() +
   geom_sf(data = gom.sf) +
   geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
-  scale_color_brewer(palette = "Dark2") +
+  scale_color_brewer("Life Stage", palette = "Dark2") +
   annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic",
            size = 8, x = -92, y = 25) +
   geom_text(aes(x = -97.5, y = 30, label = "(a)"), size = 10, fontface = "bold") +
@@ -333,7 +333,7 @@ p.qa <- ggplot() +
 
 p.gom / (p.br + p.qa)
 
-ggsave("Tables_Figs/Figure S1.png", width = 5, height = 7, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure S1.png", width = 5, height = 7, units = "in", dpi = 400)
 
 
 
