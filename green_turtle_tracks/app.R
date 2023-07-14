@@ -7,12 +7,11 @@
 library(shiny)
 library(tidyverse)
 library(lubridate)
-# library(terra)
+library(terra)
 library(sf)
 library(leaflet)
 library(leafem)
-library(viridis)
-# library(cmocean)
+library(cmocean)
 library(MetBrewer)
 library(htmltools)
 
@@ -54,13 +53,13 @@ tracks <- tracks %>%
 
 
 
-# Load environmental covariates
-
-# cov_list_gom <- readRDS("GoM_covars.rds") %>%
+# # Load environmental covariates
+#
+# cov_list_gom <- readRDS(gzcon(url("https://github.com/joshcullen/transferableSDM/raw/main/green_turtle_tracks/GoM_covars.rds"))) %>%
 #   map(rast)
-# cov_list_br <- readRDS("Brazil_covars.rds") %>%
+# cov_list_br <- readRDS(gzcon(url("https://github.com/joshcullen/transferableSDM/raw/main/green_turtle_tracks/Brazil_covars.rds"))) %>%
 #   map(rast)
-# cov_list_qa <- readRDS("Qatar_covars.rds") %>%
+# cov_list_qa <- readRDS(gzcon(url("https://github.com/joshcullen/transferableSDM/raw/main/green_turtle_tracks/Qatar_covars.rds"))) %>%
 #   map(rast)
 #
 #
@@ -87,7 +86,7 @@ tracks <- tracks %>%
 
 ui <- fluidPage(title = "Green Turtle Observations Compared to Depth, NPP, and SST",
 
-                leafletOutput("leaflet_map", width = "100%", height = "850px"),
+                leafletOutput("leaflet_map", width = "100%", height = "750px"),
 
                 tags$style("#controls {
                              background-color: #f0f0f0;
@@ -111,10 +110,10 @@ ui <- fluidPage(title = "Green Turtle Observations Compared to Depth, NPP, and S
                                           label = "Select geographic region",
                                           choices = names(tracks),
                                           selected = names(tracks)[1]),
-                              # selectInput(inputId = "covar",
-                              #             label = "Select environmental variable",
-                              #             choices = names(cov_list[[1]]),
-                              #             selected = names(cov_list[[1]])[3]),
+                              selectInput(inputId = "covar",
+                                          label = "Select environmental variable",
+                                          choices = c("bathym", "npp", "sst"),
+                                          selected = "sst"),
                               selectInput(inputId = "month_year",
                                           label = "Select month-year of observations",
                                           choices = unique(tracks[[1]]$month.year),
@@ -143,6 +142,28 @@ server <- function(input, output, session) {
     choices <- unique(region()$month.year)
     updateSelectInput(inputId = "month_year", choices = choices)
   })
+
+
+
+  # Load environmental covariates as reactive object by region
+
+  cov_list <- reactive({
+
+    covar_rast <- switch(input$region,
+           "GoM" = readRDS(gzcon(url("https://github.com/joshcullen/transferableSDM/raw/main/green_turtle_tracks/GoM_covars.rds"))),
+           "Brazil" = readRDS(gzcon(url("https://github.com/joshcullen/transferableSDM/raw/main/green_turtle_tracks/Brazil_covars.rds"))),
+           "Qatar" = readRDS(gzcon(url("https://github.com/joshcullen/transferableSDM/raw/main/green_turtle_tracks/Qatar_covars.rds")))
+    ) %>%
+      map(rast)
+
+    # Modify values to adjust units
+    covar_rast$bathym <- covar_rast$bathym * -1  #convert depth to positive values
+    covar_rast$npp <- covar_rast$npp / 1000  #convert from mg to g C
+
+    covar_rast
+  })
+
+
 
 
 
@@ -198,15 +219,15 @@ server <- function(input, output, session) {
       req(region.my)
 
       # Create palettes for each covar and tracks
-      # depth.pal <- colorNumeric(cmocean("deep")(256),
-      #                           domain = values(cov_list[[input$region]][[1]]),
-      #                           na.color = "transparent")
-      # npp.pal <- colorNumeric(cmocean("algae")(256),
-      #                         domain = as.vector(values(cov_list[[input$region]][[2]])),
-      #                         na.color = "transparent")
-      # sst.pal <- colorNumeric(cmocean("thermal")(256),
-      #                         domain = as.vector(values(cov_list[[input$region]][[3]])),
-      #                         na.color = "transparent")
+      depth.pal <- colorNumeric(cmocean("deep")(256),
+                                domain = values(cov_list()[[1]]),
+                                na.color = "transparent")
+      npp.pal <- colorNumeric(cmocean("algae")(256),
+                              domain = as.vector(values(cov_list()[[2]])),
+                              na.color = "transparent")
+      sst.pal <- colorNumeric(cmocean("thermal")(256),
+                              domain = as.vector(values(cov_list()[[3]])),
+                              na.color = "transparent")
 
 
       proxy <- leafletProxy("leaflet_map") %>%
@@ -236,73 +257,73 @@ server <- function(input, output, session) {
 
       # Remove any existing legend and replace w/ updated one
       proxy %>%
-        clearControls() %>%
-        addLegend(pal = tracks.pal,
-                  values = region.my()$id,
-                  title = "ID")
+        clearControls() #%>%
+        # addLegend(pal = tracks.pal,
+        #           values = region.my()$id,
+        #           title = "ID")
 
       # Add raster and associated legend by covar
-      # if (input$covar == "sst") {
-      #
-      #   proxy %>%
-      #     addRasterImage(x = cov_list[[input$region]][[input$covar]][[input$month_year]],
-      #                    colors = sst.pal,
-      #                    opacity = 0.9,
-      #                    group = "Raster") %>%
-      #     addImageQuery(cov_list[[input$region]][[input$covar]][[input$month_year]],
-      #                   group = "Raster",
-      #                   project = TRUE) %>%
-      #     addLegend_decreasing(pal = sst.pal,
-      #                          values = as.vector(
-      #                            values(
-      #                              cov_list[[input$region]][[input$covar]]
-      #                              )
-      #                            ),
-      #                          title = "SST (\u00B0C)",
-      #                          decreasing = TRUE) %>%
-      #     addLegend(pal = tracks.pal,
-      #               values = region.my()$id,
-      #               title = "ID")
-      #
-      # } else if (input$covar == "bathym") {
-      #
-      #   proxy %>%
-      #     addRasterImage(x = cov_list[[input$region]][[input$covar]],
-      #                    colors = depth.pal,
-      #                    opacity = 0.9,
-      #                    group = "Raster") %>%
-      #     addImageQuery(cov_list[[input$region]][[input$covar]],
-      #                   group = "Raster",
-      #                   project = TRUE) %>%
-      #     addLegend(pal = depth.pal,
-      #               values = as.vector(values(cov_list[[input$region]][[input$covar]])),
-      #               title = "Depth (m)") %>%
-      #     addLegend(pal = tracks.pal,
-      #               values = region.my()$id,
-      #               title = "ID")
-      #
-      # } else if (input$covar == "npp") {
-      #
-      #   proxy %>%
-      #     addRasterImage(x = cov_list[[input$region]][[input$covar]][[input$month_year]],
-      #                    colors = npp.pal,
-      #                    opacity = 0.9,
-      #                    group = "Raster") %>%
-      #     addImageQuery(cov_list[[input$region]][[input$covar]][[input$month_year]],
-      #                   group = "Raster",
-      #                   project = TRUE) %>%
-      #     addLegend_decreasing(pal = npp.pal,
-      #                          values = as.vector(
-      #                            values(
-      #                              cov_list[[input$region]][[input$covar]]
-      #                            )
-      #                          ),
-      #                          title = "NPP (g C m^-2 d^-1)",
-      #                          decreasing = TRUE) %>%
-      #     addLegend(pal = tracks.pal,
-      #               values = region.my()$id,
-      #               title = "ID")
-      # }
+      if (input$covar == "sst") {
+
+        proxy %>%
+          addRasterImage(x = cov_list()[[input$covar]][[input$month_year]],
+                         colors = sst.pal,
+                         opacity = 0.9,
+                         group = "Raster") %>%
+          addImageQuery(cov_list()[[input$covar]][[input$month_year]],
+                        group = "Raster",
+                        project = TRUE) %>%
+          addLegend_decreasing(pal = sst.pal,
+                               values = as.vector(
+                                 values(
+                                   cov_list()[[input$covar]]
+                                   )
+                                 ),
+                               title = "SST (\u00B0C)",
+                               decreasing = TRUE) %>%
+          addLegend(pal = tracks.pal,
+                    values = region.my()$id,
+                    title = "ID")
+
+      } else if (input$covar == "bathym") {
+
+        proxy %>%
+          addRasterImage(x = cov_list()[[input$covar]],
+                         colors = depth.pal,
+                         opacity = 0.9,
+                         group = "Raster") %>%
+          addImageQuery(cov_list()[[input$covar]],
+                        group = "Raster",
+                        project = TRUE) %>%
+          addLegend(pal = depth.pal,
+                    values = as.vector(values(cov_list()[[input$covar]])),
+                    title = "Depth (m)") %>%
+          addLegend(pal = tracks.pal,
+                    values = region.my()$id,
+                    title = "ID")
+
+      } else if (input$covar == "npp") {
+
+        proxy %>%
+          addRasterImage(x = cov_list()[[input$covar]][[input$month_year]],
+                         colors = npp.pal,
+                         opacity = 0.9,
+                         group = "Raster") %>%
+          addImageQuery(cov_list()[[input$covar]][[input$month_year]],
+                        group = "Raster",
+                        project = TRUE) %>%
+          addLegend_decreasing(pal = npp.pal,
+                               values = as.vector(
+                                 values(
+                                   cov_list()[[input$covar]]
+                                 )
+                               ),
+                               title = "NPP (g C m^-2 d^-1)",
+                               decreasing = TRUE) %>%
+          addLegend(pal = tracks.pal,
+                    values = region.my()$id,
+                    title = "ID")
+      }
     })  #close observeEvent for leafletProxy mapping
 }  #close server
 
