@@ -85,6 +85,7 @@ tracks <- tracks %>%
 ### UI ###
 
 ui <- fluidPage(title = "Green Turtle Observations Compared to Depth, NPP, and SST",
+                header = tags$head(includeHTML("gtag.html")),
 
                 leafletOutput("leaflet_map", width = "100%", height = "750px"),
 
@@ -98,7 +99,7 @@ ui <- fluidPage(title = "Green Turtle Observations Compared to Depth, NPP, and S
 
                 absolutePanel(id = "controls",
                               class = "panel panel-default",
-                              top = 300,
+                              top = 200,
                               left = 25,
                               width = 250,
                               fixed = TRUE,
@@ -225,7 +226,8 @@ server <- function(input, output, session) {
     region.my <- reactive({
       tracks[[input$region]] %>%
         filter(month.year == input$month_year)
-    })
+    }) %>%
+      debounce(500)  #to delay reactive invalidation signal causing downstream issues w/ subsetting rasters after changing Region
 
 
     # Update Leaflet map w/ reactive layers
@@ -233,25 +235,14 @@ server <- function(input, output, session) {
 
       req(region.my)
 
-      # Create palettes for each covar and tracks
-      # depth.pal <- colorNumeric(cmocean("deep")(256),
-      #                           domain = values(cov_list()[[1]]),
-      #                           na.color = "transparent")
-      # npp.pal <- colorNumeric(cmocean("algae")(256),
-      #                         domain = as.vector(values(cov_list()[[2]])),
-      #                         na.color = "transparent")
-      # sst.pal <- colorNumeric(cmocean("thermal")(256),
-      #                         domain = as.vector(values(cov_list()[[3]])),
-      #                         na.color = "transparent")
-
 
       proxy <- leafletProxy("leaflet_map") %>%
         clearMarkers() %>%
         clearImages() %>%
-        fitBounds(lng1 = min(region.my()$x) - 2,
-                  lng2 = max(region.my()$x) + 2,
-                  lat1 = min(region.my()$y) - 2,
-                  lat2 = max(region.my()$y) + 2) %>%
+        fitBounds(lng1 = min(region.my()$x) - 1,
+                  lng2 = max(region.my()$x) + 1,
+                  lat1 = min(region.my()$y) - 1,
+                  lat2 = max(region.my()$y) + 1) %>%
         addCircleMarkers(data = region.my(),
           lng = ~x,
           lat = ~y,
@@ -272,10 +263,8 @@ server <- function(input, output, session) {
 
       # Remove any existing legend and replace w/ updated one
       proxy %>%
-        clearControls() #%>%
-        # addLegend(pal = tracks.pal,
-        #           values = region.my()$id,
-        #           title = "ID")
+        clearControls()
+
 
       # Add raster and associated legend by covar
       if (input$covar == "sst") {
