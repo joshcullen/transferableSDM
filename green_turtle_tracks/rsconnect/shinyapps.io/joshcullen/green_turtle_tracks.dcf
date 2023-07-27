@@ -5,10 +5,10 @@ account: joshcullen
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 9453134
-bundleId: 7475086
+bundleId: 7479474
 url: https://joshcullen.shinyapps.io/green_turtle_tracks/
-when: 1689776713.86755
-lastSyncTime: 1689776713.86757
+when: 1689871379.85671
+lastSyncTime: 1689871379.85672
 asMultiple: FALSE
 asStatic: FALSE
 ignoredFiles: Brazil_covars.rds|GoM_covars.rds|Qatar_covars.rds

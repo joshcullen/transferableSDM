@@ -10,6 +10,8 @@ library(lubridate)
 #################
 
 dat <- read_csv("Raw_data/Master Sat Tag Dataset.csv")
+dat.meta <- read_csv("Raw_data/Turtle tag metadata.csv") %>%
+  dplyr::select(Ptt, CCL_cm)
 
 
 
@@ -28,7 +30,11 @@ dat.summary <- dat %>%
   # mutate(across(Start:End, \(x) as_date(x))) %>%
   mutate(across(Duration, \(x) as.numeric(round(x,0)))) %>%
   mutate(across(Region, \(x) factor(x, levels = c('GoM','Brazil','Qatar')))) %>%
-  arrange(Region, Start)
+  arrange(Region, Start) %>%
+  left_join(., dat.meta, by = 'Ptt') %>%
+  rename(CCL = CCL_cm, ID = Ptt, `Life stage` = Age) %>%
+  dplyr::relocate(CCL, .after = ID) %>%
+  mutate(CCL = round(CCL, 1))
 
 write_csv(dat.summary, "Tables_Figs/Table S1.csv")
 
@@ -46,6 +52,9 @@ dat.summary.general <- dat %>%
           Start = year(first(Date)),
           End = year(last(Date))
   ) %>%
+  mutate(N_adult = case_when(Region == "Brazil" ~ N_adult - 1,  #one of adults tracked twice in Brazil
+                             TRUE ~ N_adult),
+         N_id = N_juv + N_adult) %>%
   arrange(desc(N_id))
 
 write_csv(dat.summary.general, "Tables_Figs/Table 1.csv")

@@ -85,7 +85,7 @@ tracks <- tracks %>%
 ### UI ###
 
 ui <- fluidPage(title = "Green Turtle Observations Compared to Depth, NPP, and SST",
-                header = tags$head(includeHTML("gtag.html")),
+                tags$head(includeHTML("gtag.html")),
 
                 leafletOutput("leaflet_map", width = "100%", height = "750px"),
 
