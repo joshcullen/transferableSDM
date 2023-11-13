@@ -213,7 +213,7 @@ server <- function(input, output, session) {
                          options = layersControlOptions(collapsed = TRUE,
                                                         autoZIndex = FALSE)) %>%
         setView(lng = -87, lat = 25.5, zoom = 6) %>%
-        addMouseCoordinates() %>%
+        # addMouseCoordinates() %>%
         addScaleBar(position = "bottomleft") %>%
         addMeasure(position = "topleft",
                    primaryLengthUnit = "kilometers",
