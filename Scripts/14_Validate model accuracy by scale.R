@@ -251,7 +251,7 @@ map(perc.use.br.full, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
 perc.use.br.full %>%
   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
   bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
+  mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
   pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
   ggplot(aes(bin, cum.perc)) +
   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
@@ -285,7 +285,7 @@ map(perc.use.br.sub, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
 perc.use.br.sub %>%
   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
   bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
+  mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
   pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
   ggplot(aes(bin, cum.perc)) +
   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
@@ -389,7 +389,7 @@ map(perc.use.qa, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
 perc.use.qa %>%
   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
   bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
+  mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
   pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
   ggplot(aes(bin, cum.perc)) +
   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
@@ -433,19 +433,24 @@ boyce.mean <- boyce.fit %>%
   ungroup()
 
 ggplot(data = boyce.fit, aes(Region, cor)) +
-  geom_point(aes(fill = scale), pch = 21, alpha = 0.7, size = 5, position = position_dodge(width = 0.75)) +
-  geom_violin(aes(color = scale), fill = "transparent", position = position_dodge(width = 0.75)) +
+  geom_point(aes(fill = scale), pch = 21, alpha = 0.7, size = 4,
+             position = position_dodge(width = 0.75)) +
+  geom_boxplot(aes(group = interaction(scale, Region)), fill = "transparent",
+               position = position_dodge(width = 0.75),
+               outlier.shape = NA, width = 0.6, size = 0.75) +
   geom_point(data = boyce.mean, aes(x = Region, y = mean, group = scale),
-             size = 6, position = position_dodge(width = 0.75)) +
+             size = 4, position = position_dodge(width = 0.75)) +
   scale_color_viridis_d(option = "mako", guide = "none", begin = 0.5, end = 0.95, direction = -1) +
   scale_fill_viridis_d("Scale (km)", option = "mako", begin = 0.5, end = 0.95, direction = -1) +
+  scale_x_discrete(labels = c("Brazil (all)", "Brazil (main)", "Qatar")) +
   geom_hline(yintercept = 0, linewidth = 1) +
   lims(y = c(-1,1)) +
   labs(x="", y = "Boyce Index") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
         axis.title = element_text(size = 24)) +
-  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+  guides(color = "none",
+         fill = guide_legend(override.aes = list(alpha = 1)))
 
 # ggsave("Tables_Figs/Figure 8.png", width = 7, height = 5, units = "in", dpi = 400)
 
@@ -726,3 +731,10 @@ ggplot() +
   facet_wrap(Scale ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
 
 # ggsave("Tables_Figs/Figure S4.png", width = 11, height = 9, units = "in", dpi = 400)
+
+
+
+
+### Export Boyce Index results ###
+
+# write_csv(boyce.fit, "Data_products/boyce_scale_results.csv")

@@ -1,8 +1,10 @@
 
-#### Create summary tables for manuscript ####
+#### Create summary tables and extra figs for manuscript ####
 
 library(tidyverse)
 library(lubridate)
+library(MetBrewer)
+library(patchwork)
 
 
 #################
@@ -13,6 +15,10 @@ dat <- read_csv("Raw_data/Master Sat Tag Dataset.csv")
 dat.meta <- read_csv("Raw_data/Turtle tag metadata.csv") %>%
   dplyr::select(Ptt, CCL_cm)
 
+
+boyce.alg <- read_csv("Data_products/boyce_alg_results.csv")
+boyce.scale <- read_csv("Data_products/boyce_scale_results.csv")
+boyce.age <- read_csv("Data_products/boyce_age_results.csv")
 
 
 
@@ -58,3 +64,44 @@ dat.summary.general <- dat %>%
   arrange(desc(N_id))
 
 write_csv(dat.summary.general, "Tables_Figs/Table 1.csv")
+
+
+
+
+### Create composite figure of Boyce Index plots
+
+boyce.alg.mean <- boyce.alg %>%
+  group_by(Method, Region) %>%
+  summarize(mean = mean(cor, na.rm = TRUE)) %>%
+  ungroup()
+
+boyce.scale.mean <- boyce.scale %>%
+  group_by(scale, Region) %>%
+  summarize(mean = mean(cor, na.rm = TRUE)) %>%
+  ungroup()
+
+boyce.age.mean <- boyce.age %>%
+  group_by(Method, Region) %>%
+  summarize(mean = mean(cor, na.rm = TRUE)) %>%
+  ungroup()
+
+
+p.alg <- ggplot(data = boyce.alg, aes(Region, cor)) +
+  geom_point(aes(fill = Method), pch = 21, alpha = 0.7, size = 4,
+             position = position_dodge(width = 0.75)) +
+  geom_boxplot(aes(group = interaction(Method, Region)), fill = "transparent",
+               position = position_dodge(width = 0.75),
+               outlier.shape = NA, width = 0.6, size = 0.75) +
+  geom_point(data = boyce.alg.mean, aes(x = Region, y = mean, group = Method),
+             size = 4, position = position_dodge(width = 0.75)) +
+  scale_color_met_d(name = 'Egypt') +
+  scale_fill_met_d(name = 'Egypt') +
+  scale_x_discrete(labels = c("Brazil (all)", "Brazil (main)", "Qatar")) +
+  geom_hline(yintercept = 0, linewidth = 1) +
+  lims(y = c(-1,1)) +
+  labs(x="", y = "Boyce Index") +
+  theme_bw() +
+  theme(axis.text = element_text(size = 20),
+        axis.title = element_text(size = 24)) +
+  guides(color = "none",
+         fill = guide_legend(override.aes = list(alpha = 1)))

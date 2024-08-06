@@ -1191,19 +1191,24 @@ boyce.mean <- boyce.fit %>%
   ungroup()
 
 ggplot(data = boyce.fit, aes(Region, cor)) +
-  geom_point(aes(fill = Method), pch = 21, alpha = 0.7, size = 5, position = position_dodge(width = 0.75)) +
-  geom_violin(aes(color = Method), fill = "transparent", position = position_dodge(width = 0.75)) +
+  geom_point(aes(fill = Method), pch = 21, alpha = 0.7, size = 4,
+             position = position_dodge(width = 0.75)) +
+  geom_boxplot(aes(group = interaction(Method, Region)), fill = "transparent",
+               position = position_dodge(width = 0.75),
+               outlier.shape = NA, width = 0.6, size = 0.75) +
   geom_point(data = boyce.mean, aes(x = Region, y = mean, group = Method),
-             size = 6, position = position_dodge(width = 0.75)) +
-  scale_color_met_d(palette_name = 'Egypt', guide = "none") +
-  scale_fill_met_d(palette_name = 'Egypt') +
+             size = 4, position = position_dodge(width = 0.75)) +
+  scale_color_met_d(name = 'Egypt') +
+  scale_fill_met_d(name = 'Egypt') +
+  scale_x_discrete(labels = c("Brazil (all)", "Brazil (main)", "Qatar")) +
   geom_hline(yintercept = 0, linewidth = 1) +
   lims(y = c(-1,1)) +
   labs(x="", y = "Boyce Index") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
         axis.title = element_text(size = 24)) +
-  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+  guides(color = "none",
+         fill = guide_legend(override.aes = list(alpha = 1)))
 
 # ggsave("Tables_Figs/Figure 5.png", width = 7, height = 5, units = "in", dpi = 400)
 
@@ -1566,3 +1571,9 @@ ggplot() +
   facet_wrap(Method ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
 
 # ggsave("Tables_Figs/Figure S3.png", width = 11, height = 9, units = "in", dpi = 400)
+
+
+
+### Export Boyce Index results ###
+
+# write_csv(boyce.fit, "Data_products/boyce_alg_results.csv")
