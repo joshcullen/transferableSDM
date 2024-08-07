@@ -78,7 +78,7 @@ rsf.pts_50s$wts <- ifelse(rsf.pts_50s$obs == 0, 5000, 1)
 # Explore used vs available habitat values
 rsf.pts_10s %>%
   # mutate(across(c(k490, npp), log)) %>%
-  pivot_longer(cols = c(bathym, k490, npp, sst), names_to = "covar", values_to = "value") %>%
+  pivot_longer(cols = c(bathym, npp, sst), names_to = "covar", values_to = "value") %>%
   ggplot() +
   geom_density(aes(value, fill = factor(obs))) +
   theme_bw() +
