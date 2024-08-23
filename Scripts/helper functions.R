@@ -949,7 +949,8 @@ gbm.pdp <- function(fit, ...) {
 
 # Function to fit hierarchical Gaussian Process regression
 
-fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age.class, int.strategy) {
+fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age.class,
+                     int.strategy, method) {
   #data = data.frame containing all properly formatted columns for fitting the HGPR model
   #covars = vector of names for bathym, npp, and sst based on how used in formula expression
   #pcprior = stores rho_0 and sigma_0, respectively
@@ -959,6 +960,7 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
   #alpha = for calculating Matern covariance matrix
   #age.class = logical; TRUE or FALSE whether the model should account for age class differences
   #int.strategy  = character for integration strategy to use from INLA (see ?control.inla); use 'auto' in most cases and 'eb' when model is failing
+  #method = "corr" or "hybrid" for specifying whether model should be run as correlative or hybrid form
 
 
   # Define weighted response variable
@@ -1030,16 +1032,36 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
                                           log.sst = data$log.sst)))
 
     # Define formula for HGPR RSF model
-    formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
-      # pop-level terms
-      f(log.bathym.pop, model=spde.list[[1]]) +
-      f(log.npp.pop, model=spde.list[[2]]) +
-      f(log.sst.pop, model=spde.list[[3]]) +
-      # id-level terms
-      f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
-      f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
-      f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
-      f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+    if (method == 'hybrid') {
+
+      formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
+        # pop-level terms
+        f(log.bathym.pop, model=spde.list[[1]]) +
+        f(log.npp.pop, model=spde.list[[2]]) +
+        f(log.sst.pop, model=spde.list[[3]]) +
+        # id-level terms
+        f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group,
+          control.group = list(model = 'iid')) +
+        f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+        f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+        f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+    } else if (method == 'corr') {
+
+      formula <-  y ~ -1 + Intercept +  #fixed terms
+        # pop-level terms
+        f(log.bathym.pop, model=spde.list[[1]]) +
+        f(log.npp.pop, model=spde.list[[2]]) +
+        f(log.sst.pop, model=spde.list[[3]]) +
+        # id-level terms
+        f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group,
+          control.group = list(model = 'iid')) +
+        f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+        f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+        f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+    }
+
 
 
   } else if (age.class == TRUE) {
@@ -1071,10 +1093,14 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
                                      list(Intercept = rep(1, nrow(data)), id1 = data$id1,
                                           log.sst = data$log.sst)))
 
+
     # Define formula for HGPR RSF model
+    if (method == 'hybrid') {
+
     formula <-  y ~ -1 + Intercept + log.sst + I(log.sst^2) +  #fixed terms
       # life stage-level terms
-      f(log.bathym.age, model=spde.list[[1]], group = log.bathym.age.group, control.group = list(model = 'iid')) +
+      f(log.bathym.age, model=spde.list[[1]], group = log.bathym.age.group,
+        control.group = list(model = 'iid')) +
       f(log.npp.age, model=spde.list[[2]], group = log.npp.age.group, control.group = list(model = 'iid')) +
       f(log.sst.age, model=spde.list[[3]], group = log.sst.age.group, control.group = list(model = 'iid')) +
       # id-level terms
@@ -1083,27 +1109,58 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
       f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
       f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
 
+    } else if (method == 'corr') {
+
+      formula <-  y ~ -1 + Intercept +  #fixed terms
+        # life stage-level terms
+        f(log.bathym.age, model=spde.list[[1]], group = log.bathym.age.group,
+          control.group = list(model = 'iid')) +
+        f(log.npp.age, model=spde.list[[2]], group = log.npp.age.group, control.group = list(model = 'iid')) +
+        f(log.sst.age, model=spde.list[[3]], group = log.sst.age.group, control.group = list(model = 'iid')) +
+        # id-level terms
+        f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group, control.group = list(model = 'iid')) +
+        f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group, control.group = list(model = 'iid')) +
+        f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group, control.group = list(model = 'iid')) +
+        f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+    }
+
   }
-
-
-
 
 
   ## Run model
   stack.data <-  inla.stack.data(st.est)
   set.seed(2023)
+
+if (method == "hybrid") {
   tic()
   hgpr.fit <- inla(formula, data=stack.data, family="Poisson", #Ntrials = 1,
                    control.predictor = list(A = inla.stack.A(st.est), compute = FALSE),
                    control.fixed = list(  #physiologically-informed SST component
-                     mean = list(log.sst = 30*6.592, `I(log.sst^2)` = 31*-1),
-                     prec = list(log.sst = 100, `I(log.sst^2)` = 100)),
+                     mean = list(log.sst = 30*6.592, `I(log.sst^2)` = 30*-1),
+                     prec = list(log.sst = 0.005, `I(log.sst^2)` = 0.005)),
                    weights = data$wts,
                    # num.threads = 1:1,
                    # inla.mode="experimental",
                    control.inla = list(int.strategy = int.strategy)
-                   )  #for greater reproducibility
+  )  #for greater reproducibility
   toc()
+
+} else if (method == "corr") {
+  tic()
+  hgpr.fit <- inla(formula, data=stack.data, family="Poisson", #Ntrials = 1,
+                   control.predictor = list(A = inla.stack.A(st.est), compute = FALSE),
+                   weights = data$wts,
+                   # num.threads = 1:1,
+                   # inla.mode="experimental",
+                   control.inla = list(int.strategy = int.strategy)
+  )  #for greater reproducibility
+  toc()
+
+} else {
+  stop("Must select either 'corr' or 'hybrid' for method")
+}
+
+
 
 
   return(hgpr.fit)
@@ -1111,7 +1168,7 @@ fit_hgpr <- function(data, covars, pcprior, mesh.seq, nbasis, degree, alpha, age
 
 #-----------------------------------
 
-predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, age.class) {
+predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, age.class, method) {
   #cov_list = list of different environ covars as SpatRasters
   #model_fit = a fitted HGPR INLA model object
   #covars = character vector of covar names as used in model_fit
@@ -1120,7 +1177,12 @@ predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, 
   #degree = degree value used for model_fit
   #alpha = alpha value used for model_fit
   #age.class = logical; TRUE or FALSE whether the model accounts for age class differences
+  #method = "corr" or "hybrid" for specifying whether model should be run as correlative or hybrid form
 
+
+  if (!method %in% c('hybrid','corr')) {
+    stop("Must select either 'corr' or 'hybrid' for method")
+  }
 
   # Define 1D mesh per covar
   mesh.list <- vector("list", length(covars))
@@ -1151,31 +1213,34 @@ predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, 
   for (i in 1:nlyr(cov_list$npp)) {
 
     # Subset covars by month.year
-    vars <- data.frame(log.bathym = as.vector(terra::values(cov_list$bathym)) %>%
-                         abs() %>%
-                         log(),
-                       log.npp = as.vector(terra::values(cov_list$npp[[my.ind[i]]])) %>%
-                         log(),
-                       log.sst = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
-                         log()) %>%
+    gp_vars <- data.frame(log.bathym = as.vector(terra::values(cov_list$bathym)) %>%
+                            abs() %>%
+                            log(),
+                          log.npp = as.vector(terra::values(cov_list$npp[[my.ind[i]]])) %>%
+                            log(),
+                          log.sst = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                            log()) %>%
       mutate(row_id = 1:nrow(.)) %>%
       drop_na(log.bathym, log.npp, log.sst)
 
-    vars2 <- data.frame(Intercept = 1,
-                        log.sst = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
-                          log(),
-                        log.sst2 = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
-                          log() %>%
-                          . ^ 2) %>%
-      mutate(row_id = 1:nrow(.)) %>%
-      filter(row_id %in% vars$row_id)
+    if (method == "hybrid") {
+      fixed_vars <- data.frame(Intercept = 1,
+                               log.sst = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                                 log(),
+                               log.sst2 = as.vector(terra::values(cov_list$sst[[my.ind[i]]])) %>%
+                                 log() %>%
+                                 . ^ 2) %>%
+        mutate(row_id = 1:nrow(.)) %>%
+        filter(row_id %in% gp_vars$row_id)
+    }
+
 
 
 
     # Generate matrices for covariate raster data (for prediction)
     A.mat <- vector("list", length(covars))
     for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
-      A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
+      A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = gp_vars[[covars[[j]]]])
     }
 
 
@@ -1185,8 +1250,11 @@ predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, 
       coeff1 <- model_fit$summary.random[1:3] %>%
         map(., ~pull(.x, mean))
 
-      # Define coeff values of fixed terms from HGPR
-      coeff2 <- model_fit$summary.fixed$mean
+      if (method == "hybrid") {
+        # Define coeff values of fixed terms from HGPR
+        coeff2 <- model_fit$summary.fixed$mean
+      }
+
 
       # Make predictions on intensity of use from model for GP terms
       hgpr.pred <- A.mat %>%
@@ -1194,15 +1262,22 @@ predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, 
              ~{.x %*% .y %>%
                  as.vector()}
         ) %>%
-        bind_cols() %>%
+        bind_cols(.name_repair = ~ vctrs::vec_as_names(..., repair = "unique", quiet = TRUE)) %>%
         rowSums()  #sum up all predictions across covars
 
-      # Make predictions using linear terms
-      hgpr.pred2 <- as.matrix(vars2[,1:3]) %*% coeff2
+      if (method == "hybrid") {
+        # Make predictions using linear terms
+        hgpr.pred2 <- as.matrix(vars2[,1:3]) %*% coeff2
+      }
 
       # Store results in raster stack
       terra::values(rast.hgpr[[i]]) <- NA  # initially store all NAs for locs w/o predictions
-      terra::values(rast.hgpr[[i]])[vars$row_id] <- hgpr.pred + hgpr.pred2[,1]
+
+      if (method == "hybrid") {
+        terra::values(rast.hgpr[[i]])[gp_vars$row_id] <- hgpr.pred + hgpr.pred2[,1]
+      } else {
+        terra::values(rast.hgpr[[i]])[gp_vars$row_id] <- hgpr.pred
+      }
 
 
     } else if (age.class == TRUE) {
@@ -1219,8 +1294,10 @@ predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, 
         map(., pull, mean) %>%
         set_names(paste(rep(covars, each = 2), rep(1:2, length(covars)), sep = "_"))
 
-      # Define coeff values of fixed terms from HGPR
-      coeff2 <- model_fit$summary.fixed$mean
+      if (method == "hybrid") {
+        # Define coeff values of fixed terms from HGPR
+        coeff2 <- model_fit$summary.fixed$mean
+      }
 
 
       # Make predictions via linear algebra
@@ -1230,19 +1307,28 @@ predict.hgpr <- function(cov_list, model_fit, covars, mesh.seq, nbasis, degree, 
                  as.vector()}
         ) %>%
         set_names(names(coeff1)) %>%
-        bind_cols() %>%
+        bind_cols(.name_repair = ~ vctrs::vec_as_names(..., repair = "unique", quiet = TRUE)) %>%
         split.default(., str_extract(names(.), "[0-9]$")) %>%  #split preds into list by age.class
         map(., rowSums) %>%  #sum up all predictions across covars
         set_names(c("Juv","Adult"))
 
-      # Make predictions using linear terms
-      hgpr.pred2 <- as.matrix(vars2[,1:3]) %*% coeff2
+      if (method == "hybrid") {
+        # Make predictions using linear terms
+        hgpr.pred2 <- as.matrix(vars2[,1:3]) %*% coeff2
+      }
 
 
       # Store results in raster stack
       terra::values(rast.pred.juv[[i]]) <- terra::values(rast.pred.adult[[i]]) <- NA  # initially store all NAs for locs w/o predictions
-      terra::values(rast.pred.juv[[i]])[vars$row_id] <- hgpr.pred$Juv + hgpr.pred2[,1]
-      terra::values(rast.pred.adult[[i]])[vars$row_id] <- hgpr.pred$Adult + hgpr.pred2[,1]
+
+      if (method == "hybrid") {
+        terra::values(rast.pred.juv[[i]])[gp_vars$row_id] <- hgpr.pred$Juv + hgpr.pred2[,1]
+        terra::values(rast.pred.adult[[i]])[gp_vars$row_id] <- hgpr.pred$Adult + hgpr.pred2[,1]
+      } else {
+        terra::values(rast.pred.juv[[i]])[gp_vars$row_id] <- hgpr.pred$Juv
+        terra::values(rast.pred.adult[[i]])[gp_vars$row_id] <- hgpr.pred$Adult
+      }
+
     }
 
   }
@@ -1391,4 +1477,30 @@ predict.hglm <- function(cov_list, model_fit, age.class) {
                 Adult = rast.pred.adult))
   }
 
+}
+
+#-----------------------------------
+
+# Function to preferentially sample locations at shallower depths to better resolve these functional responses
+sample_rast_gradient <- function(rast, n_pts) {
+  ## rast = SpatRaster; a layer where gradient will be rescaled from 0 to 1
+  ## n_pts = integer; number of points to probabilistically sample
+
+  # Rescale rast from 0 to 1 (to use as prob surface)
+  probs <- scales::rescale(values(rast), to = c(0,1))
+  probs <- ifelse(is.na(probs), 0, probs)  #convert NAs to 0
+
+  # Sample cells from new probability values
+  pts <- sample(x = 1:ncell(rast),
+                size = n_pts,
+                replace = TRUE,
+                prob = probs
+  )
+
+  # Create DF of available point coordinates
+  avail <- xyFromCell(rast, pts) %>%
+    data.frame() #%>%
+  # mutate(month.year = sample(names(cov_list$sst), size = n(), replace = T))
+
+  return(avail)
 }

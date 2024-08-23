@@ -77,12 +77,14 @@ ngroup.age <- n_distinct(rsf.pts_10_5kms$Age1)
 ngroup.id <- n_distinct(rsf.pts_10_5kms$id1)
 mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
-                 log.sst = c(12,38)) %>%
+                 log.sst = c(12,35)) %>%
   map(log)
 
 
 hgpr.age <- fit_hgpr(data = rsf.pts_10_5kms, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                     nbasis = 5, degree = 2, alpha = 2, age.class = TRUE, int.strategy = 'auto')  # took 3 min to run
+                     nbasis = 5, degree = 2, alpha = 2, age.class = TRUE, int.strategy = 'auto',
+                     method = "corr")
+# took 1 min to run
 
 
 
@@ -252,17 +254,17 @@ levels(pred.vals.age$age) <- c("Juv","Adult")
 
 
 # Make predictions of linear SST terms
-sst.newdata <- data.frame(sst = newdat.list$log.sst,
-                          sst.2 = newdat.list$log.sst ^ 2) %>%
-  as.matrix()
+# sst.newdata <- data.frame(sst = newdat.list$log.sst,
+#                           sst.2 = newdat.list$log.sst ^ 2) %>%
+#   as.matrix()
+#
+# fixed.sst.coeff <- hgpr.age$summary.fixed$mean[-1]
+# fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
+#   data.frame(pred = .) %>%
+#   mutate(sst = exp(sst.newdata[,1]))
 
-fixed.sst.coeff <- hgpr.age$summary.fixed$mean[-1]
-fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
-  data.frame(pred = .) %>%
-  mutate(sst = exp(sst.newdata[,1]))
 
-
-# Facet of all IDs and covars
+# Facet of covars by age class
 ggplot() +
   geom_line(data = pred.vals.age, aes(x = x, y = mean, color = age), linewidth = 1.5) +
   theme_bw() +
@@ -270,7 +272,7 @@ ggplot() +
   labs(y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 16),
         axis.text = element_text(size = 12)) +
-  facet_wrap(~ covar, scales = "free")
+  facet_wrap(age ~ covar, scales = "free")
 
 
 # Depth
@@ -308,12 +310,12 @@ ggplot() +
         axis.text = element_text(size = 12)) +
   facet_wrap(~ age, scales = "free")
 
-ggplot() +
-  geom_line(data = fixed.sst.pred, aes(x = sst, y = pred), linewidth = 1.5) +
-  theme_bw() +
-  labs(x = "SST (°C)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 30),
-        axis.text = element_text(size = 24))
+# ggplot() +
+#   geom_line(data = fixed.sst.pred, aes(x = sst, y = pred), linewidth = 1.5) +
+#   theme_bw() +
+#   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
+#   theme(axis.title = element_text(size = 30),
+#         axis.text = element_text(size = 24))
 
 
 
@@ -322,92 +324,92 @@ ggplot() +
 #######################################
 
 # Generate matrices for covariate raster data (for prediction)
-A.me.id <- vector("list", length(covars))
-newdat.list <- map(mesh.seq, function(x) {seq(from = x[1], to = x[2], length.out = 500)})
-for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
-  A.me.id[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = newdat.list[[covars[[i]]]])
-}
-
-# Replicate list elements for mapping over lists
-A.me.id <- rep(A.me.id, each = max(rsf.pts_10_5kms$id1))
-
-# Store resulting GP coeffs per covar into a list
-pred.coeffs.id <- hgpr.age$summary.random[4:6] %>%
-  map(., ~dplyr::select(.x, mean)) %>%
-  map(., ~mutate(.x, id = rep(1:49, each = 6))) %>%
-  map(., ~split(.x, .x$id)) %>%
-  flatten() %>%
-  map(., pull, mean) %>%
-  set_names(paste(rep(covars, each = max(rsf.pts_10_5kms$id1)), rep(1:max(rsf.pts_10_5kms$id1), length(covars)), sep = "_"))
-
-# Make predictions via linear algebra
-pred.vals.id <- A.me.id %>%
-  map2(.x = ., .y = pred.coeffs.id,
-       ~{.x %*% .y %>%
-           as.vector()}
-  ) %>%
-  set_names(paste(rep(covars, each = max(rsf.pts_10_5kms$id1)), rep(1:max(rsf.pts_10_5kms$id1), length(covars)), sep = "_")) %>%
-  bind_rows() %>%
-  mutate(bathym = newdat.list$log.bathym,
-         npp = newdat.list$log.npp,
-         sst = newdat.list$log.sst) %>%
-  mutate(across(everything(), exp)) %>%
-  pivot_longer(cols = -c(bathym, npp, sst), names_to = "label", values_to = "mean") %>%
-  separate(col = label, into = c('covar','id'), sep = "_")
-
-
-# Wrangle data so that x and y values match up in long format
-pred.vals.id <- pred.vals.id %>%
-  mutate(x = case_when(str_detect(covar, "log.bathym") ~ bathym,
-                       str_detect(covar, "log.npp") ~ npp,
-                       str_detect(covar, "log.sst") ~ sst)) %>%
-  dplyr::select(-c(bathym, npp, sst)) %>%
-  mutate(covar = gsub(pattern = "log.", replacement = "", x = covar))
-
-
-# Facet of all IDs and covars
-ggplot() +
-  geom_line(data = pred.vals.id, aes(x = x, y = log(mean), color = factor(id)), linewidth = 1.5) +
-  theme_bw() +
-  # lims(x = c(0,300)) +
-  labs(y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12)) +
-  facet_wrap(~ covar, scales = "free")
-
-
-# Depth
-ggplot() +
-  geom_line(data = pred.vals.id %>%
-              filter(covar == 'bathym'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
-  theme_bw() +
-  lims(x = c(0,800), y = c(0,1e29)) +
-  labs(x = "Depth (m)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
-
-
-# NPP
-ggplot() +
-  geom_line(data = pred.vals.id %>%
-              filter(covar == 'npp'), aes(x = x / 1000, y = mean, color = factor(id)), linewidth = 1) +
-  theme_bw() +
-  lims(y = c(0,5000)) +
-  labs(x = expression(paste("Net Primary Productivity (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
-
-
-# SST
-ggplot() +
-  geom_line(data = pred.vals.id %>%
-              filter(covar == 'sst'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
-  theme_bw() +
-  lims(y = c(0,2.5e5)) +
-  labs(x = "SST (°C)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 12))
-
+# A.me.id <- vector("list", length(covars))
+# newdat.list <- map(mesh.seq, function(x) {seq(from = x[1], to = x[2], length.out = 500)})
+# for (i in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
+#   A.me.id[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = newdat.list[[covars[[i]]]])
+# }
+#
+# # Replicate list elements for mapping over lists
+# A.me.id <- rep(A.me.id, each = max(rsf.pts_10_5kms$id1))
+#
+# # Store resulting GP coeffs per covar into a list
+# pred.coeffs.id <- hgpr.age$summary.random[4:6] %>%
+#   map(., ~dplyr::select(.x, mean)) %>%
+#   map(., ~mutate(.x, id = rep(1:49, each = 6))) %>%
+#   map(., ~split(.x, .x$id)) %>%
+#   flatten() %>%
+#   map(., pull, mean) %>%
+#   set_names(paste(rep(covars, each = max(rsf.pts_10_5kms$id1)), rep(1:max(rsf.pts_10_5kms$id1), length(covars)), sep = "_"))
+#
+# # Make predictions via linear algebra
+# pred.vals.id <- A.me.id %>%
+#   map2(.x = ., .y = pred.coeffs.id,
+#        ~{.x %*% .y %>%
+#            as.vector()}
+#   ) %>%
+#   set_names(paste(rep(covars, each = max(rsf.pts_10_5kms$id1)), rep(1:max(rsf.pts_10_5kms$id1), length(covars)), sep = "_")) %>%
+#   bind_rows() %>%
+#   mutate(bathym = newdat.list$log.bathym,
+#          npp = newdat.list$log.npp,
+#          sst = newdat.list$log.sst) %>%
+#   mutate(across(everything(), exp)) %>%
+#   pivot_longer(cols = -c(bathym, npp, sst), names_to = "label", values_to = "mean") %>%
+#   separate(col = label, into = c('covar','id'), sep = "_")
+#
+#
+# # Wrangle data so that x and y values match up in long format
+# pred.vals.id <- pred.vals.id %>%
+#   mutate(x = case_when(str_detect(covar, "log.bathym") ~ bathym,
+#                        str_detect(covar, "log.npp") ~ npp,
+#                        str_detect(covar, "log.sst") ~ sst)) %>%
+#   dplyr::select(-c(bathym, npp, sst)) %>%
+#   mutate(covar = gsub(pattern = "log.", replacement = "", x = covar))
+#
+#
+# # Facet of all IDs and covars
+# ggplot() +
+#   geom_line(data = pred.vals.id, aes(x = x, y = log(mean), color = factor(id)), linewidth = 1.5) +
+#   theme_bw() +
+#   # lims(x = c(0,300)) +
+#   labs(y = "Relative Intensity of Use") +
+#   theme(axis.title = element_text(size = 16),
+#         axis.text = element_text(size = 12)) +
+#   facet_wrap(~ covar, scales = "free")
+#
+#
+# # Depth
+# ggplot() +
+#   geom_line(data = pred.vals.id %>%
+#               filter(covar == 'bathym'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
+#   theme_bw() +
+#   lims(x = c(0,800), y = c(0,1e29)) +
+#   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
+#   theme(axis.title = element_text(size = 16),
+#         axis.text = element_text(size = 12))
+#
+#
+# # NPP
+# ggplot() +
+#   geom_line(data = pred.vals.id %>%
+#               filter(covar == 'npp'), aes(x = x / 1000, y = mean, color = factor(id)), linewidth = 1) +
+#   theme_bw() +
+#   lims(y = c(0,5000)) +
+#   labs(x = expression(paste("Net Primary Productivity (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
+#   theme(axis.title = element_text(size = 16),
+#         axis.text = element_text(size = 12))
+#
+#
+# # SST
+# ggplot() +
+#   geom_line(data = pred.vals.id %>%
+#               filter(covar == 'sst'), aes(x = x, y = mean, color = factor(id)), linewidth = 1) +
+#   theme_bw() +
+#   lims(y = c(0,2.5e5)) +
+#   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
+#   theme(axis.title = element_text(size = 16),
+#         axis.text = element_text(size = 12))
+#
 
 
 
@@ -420,8 +422,8 @@ ggplot() +
 
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
-files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
+# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+# files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -554,74 +556,74 @@ p.juv + p.adult
 
 
 # For ID 181796 in 2020-08
-rsf.pts_10_5kms %>%
-  filter(id == 181796, obs == 1) %>%
-  group_by(month.year) %>%
-  count()  # most obs are in August
-
-newdat.181796 <- data.frame(log.bathym = as.vector(terra::values(cov_list$bathym)) %>%
-                              abs() %>%
-                              log(),
-                            log.npp = as.vector(terra::values(cov_list$npp$`2020-08-01`)) %>%
-                              log(),
-                            log.sst = as.vector(terra::values(cov_list$sst$`2020-08-01`)) %>%
-                              log()) %>%
-  mutate(row_id = 1:nrow(.)) %>%
-  drop_na(log.bathym, log.npp, log.sst)
-summary(newdat.181796)
-
-A.181796 <- vector("list", length(covars))
-for (i in 1:length(covars)) {
-  A.181796[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = newdat.181796[[covars[[i]]]])
-}
-
-
-# Store resulting GP coeffs per covar into a list
-ind <- rsf.pts_10_5kms[rsf.pts_10_5kms$id == 181796,]$id1[1]
-pred.coeffs <- hgpr.age$summary.random[4:6] %>%  #remove random intercept term
-  map(., ~dplyr::select(.x, mean)) %>%
-  map(., ~mutate(.x, id = rep(1:49, each = 6))) %>%
-  map(., ~dplyr::filter(.x, id == ind)) %>%
-  map(., pull, mean)
-
-
-# Make predictions via linear algebra
-x181796.pred <- A.181796 %>%
-  map2(.x = ., .y = pred.coeffs,
-       ~{.x %*% .y %>%
-           as.vector()}
-  ) %>%
-  bind_cols() %>%
-  rowSums()  #sum up all predictions across covars
-
-
-# Define dummy raster for storing predictions
-rast.pred.181796 <- cov_list$bathym
-terra::values(rast.pred.181796) <- NA  # initially store all NAs for locs w/o predictions
-terra::values(rast.pred.181796)[newdat.181796$row_id] <- x181796.pred
-
-
-# rast.pred.181796.df <- as.data.frame(rast.pred.181796, xy = TRUE)
-# names(rast.pred.181796.df)[3] <- "pred"
-bbox <- ext(rast.pred.181796)
-
-ggplot() +
-  geom_spatraster(data = rast.pred.181796) +
-  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-  geom_sf(data = gom.sf) +
-  geom_path(data = rsf.pts_10_5kms %>%
-              filter(id == 181796, month.year == '2020-08-01', obs == 1), aes(x, y),
-            color = "chartreuse", linewidth = 0.5) +
-  labs(x="",y="", title = "ID 181796: August 2020") +
-  theme_bw() +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
-           expand = FALSE) +
-  theme(axis.text = element_text(size = 12),
-        plot.title = element_text(size = 18, face = "bold"),
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size = 12)) +
-  guides(fill = guide_colourbar(barwidth = 1, barheight = 20))
+# rsf.pts_10_5kms %>%
+#   filter(id == 181796, obs == 1) %>%
+#   group_by(month.year) %>%
+#   count()  # most obs are in August
+#
+# newdat.181796 <- data.frame(log.bathym = as.vector(terra::values(cov_list$bathym)) %>%
+#                               abs() %>%
+#                               log(),
+#                             log.npp = as.vector(terra::values(cov_list$npp$`2020-08-01`)) %>%
+#                               log(),
+#                             log.sst = as.vector(terra::values(cov_list$sst$`2020-08-01`)) %>%
+#                               log()) %>%
+#   mutate(row_id = 1:nrow(.)) %>%
+#   drop_na(log.bathym, log.npp, log.sst)
+# summary(newdat.181796)
+#
+# A.181796 <- vector("list", length(covars))
+# for (i in 1:length(covars)) {
+#   A.181796[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = newdat.181796[[covars[[i]]]])
+# }
+#
+#
+# # Store resulting GP coeffs per covar into a list
+# ind <- rsf.pts_10_5kms[rsf.pts_10_5kms$id == 181796,]$id1[1]
+# pred.coeffs <- hgpr.age$summary.random[4:6] %>%  #remove random intercept term
+#   map(., ~dplyr::select(.x, mean)) %>%
+#   map(., ~mutate(.x, id = rep(1:49, each = 6))) %>%
+#   map(., ~dplyr::filter(.x, id == ind)) %>%
+#   map(., pull, mean)
+#
+#
+# # Make predictions via linear algebra
+# x181796.pred <- A.181796 %>%
+#   map2(.x = ., .y = pred.coeffs,
+#        ~{.x %*% .y %>%
+#            as.vector()}
+#   ) %>%
+#   bind_cols() %>%
+#   rowSums()  #sum up all predictions across covars
+#
+#
+# # Define dummy raster for storing predictions
+# rast.pred.181796 <- cov_list$bathym
+# terra::values(rast.pred.181796) <- NA  # initially store all NAs for locs w/o predictions
+# terra::values(rast.pred.181796)[newdat.181796$row_id] <- x181796.pred
+#
+#
+# # rast.pred.181796.df <- as.data.frame(rast.pred.181796, xy = TRUE)
+# # names(rast.pred.181796.df)[3] <- "pred"
+# bbox <- ext(rast.pred.181796)
+#
+# ggplot() +
+#   geom_spatraster(data = rast.pred.181796) +
+#   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+#   geom_sf(data = gom.sf) +
+#   geom_path(data = rsf.pts_10_5kms %>%
+#               filter(id == 181796, month.year == '2020-08-01', obs == 1), aes(x, y),
+#             color = "chartreuse", linewidth = 0.5) +
+#   labs(x="",y="", title = "ID 181796: August 2020") +
+#   theme_bw() +
+#   coord_sf(xlim = c(bbox[1], bbox[2]),
+#            ylim = c(bbox[3], bbox[4]),
+#            expand = FALSE) +
+#   theme(axis.text = element_text(size = 12),
+#         plot.title = element_text(size = 18, face = "bold"),
+#         legend.title = element_text(size = 14),
+#         legend.text = element_text(size = 12)) +
+#   guides(fill = guide_colourbar(barwidth = 1, barheight = 20))
 
 
 
@@ -630,6 +632,6 @@ ggplot() +
 ### Export model object ###
 ###########################
 
-saveRDS(hgpr.age, "Data_products/HGPR_model_fit_scale_age.rds")
+saveRDS(hgpr.age, "Data_products/HGPR_corr_model_fit_scale_age.rds")
 
 

@@ -22,8 +22,8 @@ source('Scripts/helper functions.R')
 ### Load fitted models ###
 ##########################
 
-hgpr.fit <- readRDS("Data_products/HGPR_model_fit.rds")
-hgpr.age <- readRDS("Data_products/HGPR_model_fit_scale_age.rds")
+hgpr.fit <- readRDS("Data_products/HGPR_corr_model_fit.rds")
+hgpr.age <- readRDS("Data_products/HGPR_corr_model_fit_scale_age.rds")
 
 
 
@@ -157,9 +157,10 @@ my.ind.br <- names(cov_list_br$npp)
 
 tic()
 br.rast.no_age <- predict.hgpr(cov_list = cov_list_br, model_fit = hgpr.fit, covars = covars,
-                                   mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE)
+                                   mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE,
+                               method = "corr")
 skrrrahh('khaled2')
-toc()  #took 40 sec to run
+toc()  #took 20 sec to run
 
 
 # Normalize predictions on 0-1 scale
@@ -198,54 +199,54 @@ for (i in 1:nlyr(br.rast.no_age2)) {
                                   method = "spearman")
 }
 skrrrahh("khaled3")
-toc()  #took 5 sec
+toc()  #took 2 sec
 
 
 
-perc.use.br.full.no_age <- boyce.br.full.no_age %>%
-  map(., pluck, "perc.use") %>%
-  set_names(1:length(.)) %>%
-  bind_rows() %>%
-  janitor::remove_empty(which = "cols") %>%
-  apply(., 2, function(x) cumsum(rev(x)))
-
-# check fewest bins that contain >=90% of all obs
-apply(perc.use.br.full.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1 bins; 5
-
-# Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.br.full.no_age %>%
-  data.frame() %>%
-  mutate(bin = factor(10:1, levels = 10:1)) %>%
-  pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw()
-
-
-
-perc.use.br.sub.no_age <- boyce.br.sub.no_age %>%
-  map(., pluck, "perc.use") %>%
-  set_names(1:length(.)) %>%
-  bind_rows() %>%
-  janitor::remove_empty(which = "cols") %>%
-  apply(., 2, function(x) cumsum(rev(x)))
-
-# check fewest bins that contain >=90% of all obs
-apply(perc.use.br.sub.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #1.5 bins; 2.2
-
-# Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.br.sub.no_age %>%
-  data.frame() %>%
-  mutate(bin = factor(10:1, levels = 10:1)) %>%
-  pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  ylim(0,1) +
-  theme_bw()
+# perc.use.br.full.no_age <- boyce.br.full.no_age %>%
+#   map(., pluck, "perc.use") %>%
+#   set_names(1:length(.)) %>%
+#   bind_rows() %>%
+#   janitor::remove_empty(which = "cols") %>%
+#   apply(., 2, function(x) cumsum(rev(x)))
+#
+# # check fewest bins that contain >=90% of all obs
+# apply(perc.use.br.full.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
+#   mean()  #1 bins; 5
+#
+# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
+# perc.use.br.full.no_age %>%
+#   data.frame() %>%
+#   mutate(bin = factor(10:1, levels = 10:1)) %>%
+#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw()
+#
+#
+#
+# perc.use.br.sub.no_age <- boyce.br.sub.no_age %>%
+#   map(., pluck, "perc.use") %>%
+#   set_names(1:length(.)) %>%
+#   bind_rows() %>%
+#   janitor::remove_empty(which = "cols") %>%
+#   apply(., 2, function(x) cumsum(rev(x)))
+#
+# # check fewest bins that contain >=90% of all obs
+# apply(perc.use.br.sub.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
+#   mean()  #1.5 bins; 2.2
+#
+# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
+# perc.use.br.sub.no_age %>%
+#   data.frame() %>%
+#   mutate(bin = factor(10:1, levels = 10:1)) %>%
+#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   ylim(0,1) +
+#   theme_bw()
 
 
 boyce.br.full.no_age2 <- boyce.br.full.no_age %>%
@@ -273,9 +274,10 @@ my.ind.qa <- names(cov_list_qa$npp)
 
 tic()
 qa.rast.no_age <- predict.hgpr(cov_list = cov_list_qa, model_fit = hgpr.fit, covars = covars,
-                               mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE)
+                               mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE,
+                               method = "corr")
 skrrrahh('khaled2')
-toc()  #took 2 sec to run
+toc()  #took 1 sec to run
 
 
 # Normalize predictions on 0-1 scale
@@ -305,26 +307,26 @@ toc()  #took 1 sec
 
 
 
-perc.use.qa.no_age <- boyce.qa.no_age %>%
-  map(., pluck, "perc.use") %>%
-  set_names(1:length(.)) %>%
-  bind_rows() %>%
-  janitor::remove_empty(which = "cols") %>%
-  apply(., 2, function(x) cumsum(rev(x)))
-
-# check fewest bins that contain >=90% of all obs
-apply(perc.use.qa.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()  #2.2 bins; 2.8
-
-# Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.qa.no_age %>%
-  data.frame() %>%
-  mutate(bin = factor(10:1, levels = 10:1)) %>%
-  pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw()
+# perc.use.qa.no_age <- boyce.qa.no_age %>%
+#   map(., pluck, "perc.use") %>%
+#   set_names(1:length(.)) %>%
+#   bind_rows() %>%
+#   janitor::remove_empty(which = "cols") %>%
+#   apply(., 2, function(x) cumsum(rev(x)))
+#
+# # check fewest bins that contain >=90% of all obs
+# apply(perc.use.qa.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
+#   mean()  #2.2 bins; 2.8
+#
+# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
+# perc.use.qa.no_age %>%
+#   data.frame() %>%
+#   mutate(bin = factor(10:1, levels = 10:1)) %>%
+#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw()
 
 
 
@@ -362,9 +364,10 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
 
 tic()
 br.rast.age <- predict.hgpr(cov_list = cov_list_br, model_fit = hgpr.age, covars = covars,
-                               mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = TRUE)
+                               mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = TRUE,
+                            method = "corr")
 skrrrahh('khaled2')
-toc()  #took 1 min to run
+toc()  #took 30 sec to run
 
 
 # Normalize predictions on 0-1 scale
@@ -409,75 +412,75 @@ for (j in 1:length(br.rast.age2)) {
   }
 }
 skrrrahh("khaled3")
-toc()  #took 7 sec
+toc()  #took 5 sec
 
 
 
-perc.use.br.full.age <- boyce.br.full.age %>%
-  map_depth(., 2, ~{.x %>%
-      pluck("perc.use") %>%
-      set_names(1:length(.))}
-  ) %>%
-  map_depth(., 1, ~{.x %>%
-      bind_rows() %>%
-      janitor::remove_empty(which = "rows") %>%
-      dplyr::select(10:1) %>%
-      apply(., 1, function(x) cumsum(x)) %>%
-      # t() %>%
-      data.frame()}
-  )
-
-# check fewest bins that contain >=90% of all obs
-map(perc.use.br.full.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-    mean()}
-)  #2.5 for Juv; 3.5 for Adult; 3.7, 6.5
-
-# Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.br.full.age %>%
-  map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
-  bind_rows(.id = "Age") %>%
-  mutate(Age = factor(Age, levels = age.class)) %>%
-  pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw() +
-  labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_all") +
-  facet_wrap(~Age)
-
-
-
-perc.use.br.sub.age <- boyce.br.sub.age %>%
-  map_depth(., 2, ~{.x %>%
-      pluck("perc.use") %>%
-      set_names(1:length(.))}
-  ) %>%
-  map_depth(., 1, ~{.x %>%
-      bind_rows() %>%
-      janitor::remove_empty(which = "rows") %>%
-      dplyr::select(10:1) %>%
-      apply(., 1, function(x) cumsum(x)) %>%
-      # t() %>%
-      data.frame()}
-  )
-
-# check fewest bins that contain >=90% of all obs
-map(perc.use.br.sub.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-    mean()}
-)  #2.5 for Juv; 2.5 for Adult; 3.7, 1
-
-# Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.br.sub.age %>%
-  map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
-  bind_rows(.id = "Age") %>%
-  mutate(Age = factor(Age, levels = age.class)) %>%
-  pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw() +
-  labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_sub") +
-  facet_wrap(~Age)
+# perc.use.br.full.age <- boyce.br.full.age %>%
+#   map_depth(., 2, ~{.x %>%
+#       pluck("perc.use") %>%
+#       set_names(1:length(.))}
+#   ) %>%
+#   map_depth(., 1, ~{.x %>%
+#       bind_rows() %>%
+#       janitor::remove_empty(which = "rows") %>%
+#       dplyr::select(10:1) %>%
+#       apply(., 1, function(x) cumsum(x)) %>%
+#       # t() %>%
+#       data.frame()}
+#   )
+#
+# # check fewest bins that contain >=90% of all obs
+# map(perc.use.br.full.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
+#     mean()}
+# )  #2.5 for Juv; 3.5 for Adult; 3.7, 6.5
+#
+# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
+# perc.use.br.full.age %>%
+#   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
+#   bind_rows(.id = "Age") %>%
+#   mutate(Age = factor(Age, levels = age.class)) %>%
+#   pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw() +
+#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_all") +
+#   facet_wrap(~Age)
+#
+#
+#
+# perc.use.br.sub.age <- boyce.br.sub.age %>%
+#   map_depth(., 2, ~{.x %>%
+#       pluck("perc.use") %>%
+#       set_names(1:length(.))}
+#   ) %>%
+#   map_depth(., 1, ~{.x %>%
+#       bind_rows() %>%
+#       janitor::remove_empty(which = "rows") %>%
+#       dplyr::select(10:1) %>%
+#       apply(., 1, function(x) cumsum(x)) %>%
+#       # t() %>%
+#       data.frame()}
+#   )
+#
+# # check fewest bins that contain >=90% of all obs
+# map(perc.use.br.sub.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
+#     mean()}
+# )  #2.5 for Juv; 2.5 for Adult; 3.7, 1
+#
+# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
+# perc.use.br.sub.age %>%
+#   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
+#   bind_rows(.id = "Age") %>%
+#   mutate(Age = factor(Age, levels = age.class)) %>%
+#   pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw() +
+#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_sub") +
+#   facet_wrap(~Age)
 
 
 
@@ -513,9 +516,10 @@ boyce.br.sub.age2 <- boyce.br.sub.age %>%
 
 tic()
 qa.rast.age <- predict.hgpr(cov_list = cov_list_qa, model_fit = hgpr.age, covars = covars,
-                            mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = TRUE)
+                            mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = TRUE,
+                            method = "corr")
 skrrrahh('khaled2')
-toc()  #took 2 sec to run
+toc()  #took 1 sec to run
 
 
 # Normalize predictions on 0-1 scale
@@ -551,38 +555,38 @@ toc()  #took 1 sec
 
 
 
-perc.use.qa.age <- boyce.qa.age %>%
-  map_depth(., 2, ~{.x %>%
-      pluck("perc.use") %>%
-      set_names(1:length(.))}
-  ) %>%
-  map_depth(., 1, ~{.x %>%
-      bind_rows() %>%
-      janitor::remove_empty(which = "rows") %>%
-      dplyr::select(10:1) %>%
-      apply(., 1, function(x) cumsum(x)) %>%
-      data.frame()}
-  )
-
-# check fewest bins that contain >=90% of all obs
-map(perc.use.qa.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-    mean()}
-)  #4.75 bins; no adults, so remove; 3.3
-
-perc.use.qa.age <- perc.use.qa.age$Juv
-
-# Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.qa.age %>%
-  data.frame() %>%
-  mutate(bin = factor(10:1, levels = 10:1),
-         Age = factor("Juv", levels = age.class)) %>%
-  pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw() +
-  labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Qatar") +
-  facet_wrap(~Age)
+# perc.use.qa.age <- boyce.qa.age %>%
+#   map_depth(., 2, ~{.x %>%
+#       pluck("perc.use") %>%
+#       set_names(1:length(.))}
+#   ) %>%
+#   map_depth(., 1, ~{.x %>%
+#       bind_rows() %>%
+#       janitor::remove_empty(which = "rows") %>%
+#       dplyr::select(10:1) %>%
+#       apply(., 1, function(x) cumsum(x)) %>%
+#       data.frame()}
+#   )
+#
+# # check fewest bins that contain >=90% of all obs
+# map(perc.use.qa.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
+#     mean()}
+# )  #4.75 bins; no adults, so remove; 3.3
+#
+# perc.use.qa.age <- perc.use.qa.age$Juv
+#
+# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
+# perc.use.qa.age %>%
+#   data.frame() %>%
+#   mutate(bin = factor(10:1, levels = 10:1),
+#          Age = factor("Juv", levels = age.class)) %>%
+#   pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw() +
+#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Qatar") +
+#   facet_wrap(~Age)
 
 
 boyce.qa.age2 <- boyce.qa.age %>%
@@ -638,7 +642,6 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   guides(color = "none",
          fill = guide_legend(override.aes = list(alpha = 1)))
 
-# ggsave("Tables_Figs/Figure 10.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
 
@@ -670,11 +673,7 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   guides(color = "none",
          fill = guide_legend(override.aes = list(alpha = 1)))
 
-
-
-# ggsave("Tables_Figs/Figure S6.png", width = 7, height = 5, units = "in", dpi = 400)
-
-
+# ggsave("Tables_Figs/Figure S8.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
 
@@ -796,7 +795,7 @@ p.juv.qa <- ggplot() +
 p.pop.br + p.juv.br + p.adult.br + p.pop.qa + p.juv.qa + guide_area() +
   plot_layout(nrow = 2, guides = "collect")
 
-# ggsave("Tables_Figs/Figure 9.png", width = 5, height = 5.5, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure 6.png", width = 5, height = 5.5, units = "in", dpi = 400)
 
 
 
@@ -824,19 +823,19 @@ for (i in 1:length(covars)) {
 
 
 # Define predictive seq of covars
-vars <- data.frame(log.bathym = seq(mesh.seq$log.bathym[1], mesh.seq$log.bathym[2], length.out = 500),
+gp_vars <- data.frame(log.bathym = seq(mesh.seq$log.bathym[1], mesh.seq$log.bathym[2], length.out = 500),
                    log.npp = seq(mesh.seq$log.npp[1], mesh.seq$log.npp[2], length.out = 500),
                    log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500))
 
-vars2 <- data.frame(Intercept = 1,
-                    log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500),
-                    log.sst2 = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500) ^ 2)
+# vars2 <- data.frame(Intercept = 1,
+#                     log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500),
+#                     log.sst2 = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500) ^ 2)
 
 
 # Generate A matrices for prediction
 A.mat <- vector("list", length(covars))
 for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
-  A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
+  A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = gp_vars[[covars[[j]]]])
 }
 names(A.mat) <- covars
 
@@ -860,7 +859,7 @@ coeff1 <- hgpr.age$summary.random[1:3] %>%
   set_names(paste(rep(covars, each = 2), rep(1:2, length(covars)), sep = "_"))
 
 # Define coeff values of fixed terms from HGPR
-coeff2 <- hgpr.age$summary.fixed$mean
+# coeff2 <- hgpr.age$summary.fixed$mean
 
 
 # Make predictions via linear algebra
@@ -870,13 +869,13 @@ marg.eff <- A.mat2 %>%
            as.vector()}
   ) %>%
   set_names(names(coeff1)) %>%
-  bind_cols() %>%
+  bind_cols(.name_repair = ~ vctrs::vec_as_names(..., repair = "unique", quiet = TRUE)) %>%
   split.default(., str_extract(names(.), "[0-9]$")) %>%  #split preds into list by age.class
   set_names(c("Juv","Adult")) %>%
   map(~{.x %>%
       pivot_longer(cols = everything(), names_to = "covar", values_to = "mean") %>%
       arrange(covar) %>%
-      mutate(x = c(vars$log.bathym, vars$log.npp, vars$log.sst)) %>%
+      mutate(x = c(gp_vars$log.bathym, gp_vars$log.npp, gp_vars$log.sst)) %>%
       mutate(across(c(mean, x), \(z) exp(z))) %>%
       mutate(covar = case_when(str_detect(covar, "log.bathym_.") ~ "depth",
                                str_detect(covar, "log.npp_.") ~ "npp",
@@ -885,16 +884,16 @@ marg.eff <- A.mat2 %>%
     })
 
 # Make predictions using linear terms
-hgpr.pred2 <- as.matrix(vars2) %*% coeff2 %>%
-  exp() %>%
-  as.vector()
+# hgpr.pred2 <- as.matrix(vars2) %*% coeff2 %>%
+#   exp() %>%
+#   as.vector()
 
 
 # Add linear SST predictions to GP SST predictions
-for (i in seq_along(marg.eff)) {
-  marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean <- marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean +
-    hgpr.pred2
-}
+# for (i in seq_along(marg.eff)) {
+#   marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean <- marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean +
+#     hgpr.pred2
+# }
 
 
 
@@ -915,17 +914,22 @@ marg.eff2 <- bind_rows(marg.eff, .id = "Age Class") %>%
 # Plot pop-level marginal effects
 ggplot() +
   geom_line(data = marg.eff2, aes(x = x, y = mean, color = `Age Class`), linewidth = 1) +
-  scale_color_brewer(palette = "Dark2") +
-  theme_bw() +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  theme_bw(base_size = 14) +
   labs(x = "", y = "Relative Intensity of Use") +
   theme(strip.background = element_rect(fill = NA, color = NA),
         strip.placement = "outside",
         strip.text = element_text(face = "bold"),
-        axis.title = element_text(face = "bold")
+        axis.title = element_text(face = "bold"),
+        panel.grid = element_blank()
   ) +
-  facet_wrap(`Age Class` ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
+  # facet_wrap(`Age Class` ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
+  ggh4x::facet_grid2(`Age Class` ~ covar,
+                     independent = "y",
+                     scales = "free",
+                     switch = "x")
 
-# ggsave("Tables_Figs/Figure S5.png", width = 11, height = 9, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure S7.png", width = 11, height = 9, units = "in", dpi = 400)
 
 
 

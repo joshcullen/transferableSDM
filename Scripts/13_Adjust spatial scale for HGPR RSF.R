@@ -1,5 +1,5 @@
 
-### Fit HGLM RSF at different spatial scales ###
+### Fit HGPR RSF at different spatial scales ###
 
 library(tidyverse)
 library(INLA)
@@ -59,7 +59,7 @@ rsf.list2 <- rsf.list %>%
 # Now explore transformed distributions
 rsf.list2 %>%
   bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
+  mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
   pivot_longer(cols = c(log.bathym, log.npp, log.sst), names_to = "covar", values_to = "value") %>%
   ggplot() +
   geom_density(aes(value, fill = factor(obs))) +
@@ -143,23 +143,27 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
 
 
 hgpr.mod_5km <- fit_hgpr(data = rsf.list2$sc.5, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                         nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto')
-#took 4 min
+                         nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto',
+                         method = "corr")
+#took 1 min
 summary(hgpr.mod_5km)
 
 hgpr.mod_10km <- fit_hgpr(data = rsf.list2$sc.10, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto')
-#took 5 min to run
+                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto',
+                          method = "corr")
+#took 2 min to run
 summary(hgpr.mod_10km)
 
 hgpr.mod_20km <- fit_hgpr(data = rsf.list2$sc.20, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'eb')
-#took 4.3 min to run
+                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'eb',
+                          method = "corr")
+#took 1 min to run
 summary(hgpr.mod_20km)
 
 hgpr.mod_40km <- fit_hgpr(data = rsf.list2$sc.40, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto')
-#took 3.5 min to run
+                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto',
+                          method = "corr")
+#took 1.25 min to run
 summary(hgpr.mod_40km)
 
 # hgpr.mod_80km <- fit_hgpr(data = rsf.list2$sc.80, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
@@ -226,29 +230,30 @@ pred.vals.pop[[i]] <- A.me.pop %>%
   mutate(x = unlist(newdat.list)) %>%
   mutate(across(mean:x, exp))
 }
+
 pred.vals.pop <- pred.vals.pop %>%
   bind_rows(.id = "scale") %>%
   mutate(across(scale, \(x) factor(x, levels = c('sc.5','sc.10','sc.20','sc.40'))))
 
 
-# Make predictions of linear SST terms
-sst.newdata <- data.frame(sst = newdat.list$log.sst,
-                          sst.2 = newdat.list$log.sst ^ 2) %>%
-  as.matrix()
-
-fixed.sst.pred <- vector("list", length = length(hgpr.fit)) %>%
-  set_names(names(hgpr.fit))
-
-for (i in 1:length(fixed.sst.pred)) {
-  fixed.sst.coeff <- hgpr.fit[[i]]$summary.fixed$mean[-1]
-
-  fixed.sst.pred[[i]] <- sst.newdata %*% fixed.sst.coeff %>%
-    data.frame(pred = .) %>%
-    mutate(sst = exp(sst.newdata[,1]))
-}
-fixed.sst.pred <- fixed.sst.pred %>%
-  bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
+# # Make predictions of linear SST terms
+# sst.newdata <- data.frame(sst = newdat.list$log.sst,
+#                           sst.2 = newdat.list$log.sst ^ 2) %>%
+#   as.matrix()
+#
+# fixed.sst.pred <- vector("list", length = length(hgpr.fit)) %>%
+#   set_names(names(hgpr.fit))
+#
+# for (i in 1:length(fixed.sst.pred)) {
+#   fixed.sst.coeff <- hgpr.fit[[i]]$summary.fixed$mean[-1]
+#
+#   fixed.sst.pred[[i]] <- sst.newdata %*% fixed.sst.coeff %>%
+#     data.frame(pred = .) %>%
+#     mutate(sst = exp(sst.newdata[,1]))
+# }
+# fixed.sst.pred <- fixed.sst.pred %>%
+#   bind_rows(.id = "scale") %>%
+#   mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
 
 
 # Depth
@@ -286,13 +291,13 @@ ggplot() +
         axis.text = element_text(size = 24)) +
   facet_wrap(~ scale, scales = "free")
 
-ggplot() +
-  geom_line(data = fixed.sst.pred, aes(x = sst, y = pred), linewidth = 1.5) +
-  theme_bw() +
-  labs(x = "SST (°C)", y = "Relative Intensity of Use") +
-  theme(axis.title = element_text(size = 30),
-        axis.text = element_text(size = 24)) +
-  facet_wrap(~ scale, scales = "free")
+# ggplot() +
+#   geom_line(data = fixed.sst.pred, aes(x = sst, y = pred), linewidth = 1.5) +
+#   theme_bw() +
+#   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
+#   theme(axis.title = element_text(size = 30),
+#         axis.text = element_text(size = 24)) +
+#   facet_wrap(~ scale, scales = "free")
 
 
 
@@ -307,8 +312,8 @@ ggplot() +
 
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
-files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
+# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+# files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -449,4 +454,4 @@ pred.40 <- ggplot() +
 ### Export model objects ###
 ############################
 
-saveRDS(hgpr.fit, "Data_products/HGPR_model_fit_scale.rds")
+saveRDS(hgpr.fit, "Data_products/HGPR_corr_model_fit_scale.rds")

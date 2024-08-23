@@ -95,8 +95,7 @@ p.alg <- ggplot(data = boyce.alg, aes(Region, cor)) +
                outlier.shape = NA, width = 0.6, size = 0.75) +
   geom_point(data = boyce.alg.mean, aes(x = Region, y = mean, group = Method),
              size = 4, position = position_dodge(width = 0.75)) +
-  scale_color_met_d('Egypt') +
-  scale_fill_met_d('Egypt') +
+  scale_fill_met_d('Egypt', labels = c("HGLM (corr)","HGLM (hybrid)","HGPR (corr)","HGPR (hybrid)")) +
   # scale_x_discrete(labels = c("Brazil (all)", "Brazil (main)", "Qatar")) +
   geom_hline(yintercept = 0, linewidth = 1) +
   lims(y = c(-1,1)) +
@@ -104,7 +103,8 @@ p.alg <- ggplot(data = boyce.alg, aes(Region, cor)) +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
         axis.title = element_text(size = 24),
-        axis.text.x = element_blank()) +
+        axis.text.x = element_blank(),
+        panel.grid = element_blank()) +
   guides(color = "none",
          fill = guide_legend(override.aes = list(alpha = 1)))
 
@@ -126,7 +126,8 @@ p.scale <- ggplot(data = boyce.scale, aes(Region, cor)) +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
         axis.title = element_text(size = 24),
-        axis.text.x = element_blank()) +
+        axis.text.x = element_blank(),
+        panel.grid = element_blank()) +
   guides(color = "none",
          fill = guide_legend(override.aes = list(alpha = 1)))
 
@@ -147,7 +148,9 @@ p.age <- ggplot(data = boyce.age, aes(Region, cor)) +
   labs(x="", y = "") +
   theme_bw() +
   theme(axis.text = element_text(size = 20),
-        axis.title = element_text(size = 24)) +
+        axis.text.x = element_text(size = 16),
+        axis.title = element_text(size = 24),
+        panel.grid = element_blank()) +
   guides(color = "none",
          fill = guide_legend(override.aes = list(alpha = 1)))
 
@@ -160,4 +163,4 @@ plot_spacer() + p.alg + p.scale + p.age +
   theme(plot.tag.position = c(0.05, 1),
         plot.tag = element_text(size = 18, face = "bold", hjust = 0.8, vjust = -0.5))
 
-ggsave("Tables_Figs/boyce.png", width = 7, height = 9, units = "in", dpi = 400)
+ggsave("Tables_Figs/Figure 3.png", width = 7, height = 9, units = "in", dpi = 400)

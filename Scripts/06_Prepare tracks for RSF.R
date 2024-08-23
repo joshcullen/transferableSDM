@@ -37,16 +37,16 @@ dat <- dat %>%
 dat <- prep_data(dat = dat, coord.names = c('x','y'), id = "id")
 
 # Define bounding box of study extent for population
-# bbox <- dat %>%
-#   st_as_sf(coords = c('x','y'), crs = 3395) %>%
-#   st_bbox() %>%
-#   st_as_sfc() %>%
-#   st_buffer(5000)  #buffer each side by 5 km
+bbox <- dat %>%
+  st_as_sf(coords = c('x','y'), crs = 3395) %>%
+  st_bbox() %>%
+  st_as_sfc() %>%
+  st_buffer(5000)  #buffer each side by 5 km
 
 ggplot() +
   geom_sf(data = gom.sf) +
   geom_point(data = dat, aes(x, y, color = behav), alpha = 0.6) +
-  # geom_sf(data = bbox, color = "red", fill = "transparent", linewidth = 1) +
+  geom_sf(data = bbox, color = "red", fill = "transparent", linewidth = 1) +
   scale_color_viridis_d("State", end = 0.98) +
   labs(x="",y="") +
   coord_sf(expand = FALSE) +
@@ -61,8 +61,8 @@ ggplot() +
 
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
-files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
+# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+# files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -98,14 +98,14 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 ## Map example of environmental covariates
 
 # Define map extent
-bbox <- ext(cov_list$bathym)
+bbox_p <- ext(cov_list$bathym)
 
 p.gom.bathym <- ggplot() +
   geom_spatraster(data = cov_list$bathym, aes(fill = `GoM bathymetry`)) +
   scale_fill_cmocean("Depth (m)", name = "deep", direction = -1, breaks = c(0, -2000, -4000)) +
   geom_sf(data = gom.sf, linewidth = 0.25) +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
+  coord_sf(xlim = c(bbox_p[1], bbox_p[2]),
+           ylim = c(bbox_p[3], bbox_p[4]),
            expand = FALSE,
            label_axes = "----") +
   theme_bw() +
@@ -115,8 +115,8 @@ p.gom.npp <- ggplot() +
   geom_spatraster(data = cov_list$npp / 1000, aes(fill = `2019-10-01`)) +
   scale_fill_cmocean(expression(paste("NPP (", g~C~m^-2~d^-1, ")")), name = "algae", direction = 1) +
   geom_sf(data = gom.sf, linewidth = 0.25) +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
+  coord_sf(xlim = c(bbox_p[1], bbox_p[2]),
+           ylim = c(bbox_p[3], bbox_p[4]),
            expand = FALSE,
            label_axes = "----") +
   theme_bw() +
@@ -126,8 +126,8 @@ p.gom.sst <- ggplot() +
   geom_spatraster(data = cov_list$sst, aes(fill = `2019-10-01`)) +
   scale_fill_cmocean("SST (°C)", name = "thermal", direction = 1) +
   geom_sf(data = gom.sf, linewidth = 0.25) +
-  coord_sf(xlim = c(bbox[1], bbox[2]),
-           ylim = c(bbox[3], bbox[4]),
+  coord_sf(xlim = c(bbox_p[1], bbox_p[2]),
+           ylim = c(bbox_p[3], bbox_p[4]),
            expand = FALSE,
            label_axes = "----") +
   theme_bw() +
@@ -137,7 +137,7 @@ p.gom.sst <- ggplot() +
 p.gom.bathym + p.gom.npp + p.gom.sst +
   plot_layout(nrow = 1)
 
-# ggsave("Tables_Figs/Figure 3.png", width = 8, height = 3, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure S4.png", width = 8, height = 3, units = "in", dpi = 400)
 
 
 #####################################################################
@@ -155,23 +155,23 @@ dat2 <- dat %>%
              y = st_coordinates(.)[,2]) %>%
       st_drop_geometry()}) %>%
   bind_rows()
-toc()  #took 17 sec
+toc()  #took 10 sec
 
 # How many points per ID?
 table(dat2$id)  #min of 38; max of 1961
 
 
 # Mask the bbox by the land layer to generate available pts in water
-# bbox_mask <- st_mask(bbox, gom.sf)
+bbox_mask <- st_mask(bbox, gom.sf)
 
 # Check polygon of availability
-# ggplot() +
-#   geom_sf(data = bbox, fill = "lightblue") +
-#   geom_sf(data = gom.sf) +
-#   geom_point(data = dat2, aes(x, y, color = behav)) +
-#   geom_sf(data = bbox_mask, color = "red", fill = "transparent") +
-#   scale_color_viridis_d() +
-#   theme_bw()
+ggplot() +
+  geom_sf(data = bbox, fill = "lightblue") +
+  geom_sf(data = gom.sf) +
+  geom_point(data = dat2, aes(x, y, color = behav)) +
+  geom_sf(data = bbox_mask, color = "red", fill = "transparent") +
+  scale_color_viridis_d() +
+  theme_bw()
 
 
 # Convert to class for use of {amt} functions
@@ -222,20 +222,22 @@ dat4 <- dat4 %>%
                           ~{data.frame(geometry = st_sample(.x, size = 10 * nrow(.y))) %>%
                               mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
                               st_sf()}
-                          ),
-         avail_pts30 = map2(.x = ud_buff,
-                            .y = data_res,
-                            ~{data.frame(geometry = st_sample(.x, size = 30 * nrow(.y))) %>%
-                                mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
-                                st_sf()}
-         ),
-         avail_pts50 = map2(.x = ud_buff,
-                            .y = data_res,
-                            ~{data.frame(geometry = st_sample(.x, size = 50 * nrow(.y))) %>%
-                                mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T)) %>%
-                                st_sf()}
-         ))
-toc()  #takes 1.5 min to run
+                          )
+)
+toc()  #takes 3.5 sec to run
+
+
+# set.seed(2023)
+# tic()
+# dat4 <- dat4 %>%
+#   mutate(avail_pts10 = map2(.x = cov_list$bathym,
+#                             .y = data_res,
+#                             ~{sample_rast_gradient(.x, n_pts = 10 * nrow(.y)) %>%
+#                                 mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T))
+#                             }
+#   )
+#   )
+# toc()
 
 
 # Viz example of available point spread by month.year
@@ -268,38 +270,13 @@ avail_10 <- dat4 %>%
   unnest(cols = avail_pts10) %>%
   mutate(obs = 0)
 
-avail_30 <- dat4 %>%
-  dplyr::select(id, avail_pts30) %>%
-  mutate(avail_pts30 = map(avail_pts30, ~{.x %>%
-      mutate(x = st_coordinates(.)[,1],
-             y = st_coordinates(.)[,2]) %>%
-      st_drop_geometry()}
-  )) %>%
-  unnest(cols = avail_pts30) %>%
-  mutate(obs = 0)
-
-avail_50 <- dat4 %>%
-  dplyr::select(id, avail_pts50) %>%
-  mutate(avail_pts50 = map(avail_pts50, ~{.x %>%
-      mutate(x = st_coordinates(.)[,1],
-             y = st_coordinates(.)[,2]) %>%
-      st_drop_geometry()}
-  )) %>%
-  unnest(cols = avail_pts50) %>%
-  mutate(obs = 0)
 
 
 rsf.pts_10 <- rbind(used, avail_10)
-rsf.pts_30 <- rbind(used, avail_30)
-rsf.pts_50 <- rbind(used, avail_50)
 
 
 # Remove ID 169273 due to unrealistic track w/ many anomalous locations
 rsf.pts_10 <- rsf.pts_10 %>%
-  filter(!id %in% c(169273))
-rsf.pts_30 <- rsf.pts_30 %>%
-  filter(!id %in% c(169273))
-rsf.pts_50 <- rsf.pts_50 %>%
   filter(!id %in% c(169273))
 
 
@@ -307,15 +284,8 @@ rsf.pts_50 <- rsf.pts_50 %>%
 plan(multisession, workers = availableCores() - 2)
 rsf.pts_10 <- extract.covars(data = rsf.pts_10, layers = cov_list, dyn_names = c('npp', 'sst'),
                            along = FALSE, ind = "month.year", imputed = FALSE)
-#takes 1.5 min to run on desktop (18 cores)
+#takes 1 min to run on desktop (24 cores)
 
-rsf.pts_30 <- extract.covars(data = rsf.pts_30, layers = cov_list, dyn_names = c('npp', 'sst'),
-                             along = FALSE, ind = "month.year", imputed = FALSE)
-#takes 30 sec to run on desktop (18 cores)
-
-rsf.pts_50 <- extract.covars(data = rsf.pts_50, layers = cov_list, dyn_names = c('npp', 'sst'),
-                             along = FALSE, ind = "month.year", imputed = FALSE)
-#takes 40 sec to run on desktop (18 cores)
 plan(sequential)
 
 

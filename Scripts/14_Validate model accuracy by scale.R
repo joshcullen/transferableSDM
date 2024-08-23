@@ -22,7 +22,7 @@ source('Scripts/helper functions.R')
 ### Load fitted models ###
 ##########################
 
-hgpr.fit <- readRDS("Data_products/HGPR_model_fit_scale.rds")
+hgpr.fit <- readRDS("Data_products/HGPR_corr_model_fit_scale.rds")
 
 
 
@@ -176,10 +176,11 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
 tic()
 br.rast.hgpr <- map2(.x = cov_coarse_br, .y = hgpr.fit,
                             ~predict.hgpr(cov_list = .x, model_fit = .y, covars = covars,
-                                          mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE)
+                                          mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE,
+                                          method = "corr")
                      )
 skrrrahh('khaled2')
-toc()  #took 1.5 min to run
+toc()  #took 45 sec to run
 
 
 # Normalize predictions on 0-1 scale
@@ -228,71 +229,71 @@ toc()  #took 10 sec
 
 
 
-perc.use.br.full <- boyce.br.full %>%
-  map_depth(., 2, ~{.x %>%
-      pluck("perc.use") %>%
-      set_names(1:length(.))}
-      ) %>%
-  map_depth(., 1, ~{.x %>%
-      bind_rows() %>%
-      janitor::remove_empty(which = "rows") %>%
-      dplyr::select(10:1) %>%
-      apply(., 1, function(x) cumsum(x)) %>%
-      # t() %>%
-      data.frame()}
-      )
+# perc.use.br.full <- boyce.br.full %>%
+#   map_depth(., 2, ~{.x %>%
+#       pluck("perc.use") %>%
+#       set_names(1:length(.))}
+#       ) %>%
+#   map_depth(., 1, ~{.x %>%
+#       bind_rows() %>%
+#       janitor::remove_empty(which = "rows") %>%
+#       dplyr::select(10:1) %>%
+#       apply(., 1, function(x) cumsum(x)) %>%
+#       # t() %>%
+#       data.frame()}
+#       )
 
 # check fewest bins that contain >=90% of all obs
-map(perc.use.br.full, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-  mean()}
-  )  #slightly increases w/ increasing scale
+# map(perc.use.br.full, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
+#   mean()}
+#   )  #slightly increases w/ increasing scale
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.br.full %>%
-  map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
-  bind_rows(.id = "scale") %>%
-  mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
-  pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw() +
-  labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_all") +
-  facet_wrap(~scale)
+# perc.use.br.full %>%
+#   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
+#   bind_rows(.id = "scale") %>%
+#   mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
+#   pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw() +
+#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_all") +
+#   facet_wrap(~scale)
 
 
 
-perc.use.br.sub <- boyce.br.sub %>%
-  map_depth(., 2, ~{.x %>%
-      pluck("perc.use") %>%
-      set_names(1:length(.))}
-  ) %>%
-  map_depth(., 1, ~{.x %>%
-      bind_rows() %>%
-      janitor::remove_empty(which = "rows") %>%
-      dplyr::select(10:1) %>%
-      apply(., 1, function(x) cumsum(x)) %>%
-      # t() %>%
-      data.frame()}
-  )
+# perc.use.br.sub <- boyce.br.sub %>%
+#   map_depth(., 2, ~{.x %>%
+#       pluck("perc.use") %>%
+#       set_names(1:length(.))}
+#   ) %>%
+#   map_depth(., 1, ~{.x %>%
+#       bind_rows() %>%
+#       janitor::remove_empty(which = "rows") %>%
+#       dplyr::select(10:1) %>%
+#       apply(., 1, function(x) cumsum(x)) %>%
+#       # t() %>%
+#       data.frame()}
+#   )
 
 # check fewest bins that contain >=90% of all obs
-map(perc.use.br.sub, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-    mean()}
-)  #1.5 bins for each scale; shows impact of FDN locs
+# map(perc.use.br.sub, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
+#     mean()}
+# )  #1.5 bins for each scale; shows impact of FDN locs
 
 # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.br.sub %>%
-  map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
-  bind_rows(.id = "scale") %>%
-  mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
-  pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw() +
-  labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_sub") +
-  facet_wrap(~scale)
+# perc.use.br.sub %>%
+#   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
+#   bind_rows(.id = "scale") %>%
+#   mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
+#   pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw() +
+#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_sub") +
+#   facet_wrap(~scale)
 
 
 
@@ -327,10 +328,11 @@ boyce.br.sub2 <- boyce.br.sub %>%
 tic()
 qa.rast.hgpr <- map2(.x = cov_coarse_qa, .y = hgpr.fit,
                      ~predict.hgpr(cov_list = .x, model_fit = .y, covars = covars,
-                                   mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE)
+                                   mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE,
+                                   method = "corr")
 )
 skrrrahh('khaled2')
-toc()  #took 8 sec to run
+toc()  #took 3 sec to run
 
 
 # Normalize predictions on 0-1 scale
@@ -367,36 +369,36 @@ toc()  #took 1 sec
 
 
 
-perc.use.qa <- boyce.qa %>%
-  map_depth(., 2, ~{.x %>%
-      pluck("perc.use") %>%
-      set_names(1:length(.))}
-  ) %>%
-  map_depth(., 1, ~{.x %>%
-      bind_rows() %>%
-      janitor::remove_empty(which = "rows") %>%
-      dplyr::select(10:1) %>%
-      apply(., 1, function(x) cumsum(x)) %>%
-      data.frame()}
-  )
-
-# check fewest bins that contain >=90% of all obs
-map(perc.use.qa, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-    mean()}
-)  #slightly increases w/ increasing scale
-
-# Viz plot of cumulative percentage of obs per bin (highest to lowest)
-perc.use.qa %>%
-  map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
-  bind_rows(.id = "scale") %>%
-  mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
-  pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-  ggplot(aes(bin, cum.perc)) +
-  geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-  geom_line(aes(group = month.year, color = month.year)) +
-  theme_bw() +
-  labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Qatar") +
-  facet_wrap(~scale)
+# perc.use.qa <- boyce.qa %>%
+#   map_depth(., 2, ~{.x %>%
+#       pluck("perc.use") %>%
+#       set_names(1:length(.))}
+#   ) %>%
+#   map_depth(., 1, ~{.x %>%
+#       bind_rows() %>%
+#       janitor::remove_empty(which = "rows") %>%
+#       dplyr::select(10:1) %>%
+#       apply(., 1, function(x) cumsum(x)) %>%
+#       data.frame()}
+#   )
+#
+# # check fewest bins that contain >=90% of all obs
+# map(perc.use.qa, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
+#     mean()}
+# )  #slightly increases w/ increasing scale
+#
+# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
+# perc.use.qa %>%
+#   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
+#   bind_rows(.id = "scale") %>%
+#   mutate(scale = factor(scale, levels = c('sc.5','sc.10','sc.20','sc.40'))) %>%
+#   pivot_longer(cols = -c(scale, bin), names_to = 'month.year', values_to = "cum.perc") %>%
+#   ggplot(aes(bin, cum.perc)) +
+#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
+#   geom_line(aes(group = month.year, color = month.year)) +
+#   theme_bw() +
+#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Qatar") +
+#   facet_wrap(~scale)
 
 
 
@@ -452,7 +454,6 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
   guides(color = "none",
          fill = guide_legend(override.aes = list(alpha = 1)))
 
-# ggsave("Tables_Figs/Figure 8.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
 
@@ -504,7 +505,7 @@ ggplot() +
         strip.text = element_text(size = 10, face = "bold", hjust = 0)) +
   facet_wrap(~ Scale)
 
-# ggsave("Tables_Figs/Figure 7.png", width = 4, height = 5, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure 5.png", width = 4, height = 5, units = "in", dpi = 400)
 
 
 # p.5km.qa <- ggplot() +
@@ -636,19 +637,19 @@ for (i in 1:length(covars)) {
 
 
 # Define predictive seq of covars
-vars <- data.frame(log.bathym = seq(mesh.seq$log.bathym[1], mesh.seq$log.bathym[2], length.out = 500),
+gp_vars <- data.frame(log.bathym = seq(mesh.seq$log.bathym[1], mesh.seq$log.bathym[2], length.out = 500),
                    log.npp = seq(mesh.seq$log.npp[1], mesh.seq$log.npp[2], length.out = 500),
                    log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500))
 
-vars2 <- data.frame(Intercept = 1,
-                    log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500),
-                    log.sst2 = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500) ^ 2)
+# vars2 <- data.frame(Intercept = 1,
+#                     log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500),
+#                     log.sst2 = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500) ^ 2)
 
 
 # Generate A matrices for prediction
 A.mat <- vector("list", length(covars))
 for (j in 1:length(covars)) { #one matrix for model estimation and another for generating predictions for plotting
-  A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = vars[[covars[[j]]]])
+  A.mat[[j]] <- inla.spde.make.A(mesh.list[[j]], loc = gp_vars[[covars[[j]]]])
 }
 names(A.mat) <- covars
 
@@ -667,7 +668,7 @@ for (i in seq_along(hgpr.fit)) {
     map(., ~pull(.x, mean))
 
   # Define coeff values of fixed terms from HGPR
-  coeff2 <- hgpr.fit[[i]]$summary.fixed$mean
+  # coeff2 <- hgpr.fit[[i]]$summary.fixed$mean
 
   # Make predictions on intensity of use from model for GP terms
   hgpr.pred <- A.mat %>%
@@ -675,10 +676,10 @@ for (i in seq_along(hgpr.fit)) {
          ~{.x %*% .y %>%
              as.vector()}
     ) %>%
-    bind_cols() %>%
+    bind_cols(.name_repair = ~ vctrs::vec_as_names(..., repair = "unique", quiet = TRUE)) %>%
     pivot_longer(cols = everything(), names_to = "covar", values_to = "mean") %>%
     arrange(covar) %>%
-    mutate(x = c(vars$log.bathym, vars$log.npp, vars$log.sst)) %>%
+    mutate(x = c(gp_vars$log.bathym, gp_vars$log.npp, gp_vars$log.sst)) %>%
     mutate(across(c(mean, x), \(z) exp(z))) %>%
     mutate(covar = case_when(covar == "log.bathym" ~ "depth",
                              covar == "log.npp" ~ "npp",
@@ -686,14 +687,14 @@ for (i in seq_along(hgpr.fit)) {
     filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
 
   # Make predictions using linear terms
-  hgpr.pred2 <- as.matrix(vars2) %*% coeff2 %>%
-    exp() %>%
-    as.vector()
+  # hgpr.pred2 <- as.matrix(vars2) %*% coeff2 %>%
+  #   exp() %>%
+  #   as.vector()
 
 
   # Add linear SST predictions to GP SST predictions
-  hgpr.pred[hgpr.pred$covar == "sst",]$mean <- hgpr.pred[hgpr.pred$covar == "sst",]$mean +
-    hgpr.pred2
+  # hgpr.pred[hgpr.pred$covar == "sst",]$mean <- hgpr.pred[hgpr.pred$covar == "sst",]$mean +
+  #   hgpr.pred2
 
 
   marg.eff.list[[i]] <- hgpr.pred
@@ -720,17 +721,22 @@ marg.eff <- bind_rows(marg.eff.list, .id = "Scale") %>%
 # Plot pop-level marginal effects
 ggplot() +
   geom_line(data = marg.eff, aes(x = x, y = mean, color = Scale), linewidth = 1) +
-  scale_color_viridis_d(option = "mako", begin = 0.5, end = 0.95, direction = -1) +
-  theme_bw() +
+  scale_color_viridis_d(option = "mako", begin = 0.5, end = 0.95, direction = -1, guide = "none") +
+  theme_bw(base_size = 14) +
   labs(x = "", y = "Relative Intensity of Use") +
   theme(strip.background = element_rect(fill = NA, color = NA),
         strip.placement = "outside",
         strip.text = element_text(face = "bold"),
-        axis.title = element_text(face = "bold")
+        axis.title = element_text(face = "bold"),
+        panel.grid = element_blank()
   ) +
-  facet_wrap(Scale ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
+  # facet_wrap(Scale ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
+  ggh4x::facet_grid2(Scale ~ covar,
+                     independent = "y",
+                     scales = "free",
+                     switch = "x")
 
-# ggsave("Tables_Figs/Figure S4.png", width = 11, height = 9, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure S6.png", width = 11, height = 9, units = "in", dpi = 400)
 
 
 

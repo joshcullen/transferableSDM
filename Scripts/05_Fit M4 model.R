@@ -569,7 +569,7 @@ p.statedep + p.behav_map +
         legend.position = 'top',
         legend.background = element_rect(fill = NA))
 
-# ggsave("Tables_Figs/Figure 2.png", width = 6, height = 3.5, units = "in", dpi = 400)
+# ggsave("Tables_Figs/Figure S3.png", width = 6, height = 3.5, units = "in", dpi = 400)
 
 
 ###############################

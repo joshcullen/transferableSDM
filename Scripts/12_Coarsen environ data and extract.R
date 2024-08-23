@@ -38,8 +38,8 @@ summary(rsf.pts_10)
 
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
-files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
+# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
+# files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -187,7 +187,7 @@ x181796 <- list(`5km` = rsf.pts_10_5km %>%
     filter(id == 181796)
 ) %>%
   bind_rows(.id = "scale") %>%
-  mutate(across(scale, factor, levels = c('5km','10km','20km','40km','80km')))
+  mutate(scale = factor(scale, levels = c('5km','10km','20km','40km','80km')))
 
 ggplot() +
   geom_point(data = x181796 %>%
