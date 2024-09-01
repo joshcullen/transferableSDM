@@ -7,7 +7,8 @@ library(terra)
 library(flexsdm)
 library(tictoc)
 library(BRRR)
-
+library(tidyterra)
+library(patchwork)
 
 
 #################
@@ -109,14 +110,14 @@ for (i in seq_along(qa_sim)) {
                                                      npp = cov_list_qa[[2]][[i]],
                                                      sst = cov_list_qa[[3]][[i]])),
                             pr_ab = "obs",
-                            n_cores = 5,
+                            n_cores = 20,
                             aggreg_factor = 1,
                             metric = "mahalanobis")
 
   cat("\nLayer", i, "of", length(qa_sim))
 }
 skrrrahh('khaled2')
-toc()  #took 5.5 min w/ 5 cores
+toc()  #took 3.5 min w/ 20 cores
 
 plot(qa_sim[[1]], main = "Qatar extrapolation pattern")
 
@@ -160,11 +161,12 @@ br_summ <- br_sim |>
   map(~values(.x) |>
         data.frame()) |>
   map(~summarize(.x,
-                 mean = mean(extrapolation, na.rm = TRUE),
-                 sd = sd(extrapolation, na.rm = TRUE),
-                 mean_neritic = mean(extrapolation[br_neritic_ind], na.rm = TRUE),
-                 sd_neritic = sd(extrapolation[br_neritic_ind], na.rm = TRUE))) |>
-  bind_rows(.id = "month-year")
+                 # mean = mean(extrapolation, na.rm = TRUE),
+                 # sd = sd(extrapolation, na.rm = TRUE),
+                 mean = mean(extrapolation[br_neritic_ind], na.rm = TRUE),
+                 sd = sd(extrapolation[br_neritic_ind], na.rm = TRUE))) |>
+  bind_rows(.id = "month-year") |>
+  mutate(Region = "Brazil")
 
 
 # Qatar
@@ -174,14 +176,83 @@ qa_summ <- qa_sim |>
   map(~summarize(.x,
                  mean = mean(extrapolation, na.rm = TRUE),
                  sd = sd(extrapolation, na.rm = TRUE))) |>
-  bind_rows(.id = "month-year")
+  bind_rows(.id = "month-year") |>
+  mutate(Region = "Qatar")
 
 
+
+####################
+### Plot results ###
+####################
+
+# Join both summaries and create labels for plot
+valid_summ <- rbind(br_summ, qa_summ) |>
+  mutate(month = month(as_date(`month-year`)))
+month.year <- sort(unique(valid_summ$`month-year`))
+y_labs <- ifelse(seq_along(month.year) %% 3 == 0, month.year, "")
+
+# DF to highlight points that are mapped
+valid_highlight <- valid_summ |>
+  filter(Region == "Brazil" & `month-year` == "2020-02-01" |
+         Region == "Qatar" & `month-year`== "2014-09-01")
+
+
+# Plot values of similarity by month-year
+p.summ <- ggplot(data = valid_summ) +
+  geom_point(aes(mean, `month-year`, fill = month), shape = 21, size = 2) +
+  geom_point(data = valid_highlight, aes(mean, `month-year`), shape = 21,
+             fill = "transparent", size = 4, color = "blue", stroke = 2) +
+  scale_fill_gradientn("Month",
+                        colors = c(viridis::magma(n=6), rev(viridis::magma(n=6))),
+                        breaks = seq(1, 12, by = 2),
+                        labels = month.abb[seq(1, 12, by = 2)]) +
+  scale_y_discrete(labels = y_labs) +
+  xlim(-2, 32) +
+  labs(x = "Mean Environmental Similarity",
+       y = "Month-Year") +
+  theme_bw() +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(size = 14, face = "bold"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_line(color = "grey")) +
+  facet_wrap(~ Region)
+
+
+# Map environ sim for Brazil
+p.br <- ggplot() +
+  geom_spatraster(data = br_sim[["2020-02-01"]]) +
+  scale_fill_viridis_c("Environmental\nSimilarity\n",
+                       option = "rocket", limits = c(0,50),
+                       oob = scales::squish, labels = c(seq(0, 40, by = 10), "> 50")) +
+  coord_sf(expand = FALSE) +
+  labs(title = "Brazil: Feb 2020") +
+  theme_void() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+
+
+# Map environ sim for Qatar
+p.qa <- ggplot() +
+  geom_spatraster(data = qa_sim[["2014-09-01"]]) +
+  scale_fill_viridis_c("Environmental\nSimilarity\n",
+                       option = "rocket") +
+  coord_sf(expand = FALSE) +
+  labs(title = "Qatar: Sep 2014") +
+  theme_void() +
+  theme(plot.title = element_text(size = 16, face = "bold"))
+
+
+free(p.summ) | (p.br / p.qa)
+
+ggsave("Tables_Figs/Figure S9.png", width = 9, height = 5, units = "in", dpi = 400)
 
 
 ######################
 ### Export results ###
 ######################
 
-saveRDS(qa_sim, "Data_products/Qatar_EnvironSim.rds")
-saveRDS(br_sim, "Data_products/Brazil_EnvironSim.rds")
+# Need to first "wrap" list of SpatRasters
+qa_sim.w <- map(qa_sim, wrap)
+br_sim.w <- map(br_sim, wrap)
+
+saveRDS(qa_sim.w, "Data_products/Qatar_EnvironSim.rds")
+saveRDS(br_sim.w, "Data_products/Brazil_EnvironSim.rds")
