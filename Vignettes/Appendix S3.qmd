@@ -1,0 +1,495 @@
+---
+title: "Steps to apply transferable SDM approach with hierarchical Gaussian process regression"
+author:
+  - name: Joshua A Cullen
+    affiliations:
+      - ref: fsu
+    corresponding: true
+    email: joshcullen10@gmail.com
+  - name: Camila Domit
+    affiliations:
+      - ref: ufp
+  - name: Margaret M Lamont
+    affiliations:
+      - ref: usgs
+  - name: Christopher D Marshall
+    affiliations:
+      - ref: gcstr
+      - ref: tamug
+  - name: Armando JB Santos
+    affiliations:
+      - ref: fsu
+  - name: Christopher R Sasso
+    affiliations:
+      - ref: noaa
+  - name: Mehsin Al Ansi
+    affiliations:
+      - ref: qu
+  - name: Mariana MPB Fuentes
+    affiliations:
+      - ref: fsu
+
+
+affiliations: 
+  - id: fsu
+    name: Florida State University, Tallahassee, FL, USA
+  - id: ufp
+    name: Universidade Federal Do Paraná, Pontal Do Paraná, Paraná, Brazil
+  - id: usgs
+    name: US Geological Survey, Gainesville, FL, USA
+  - id: gcstr
+    name: Gulf Center for Sea Turtle Research, College Station, TX, USA
+  - id: tamug
+    name: Texas A&M University at Galveston, Galveston, TX, USA
+  - id: noaa
+    name: NOAA Southeast Fisheries Sciences Center, Miami, FL, USA
+  - id: qu
+    name: Qatar University, Doha, Qatar
+    
+filters: 
+  - authors-block
+execute: 
+  warning: false
+  message: false
+  echo: true
+
+number-sections: true
+number-depth: 3
+format: 
+  pdf:
+    urlcolor: blue
+---
+
+\pagebreak
+
+# Preface
+
+This vignette provides example code to apply the transferable species distribution model (SDM) approach presented in the manuscript of Cullen et al. This document assumes that animal telemetry data have already been processed, pseudo-absences representing 'available' habitat have been generated, and environmental covariates have been extracted across all presence and pseudo-absence locations.
+
+
+# Background
+
+In this study, SDMs were implemented as habitat selection analyses within a use-availability framework. To quantify habitat selection for green turtles based on log-transformed depth, net primary productivity (NPP), and sea surface temperature (SST), the data were analyzed using a resource selection function (RSF):
+
+$$\lambda = exp(\beta_0 + \beta_1 x_{depth} + \beta_2 x_{NPP} + \beta_3 x_{SST}) \tag{1}$$
+$$y \sim Poisson(\lambda) \tag{2},$$
+
+where $\lambda$ represents the intensity(i.e., relative density) of green turtles for a given pixel of the rasterized landscape as an exponential function of depth, NPP, and SST. Additionally, $y$ represents the weighted  response depending on whether the observation represents either a presence or pseudo-absence, and $\beta$ coefficients represent the intercept and slopes. To ensure that the $\beta$ coefficients reached their asymptotic estimates, we applied this model as a down-weighted Poisson regression where $y$ was transformed as
+
+$$y = 
+\begin{cases}
+    \frac{presence}{wt} = \frac{1}{1\times10^{-6}},& \text{presence } (1)\\
+    \frac{absence}{wt} = \frac{0}{A/N_{abs}},              & \text{pseudo-absence } (0)
+\end{cases}$$
+
+where weights ($wt$) were set as $1\times10^{-6}$ for presences and $\frac{A}{N_{abs}}$ for pseudo-absences. '$A$' represents the area of each grid cell of the rasterized landscape (22656039 m^2^ or 22.66 km^2^) and $N_{abs}$ is the total number of pseudo-absences. These weights were also applied when calculating the log likelihood of the model. To account for variablity in responses to environmental covariates among individual turtles, each of the slopes and the intercept was allowed to vary by turtle ID (i.e., treated as random slopes and intercept).
+
+
+# Fitting correlative HGPR model
+
+Moving on from the mathematical expressions that described how the RSF would be fit across the correlative and hybrid formulations of hierarchical generalized linear models (HGLMs) and Gaussian process regressions (HGPRs), we will now show an example of fitting the model with R code. Since the correlative HGPR model fitted on the finest scale environmental data without accounting for life stage exhibited the greatest transferability of all models tested, we will focus on this implementation.
+
+
+## Prepare data
+
+First, we will load in all relevant R packages and the data used to fit the model (full code and data are available from this [Zenodo repository](https://doi.org/10.5281/zenodo.8190082)):
+
+```{r}
+#| label: load-data
+
+library(tidyverse)
+library(INLA)
+library(terra)
+library(sfarrow)
+library(patchwork)
+
+
+#################
+### Load data ###
+#################
+
+rsf.pts <- read_csv("../Processed_data/GoM_Cm_RSFprep_10x.csv")
+
+gom.sf <- st_read_parquet("../Environ_data/GoM_land.parquet")
+
+glimpse(rsf.pts)
+summary(rsf.pts)
+```
+
+Upon inspecting the summary of the data, we see that there are many missing values for the covariates (i.e., `depth`, `npp`, `sst`). Since the model cannot handle observations with missing values, we will drop remove all of these before proceeding. Additionally, we can add the weights that will be used as part of the down-weighted Poisson regression.
+
+
+```{r}
+#| label: process-data
+
+# Remove rows w/ incomplete observations; log-transform covars
+rsf.pts_filt <- rsf.pts %>%
+  drop_na(bathym, npp, sst) %>%  # remove all rows w/ NA values of these columns
+  mutate(log.bathym = log(abs(bathym)),
+         log.npp = log(npp),
+         log.sst = log(sst))  # log-transform covars due to right-skewed distrib
+
+# Assign weights for down-weighted Poisson regression
+A <- 4759.836 ^ 2  # grid cell area in m^2; pixel res is 4759.836 m
+rsf.pts_filt$wts <- ifelse(rsf.pts_filt$obs == 0, 
+                        A / sum(rsf.pts_filt$obs == 0),  #weight for pseudo-absences
+                        1e-6)  #weight for presences
+
+# Add ID as integer for INLA
+rsf.pts_filt <- rsf.pts_filt %>%
+  mutate(id1 = as.integer(factor(id)))
+```
+
+
+## Reformat data objects for modeling with `INLA`
+
+Now that we've prepared the data, the next step is to convert this into a format to be analyzed by `INLA`, which is the R package used to fit the HGPR model. This requires a number of steps to define Bayesian priors on model parameters, defining the domain space for each of the three covariate to be fit by 1D Gaussian processes, as well as creating relevant matrices that will be used to estimate the model via stochastic partial differential equations (SPDE), which speeds up model fitting by approximating the likelihood. In the case of the Gaussian process model, we can think of the $\beta$ coefficients on covariates (i.e., slopes) similarly as for generalized additive models (GAMs) where each $\beta$ term represents a set of splines that flexibly fits the response to the covariate over a range of values and with a pre-specified set of knots and basis functions.
+
+
+```{r}
+#| label: format-inla
+
+# Stores range and SD, respectively, for PC priors on 1D Gaussian process
+pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))
+
+# Define number of turtle IDs for random effects
+ngroup <- n_distinct(rsf.pts_filt$id1)
+
+
+### Prepare covariates ###
+covars <- c('log.bathym','log.npp','log.sst')
+
+# Define covariate range (on log scale) for model fitting
+mesh.seq <- list(log.bathym = c(0.001, 5500),
+                 log.npp = c(20, 200000),
+                 log.sst = c(12,35)) %>%
+  map(log)
+
+# Define 1D mesh per covariate
+  mesh.list <- vector("list", length(covars))
+  for (i in 1:length(covars)) {
+    mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                       length.out = 5),  #locations of knots for splines
+                                   degree = 2,  #B-spline basis degree
+                                   boundary = 'free')
+  }
+  
+  
+### Calculate Matern covariance matrix for SPDE (using PC priors) ###
+  spde.list <- vector("list", length(covars))
+  
+  # Create separate matrix per covariate
+  for (i in 1:length(covars)) {
+    spde.list[[i]] <-  inla.spde2.pcmatern(mesh.list[[i]],
+                                           alpha = 2,
+                                           prior.range = c(pcprior[[i]][1], 0.05),
+                                           prior.sigma = c(pcprior[[i]][2], 0.05))
+  }
+
+  
+### Define individual-level GP slopes ###
+  A.list.id <- vector("list", length(covars))
+  index.list.id <- vector("list", length(covars))
+
+  #one matrix for model estimation and another for generating predictions for plotting
+  for (i in 1:length(covars)) { 
+    # Define A matrix
+    A.list.id[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                       loc = rsf.pts_filt[[covars[[i]]]],
+                                       group = rsf.pts_filt$id1,
+                                       n.group = ngroup
+                                       )
+    # Define index
+    index.list.id[[i]] <-  inla.spde.make.index(paste(covars[i], "id", sep = "."),
+                                                n.spde = spde.list[[i]]$n.spde,
+                                                n.group = ngroup)
+  }
+  
+  
+### Define population-level GP slopes ###
+  
+  # Define A matrix and index
+    A.list.pop <- vector("list", length(covars))
+    index.list.pop <- vector("list", length(covars))
+
+    for (i in 1:length(covars)) {
+      A.list.pop[[i]] <- inla.spde.make.A(mesh.list[[i]],
+                                          loc = rsf.pts_filt[[covars[[i]]]]
+      )
+      index.list.pop[[i]] <-  inla.spde.make.index(paste(covars[i], "pop", sep = "."),
+                                                   n.spde = spde.list[[i]]$n.spde)
+    }
+
+
+### Create INLA stack of A matrices and other data ###
+    
+    # Define weighted response variable
+    y <- rsf.pts_filt$obs / rsf.pts_filt$wts
+    
+    # Create stack
+    st.est <- inla.stack(data = list(y = y),  #response variable
+                         A = c(A.list.pop,  #A matrix for pop-level effects
+                               A.list.id,  #A matrix for ind-level effects
+                               1, 1),  #vector of ones for pop- and ind-level intercept
+                         
+                         # Indices corresponding w/ each of the A matrices
+                         effects = c(index.list.pop,
+                                     index.list.id,
+                                     list(Intercept = rep(1, nrow(rsf.pts_filt)),
+                                          id1 = rsf.pts_filt$id1)
+                                     )
+                         )
+  
+```
+
+
+## Fit the correlative SDM via HGPR
+
+With the data now formatted for analysis by `INLA`, we can finally fit the model.
+
+```{r}
+#| label: fit-corr-hgpr
+#| eval: false
+
+# Define formula for model
+formula <-  y ~ -1 + Intercept +  #fixed terms
+        # pop-level terms
+        f(log.bathym.pop, model=spde.list[[1]]) +
+        f(log.npp.pop, model=spde.list[[2]]) +
+        f(log.sst.pop, model=spde.list[[3]]) +
+        # id-level terms
+        f(log.bathym.id, model=spde.list[[1]], group = log.bathym.id.group,
+          control.group = list(model = 'iid')) +
+        f(log.npp.id, model=spde.list[[2]], group = log.npp.id.group,
+          control.group = list(model = 'iid')) +
+        f(log.sst.id, model=spde.list[[3]], group = log.sst.id.group,
+          control.group = list(model = 'iid')) +
+        f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE)))
+
+
+## Run model
+set.seed(2023)
+hgpr.fit_corr <- inla(formula, data = inla.stack.data(st.est), family = "Poisson",
+                   control.predictor = list(A = inla.stack.A(st.est), compute = FALSE),
+                   weights = rsf.pts_filt$wts
+                 )
+```
+
+
+# Inspect model results
+
+Now that we've fitted the model, let's take a look at the marginal effects for each covariate, as well as predictions mapped in space for each of the study regions. Marginal effects are plotted where all coefficients besides those of the variable of interest are set to 0, focusing on the population-level effects estimated by the correlative HGPR SDM.
+
+```{r}
+#| label: load-hgpr-fit
+#| echo: false
+
+# Load previously fitted model (to save time)
+hgpr.fit_corr <- readRDS("../Data_products/HGPR_corr_model_fit.rds")
+```
+
+
+```{r}
+#| label: calc-marg-eff
+
+###############################################
+### Population-level marginal effects plots ###
+###############################################
+
+### Predict responses for each covariate ###
+
+# Define 1D mesh per covar
+mesh.list <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  mesh.list[[i]] <- inla.mesh.1d(seq(mesh.seq[[i]][1], mesh.seq[[i]][2],
+                                     length.out = 5),
+                                 degree = 2,
+                                 boundary = 'free')
+}
+
+# Generate matrices for sequences of covariate ranges
+A.me.pop <- vector("list", length(covars))
+newdat.list <- map(mesh.seq, function(x) {seq(from = x[1], to = x[2], length.out = 500)})
+for (i in 1:length(covars)) { #make marginal predictions to viz response by covar
+  A.me.pop[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = newdat.list[[covars[[i]]]])
+}
+
+
+# Store resulting GP coeffs per covar into a list
+pred.coeffs.pop_corr <- hgpr.fit_corr$summary.random[1:3] %>%
+  map(~pull(.x, mean))
+
+# Make predictions via linear algebra
+pred.vals.pop_corr <- A.me.pop %>%
+  map2(.x = ., .y = pred.coeffs.pop_corr,
+       ~{.x %*% .y %>%
+           as.vector() %>%
+           data.frame(mean = .)
+       }
+  ) %>%
+  set_names(covars) %>%
+  bind_rows(.id = 'covar') %>%
+  mutate(x = unlist(newdat.list),
+         method = "corr") %>%
+  mutate(across(mean:x, exp))  #convert from link to response scale
+
+
+
+
+```
+
+
+```{r}
+#| label: fig-marg-eff
+#| fig-cap:
+#|   - "Marginal effect of depth (m)."
+#|   - "Marginal effect of net primary productivity (NPP; g C m^-2^d^-1^)."
+#|   - "Marginal effect of sea surface temperature (SST; °C)."
+
+# Depth
+ggplot() +
+  geom_line(data = pred.vals.pop_corr %>%
+              filter(covar == "log.bathym"),
+            aes(x = x, y = mean), linewidth = 1, lineend = "round") +
+  theme_bw(base_size = 18) +
+  lims(x = c(0, 300)) +
+  labs(x = "Depth (m)", y = "Relative Intensity of Use") +
+  theme(panel.grid = element_blank())
+
+# NPP
+ggplot() +
+  geom_line(data = pred.vals.pop_corr %>%
+              filter(covar == "log.npp"),
+            aes(x = x / 1000, y = mean), linewidth = 1, lineend = "round") +
+  theme_bw(base_size = 18) +
+  labs(x = expression(paste("NPP (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
+  theme(panel.grid = element_blank())
+
+# SST
+ggplot() +
+  geom_line(data = pred.vals.pop_corr %>%
+              filter(covar == "log.sst"),
+            aes(x = x, y = mean), linewidth = 1.5, lineend = "round") +
+  theme_bw(base_size = 18) +
+  labs(x = "SST (°C)", y = "Relative Intensity of Use") +
+  theme(panel.grid = element_blank())
+```
+
+
+Based on these plots, it appears that green turtles exhibit a strong preference for very shallow depths (approx 1-8 m), a greater preference for lower NPP over high NPP, and a weak effect for increasing preference with increasing SST.
+
+We can now also visualize these predictions in geographic space. Below is a map that show predictions in the Gulf of Mexico (training region). Similar to the marginal effects plots, it is apparent that this mapped prediction is heavily affected by the strong selection of green turtles for shallow depths.
+
+```{r}
+#| label: load-covars
+
+#####################################
+### Load environmental covariates ###
+#####################################
+
+## Load in environ rasters
+files <- list.files(path = '../Environ_data', pattern = "GoM", full.names = TRUE)
+files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
+
+# Merge into list; each element is a different covariate
+cov_list <- sapply(files, rast)
+names(cov_list) <- c('bathym', 'npp', 'sst')
+
+# Change names for dynamic layers to match YYYY-MM-01 format
+for (var in c('npp', 'sst')) {
+  names(cov_list[[var]]) <- gsub(names(cov_list[[var]]), pattern = "-..$",
+                                 replacement = "-01")
+}
+
+
+## Set all positive bathymetric values (i.e., elevation) as NA
+cov_list[["bathym"]][cov_list[["bathym"]] > 0] <- NA
+
+
+## Transform raster layers to match coarsest spatial resolution (i.e., NPP)
+for (var in c("bathym", "sst")) {
+  cov_list[[var]] <- terra::resample(cov_list[[var]], cov_list$npp, method = "average")
+}
+
+## Deal w/ bathym depth exactly equal to 0 (since a problem on log scale)
+cov_list[["bathym"]][cov_list[["bathym"]] > -1e-9] <- NA
+
+
+## Transform CRS to match tracks
+cov_list <- map(cov_list, terra::project, 'EPSG:3395')
+
+```
+
+
+```{r}
+#| label: fig-pred-map
+#| fig-cap: "Mapped predictions from correlative HGPR SDM for September 2020 in the Gulf of Mexico. Green points denote observations from turtles tracked during this month."
+
+####################################
+### Generate predictive surfaces ###
+####################################
+
+# Create data.frame of covariate values for September 2020
+rast.sep.20 <- data.frame(log.bathym = log(abs(terra::values(cov_list$bathym))) %>%
+                            as.vector(),
+                          log.npp = log(terra::values(cov_list$npp$`2020-09-01`)) %>%
+                            as.vector(),
+                          log.sst = log(terra::values(cov_list$sst$`2020-09-01`)) %>%
+                            as.vector()) %>%
+  mutate(row_id = 1:nrow(.)) %>%  #variable for row-indexing
+  drop_na(log.bathym, log.npp, log.sst)  #remove any rows w/ 1 or more NAs
+
+
+# Generate matrices for covariate raster data (for prediction)
+A.pop.sep.20 <- vector("list", length(covars))
+for (i in 1:length(covars)) {
+  A.pop.sep.20[[i]] <- inla.spde.make.A(mesh.list[[i]], loc = rast.sep.20[[covars[[i]]]])
+}
+
+# Store resulting GP coeffs per covar into a list
+pred.coeffs <- hgpr.fit_corr$summary.random[1:3] %>%
+  map(~pull(.x, mean))
+
+# Make predictions via linear algebra
+pred.sep.20 <- A.pop.sep.20 %>%
+  map2(.x = ., .y = pred.coeffs,
+       ~{.x %*% .y %>%
+           as.vector()}
+      ) %>%
+  bind_cols() %>%
+  rowSums()  #sum up all predictions across covars
+
+
+# Define dummy raster for storing predictions
+rast.pred <- cov_list$bathym
+terra::values(rast.pred) <- NA  # initially store all NAs for locs w/o predictions
+terra::values(rast.pred)[rast.sep.20$row_id] <- pred.sep.20
+
+# Reformat as data.frame for plotting
+rast.pred.df <- as.data.frame(rast.pred, xy = TRUE)
+names(rast.pred.df)[3] <- "pred"
+bbox <- ext(rast.pred)
+
+
+# Generate predictive surface for GP at pop-level
+tmp.pts <- rsf.pts_filt %>%
+  filter(obs == 1, month.year == "2020-09-01")
+
+ggplot() +
+  geom_raster(data = rast.pred.df, aes(x, y, fill = pred)) +
+  scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
+  geom_sf(data = gom.sf) +
+  geom_point(data = tmp.pts, aes(x, y), fill = "chartreuse", alpha = 0.8, size = 2,
+             shape = 21, stroke = 0.25) +
+  labs(x = "", y = "") +
+  theme_void() +
+  coord_sf(xlim = c(bbox[1], bbox[2]),
+           ylim = c(bbox[3], bbox[4]),
+           expand = FALSE)
+
+```
+
+
+# Final remarks
+
+The above code provides a demonstration of how to fit an RSF using a correlative HGPR model in `INLA`. Although our study did not find the inclusion of life stage-specific effects or informative priors for green turtle response to SST to improve model transferability, we recommend that other studies consider these factors (and potentially others) when fitting SDMs to account for known biological mechanisms. R code for validating the models using the Boyce Index, assessing environmental similarity between study regions, and fitting each of the models described in the manuscript can be found in the [Zenodo repository](https://doi.org/10.5281/zenodo.8190082) for this study.
