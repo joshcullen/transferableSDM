@@ -14,6 +14,7 @@ library(future)
 library(furrr)
 library(patchwork)
 library(MetBrewer)
+library(ggh4x)
 
 source('Scripts/helper functions.R')
 
@@ -136,9 +137,9 @@ cov_list_qa <- map(cov_list_qa, terra::project, 'EPSG:3395')
 
 
 
-#############################
-### Validate HGPR w/o age ###
-#############################
+#########################################
+### Validate correlative HGPR w/o age ###
+#########################################
 
 # Define vector of covar names
 covars <- c("log.bathym","log.npp","log.sst")
@@ -153,8 +154,11 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
 
 
 ### Brazil ###
+
+# Create vector storing all month-year values
 my.ind.br <- names(cov_list_br$npp)
 
+# Make predictions from model
 tic()
 br.rast.no_age <- predict.hgpr(cov_list = cov_list_br, model_fit = hgpr.fit, covars = covars,
                                    mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE,
@@ -167,21 +171,27 @@ toc()  #took 20 sec to run
 br.rast.no_age2 <- normalize(br.rast.no_age)
 
 
-# Assess model performance via Continuous Boyce Index
-boyce.br.full.no_age <- vector("list", nlyr(br.rast.no_age2))
-boyce.br.sub.no_age <- vector("list", nlyr(br.rast.no_age2))
+## Assess model performance via Continuous Boyce Index ##
+
+boyce.br.full.no_age <- vector("list", nlyr(br.rast.no_age2))  #all locations from Brazil
+boyce.br.sub.no_age <- vector("list", nlyr(br.rast.no_age2))  #subset from Brazil mainland
+
+# Calculate by month.year
 tic()
 for (i in 1:nlyr(br.rast.no_age2)) {
 
-  # Subset tracks by month.year
+  # Full set of Brazil locations
   obs_full <- dat.br %>%
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
+  # Subset of Brazil locations from mainland
   obs_sub <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3800000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%  #filter out locations east of this longitude
     dplyr::select(x, y)
 
+
+  # Calculate Boyce Index per dataset
   boyce.br.full.no_age[[i]] <- boyce(fit = br.rast.no_age2[[i]],
                                    obs = obs_full,
                                    nbins = 10,
@@ -202,53 +212,7 @@ skrrrahh("khaled3")
 toc()  #took 2 sec
 
 
-
-# perc.use.br.full.no_age <- boyce.br.full.no_age %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.full.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #1 bins; 5
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.full.no_age %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
-#
-#
-#
-# perc.use.br.sub.no_age <- boyce.br.sub.no_age %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.sub.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #1.5 bins; 2.2
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.sub.no_age %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   ylim(0,1) +
-#   theme_bw()
-
-
+# Summarize results per dataset
 boyce.br.full.no_age2 <- boyce.br.full.no_age %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -270,8 +234,11 @@ boyce.br.sub.no_age2 <- boyce.br.sub.no_age %>%
 
 
 ### Qatar ###
+
+# Create vector storing all month-year values
 my.ind.qa <- names(cov_list_qa$npp)
 
+# Make predictions from model
 tic()
 qa.rast.no_age <- predict.hgpr(cov_list = cov_list_qa, model_fit = hgpr.fit, covars = covars,
                                mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = FALSE,
@@ -284,8 +251,10 @@ toc()  #took 1 sec to run
 qa.rast.no_age2 <- normalize(qa.rast.no_age)
 
 
-# Assess model performance via Continuous Boyce Index
+## Assess model performance via Continuous Boyce Index ##
 boyce.qa.no_age <- vector("list", nlyr(qa.rast.no_age2))
+
+# Make spatial predictions per month.year
 tic()
 for (i in 1:nlyr(qa.rast.no_age2)) {
 
@@ -306,30 +275,7 @@ skrrrahh("khaled3")
 toc()  #took 1 sec
 
 
-
-# perc.use.qa.no_age <- boyce.qa.no_age %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.qa.no_age, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.2 bins; 2.8
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.qa.no_age %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
-
-
-
+# Summarize results
 boyce.qa.no_age2 <- boyce.qa.no_age %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -344,9 +290,9 @@ boyce.qa.no_age2 <- boyce.qa.no_age %>%
 
 
 
-############################
-### Validate HGPR w/ age ###
-############################
+########################################
+### Validate correlative HGPR w/ age ###
+########################################
 
 # Define vector of covar names
 covars <- c("log.bathym","log.npp","log.sst")
@@ -362,6 +308,7 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
 
 ### Brazil ###
 
+# Make predictions from model
 tic()
 br.rast.age <- predict.hgpr(cov_list = cov_list_br, model_fit = hgpr.age, covars = covars,
                                mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = TRUE,
@@ -374,26 +321,31 @@ toc()  #took 30 sec to run
 br.rast.age2 <- map(br.rast.age, normalize)
 
 
-# Assess model performance via Continuous Boyce Index
+## Assess model performance via Continuous Boyce Index ##
 boyce.br.full.age <- boyce.br.sub.age <- vector("list", length(br.rast.age2)) %>%
   set_names(names(br.rast.age2))
 
+# Create vectors storing all month-year values and life stages
 my.ind.br <- names(cov_list_br$npp)
 age.class <- c("Juv","Adult")
 
+# Calculate by month.year
 tic()
 for (j in 1:length(br.rast.age2)) {
   for (i in 1:nlyr(br.rast.age2[[j]])) {
 
-    # Subset tracks by month.year
+    # Full set of Brazil locations
     obs_full <- dat.br %>%
       filter(month.year == my.ind.br[i], Age == age.class[j]) %>%
       dplyr::select(x, y)
 
+    # Subset of Brazil locations from mainland
     obs_sub <- dat.br %>%
-      filter(month.year == my.ind.br[i], x < -3800000, Age == age.class[j]) %>%
+      filter(month.year == my.ind.br[i], x < -3800000, Age == age.class[j]) %>%  #filter out locations east of this longitude
       dplyr::select(x, y)
 
+
+    # Calculate Boyce Index per dataset
     boyce.br.full.age[[j]][[i]] <- boyce(fit = br.rast.age2[[j]][[i]],
                                      obs = obs_full,
                                      nbins = 10,
@@ -415,75 +367,7 @@ skrrrahh("khaled3")
 toc()  #took 5 sec
 
 
-
-# perc.use.br.full.age <- boyce.br.full.age %>%
-#   map_depth(., 2, ~{.x %>%
-#       pluck("perc.use") %>%
-#       set_names(1:length(.))}
-#   ) %>%
-#   map_depth(., 1, ~{.x %>%
-#       bind_rows() %>%
-#       janitor::remove_empty(which = "rows") %>%
-#       dplyr::select(10:1) %>%
-#       apply(., 1, function(x) cumsum(x)) %>%
-#       # t() %>%
-#       data.frame()}
-#   )
-#
-# # check fewest bins that contain >=90% of all obs
-# map(perc.use.br.full.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-#     mean()}
-# )  #2.5 for Juv; 3.5 for Adult; 3.7, 6.5
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.full.age %>%
-#   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
-#   bind_rows(.id = "Age") %>%
-#   mutate(Age = factor(Age, levels = age.class)) %>%
-#   pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw() +
-#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_all") +
-#   facet_wrap(~Age)
-#
-#
-#
-# perc.use.br.sub.age <- boyce.br.sub.age %>%
-#   map_depth(., 2, ~{.x %>%
-#       pluck("perc.use") %>%
-#       set_names(1:length(.))}
-#   ) %>%
-#   map_depth(., 1, ~{.x %>%
-#       bind_rows() %>%
-#       janitor::remove_empty(which = "rows") %>%
-#       dplyr::select(10:1) %>%
-#       apply(., 1, function(x) cumsum(x)) %>%
-#       # t() %>%
-#       data.frame()}
-#   )
-#
-# # check fewest bins that contain >=90% of all obs
-# map(perc.use.br.sub.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-#     mean()}
-# )  #2.5 for Juv; 2.5 for Adult; 3.7, 1
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.sub.age %>%
-#   map(~mutate(.x, bin = factor(10:1, levels = 10:1))) %>%
-#   bind_rows(.id = "Age") %>%
-#   mutate(Age = factor(Age, levels = age.class)) %>%
-#   pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw() +
-#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Brazil_sub") +
-#   facet_wrap(~Age)
-
-
-
+# Summarize results per dataset
 boyce.br.full.age2 <- boyce.br.full.age %>%
   map_depth(., 2, ~{.x %>%
       pluck("cor")}
@@ -514,6 +398,7 @@ boyce.br.sub.age2 <- boyce.br.sub.age %>%
 
 ### Qatar ###
 
+# Make predictions from model
 tic()
 qa.rast.age <- predict.hgpr(cov_list = cov_list_qa, model_fit = hgpr.age, covars = covars,
                             mesh.seq = mesh.seq, nbasis = 5, degree = 2, age.class = TRUE,
@@ -526,12 +411,14 @@ toc()  #took 1 sec to run
 qa.rast.age2 <- map(qa.rast.age, normalize)
 
 
-# Assess model performance via Continuous Boyce Index
+## Assess model performance via Continuous Boyce Index ##
 boyce.qa.age <- vector("list", length(qa.rast.age2)) %>%
   set_names(names(qa.rast.age2))
 
+# Create vector storing all month-year values
 my.ind.qa <- names(cov_list_qa$npp)
 
+# Calculate by month.year
 tic()
 for (j in 1:length(qa.rast.age2)) {
   for (i in 1:nlyr(qa.rast.age2[[j]])) {
@@ -541,6 +428,8 @@ for (j in 1:length(qa.rast.age2)) {
       filter(month.year == my.ind.qa[i], Age == age.class[j]) %>%
       dplyr::select(x, y)
 
+
+    # Calculate Boyce Index
     boyce.qa.age[[j]][[i]] <- boyce(fit = qa.rast.age2[[j]][[i]],
                                 obs = obs,
                                 nbins = 10,
@@ -554,41 +443,7 @@ skrrrahh("khaled3")
 toc()  #took 1 sec
 
 
-
-# perc.use.qa.age <- boyce.qa.age %>%
-#   map_depth(., 2, ~{.x %>%
-#       pluck("perc.use") %>%
-#       set_names(1:length(.))}
-#   ) %>%
-#   map_depth(., 1, ~{.x %>%
-#       bind_rows() %>%
-#       janitor::remove_empty(which = "rows") %>%
-#       dplyr::select(10:1) %>%
-#       apply(., 1, function(x) cumsum(x)) %>%
-#       data.frame()}
-#   )
-#
-# # check fewest bins that contain >=90% of all obs
-# map(perc.use.qa.age, ~{apply(.x, 2, function(x) which(x >= 0.9)[1]) %>%
-#     mean()}
-# )  #4.75 bins; no adults, so remove; 3.3
-#
-# perc.use.qa.age <- perc.use.qa.age$Juv
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.qa.age %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1),
-#          Age = factor("Juv", levels = age.class)) %>%
-#   pivot_longer(cols = -c(Age, bin), names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw() +
-#   labs(x = "Bin", y = "Cumulative Percentage of Total Observations", title = "Qatar") +
-#   facet_wrap(~Age)
-
-
+# Summarize results
 boyce.qa.age2 <- boyce.qa.age %>%
   map_depth(., 2, ~{.x %>%
       pluck("cor")}
@@ -612,10 +467,12 @@ boyce.qa.age2 <- boyce.qa.age %>%
 ### Summarize Validation Results ###
 ####################################
 
+# Merge all results together
 boyce.fit <- rbind(boyce.br.full.no_age2, boyce.br.sub.no_age2, boyce.qa.no_age2,
                    boyce.br.full.age2, boyce.br.sub.age2, boyce.qa.age2) %>%
   mutate(across(Age.Class, \(x) factor(x, levels = c(age.class, "Pop"))))
 
+# Calculate avg Boyce Index for Method x Region
 boyce.mean <- boyce.fit %>%
   group_by(Method, Region) %>%
   summarize(mean = mean(cor, na.rm = TRUE)) %>%
@@ -681,6 +538,7 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
 
 ### Create example prediction maps per method ###
 
+# Define spatial extent for Brazil and Qatar
 bbox.br <- ext(br.rast.no_age$`2016-05-01`)
 bbox.qa <- ext(qa.rast.no_age$`2014-02-01`)
 
@@ -802,10 +660,6 @@ p.pop.br + p.juv.br + p.adult.br + p.pop.qa + p.juv.qa + guide_area() +
 
 
 
-
-
-
-
 ###############################################################
 ### Create composite plot of marginal effects across models ###
 ###############################################################
@@ -827,10 +681,6 @@ gp_vars <- data.frame(log.bathym = seq(mesh.seq$log.bathym[1], mesh.seq$log.bath
                    log.npp = seq(mesh.seq$log.npp[1], mesh.seq$log.npp[2], length.out = 500),
                    log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500))
 
-# vars2 <- data.frame(Intercept = 1,
-#                     log.sst = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500),
-#                     log.sst2 = seq(mesh.seq$log.sst[1], mesh.seq$log.sst[2], length.out = 500) ^ 2)
-
 
 # Generate A matrices for prediction
 A.mat <- vector("list", length(covars))
@@ -847,7 +697,7 @@ A.mat2 <- rep(A.mat, each = 2)
 
 
 
-### Predict across models w/ different scales ###
+### Predict across models ###
 
 # Define coeff values from HGPR
 coeff1 <- hgpr.age$summary.random[1:3] %>%
@@ -857,9 +707,6 @@ coeff1 <- hgpr.age$summary.random[1:3] %>%
   flatten() %>%
   map(., pull, mean) %>%
   set_names(paste(rep(covars, each = 2), rep(1:2, length(covars)), sep = "_"))
-
-# Define coeff values of fixed terms from HGPR
-# coeff2 <- hgpr.age$summary.fixed$mean
 
 
 # Make predictions via linear algebra
@@ -883,22 +730,10 @@ marg.eff <- A.mat2 %>%
       filter(!(covar == "depth" & x > 300))  #to constrain plot to only show depth up to 300 m
     })
 
-# Make predictions using linear terms
-# hgpr.pred2 <- as.matrix(vars2) %*% coeff2 %>%
-#   exp() %>%
-#   as.vector()
-
-
-# Add linear SST predictions to GP SST predictions
-# for (i in seq_along(marg.eff)) {
-#   marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean <- marg.eff[[i]][marg.eff[[i]]$covar == "sst",]$mean +
-#     hgpr.pred2
-# }
 
 
 
-
-
+# Merge predictions for both life stages
 marg.eff2 <- bind_rows(marg.eff, .id = "Age Class") %>%
   mutate(x = case_when(covar == "npp" ~ x / 1000,
                        TRUE ~ x),
@@ -923,7 +758,6 @@ ggplot() +
         axis.title = element_text(face = "bold"),
         panel.grid = element_blank()
   ) +
-  # facet_wrap(`Age Class` ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
   ggh4x::facet_grid2(`Age Class` ~ covar,
                      independent = "y",
                      scales = "free",
@@ -933,6 +767,9 @@ ggplot() +
 
 
 
+##################################
 ### Export Boyce Index results ###
+##################################
 
-# write_csv(boyce.fit, "Data_products/boyce_age_results.csv")
+write_csv(boyce.fit, "Data_products/boyce_age_results.csv")
+

@@ -1,20 +1,24 @@
 
-### Fit CTCRW to turtle data via {foieGras} ###
+### Fit CTCRW SSM to turtle data via {aniMotum} ###
 
 library(tidyverse)
 library(lubridate)
-library(aniMotum)  #v1.1
-library(sf)  #v1.0.9
+library(aniMotum)
+library(sf)
 library(sfarrow)
 library(tictoc)
 library(plotly)
 library(trelliscopejs)
 library(patchwork)
+library(ptolemy)
+library(fuzzyjoin)
 
 source('Scripts/helper functions.R')
 
 
-#### Load data ####
+#################
+### Load data ###
+#################
 
 dat <- read_csv("Processed_data/Prefiltered_Cm_Tracks.csv")
 
@@ -22,7 +26,9 @@ glimpse(dat)
 summary(dat)
 
 
-#### Wrangle data for analysis using {foieGras} ####
+##################################################
+### Wrangle data for analysis using {aniMotum} ###
+##################################################
 
 # Convert all 'Quality' values to "G" for FastGPS data and 'Date' to datetime format
 dat <- dat %>%
@@ -41,11 +47,11 @@ glimpse(dat2)
 
 
 
-## Define bouts per PTT where gap > 3 days (for splitting fitted tracks)
+# Define bouts per PTT where gap > 3 days (for splitting fitted tracks)
 int_tbl <- dat2 %>%
   rename(datetime = date) %>%
   split(.$id) %>%
-  purrr::map(., ~mutate(.x, bout = crawlUtils::cu_add_bouts(x = ., gap = 3, time_unit = "days") %>%
+  purrr::map(., ~mutate(.x, bout = cu_add_gaps(x = ., gap = 3, time_unit = "days") %>%
                           pull(bout_id))) %>%
   purrr::map(., function (x)
   {
@@ -56,9 +62,11 @@ int_tbl <- dat2 %>%
   })
 
 
+##################################################################
+### Inspect time steps of transmissions for making predictions ###
+##################################################################
 
-#### Inspect time steps of transmissions for making predictions ####
-
+# Calculate time step by ID
 tmp <- dat2 %>%
   split(.$id) %>%
   purrr::map(., ~mutate(.x,
@@ -90,14 +98,12 @@ tmp %>%
 #### Run SSM ####
 #################
 
-#### Account for location error at observed irregular time interval ####
-
 # Estimate 'true' locations regularized at 4 hr time step
 set.seed(2022)
 tic()
 fit_crw <- fit_ssm(dat2, vmax = 3, model = "crw", time.step = 4,
                           control = ssm_control(verbose = 1))
-toc()  #took 5 min
+toc()  #took 2.5 min
 
 print(fit_crw, n = nrow(fit_crw))  #all indiv. models converged
 summary(fit_crw)
@@ -108,9 +114,9 @@ plot(fit_crw, what = "predicted", type = 2, alpha = 0.1, ask = TRUE)
 
 
 
-################################################################
-### Filter out long time gaps and re-route paths around land ###
-################################################################
+#############################
+### Process fitted tracks ###
+#############################
 
 # Grab results and create data.frame
 res_crw <- grab(fit_crw, what = "predicted")
@@ -122,10 +128,12 @@ gom.tracks <- res_crw %>%
   filter(id %in% unique(dat[dat$Region == 'GoM',]$Ptt)) %>%
   st_as_sf(., coords = c('lon','lat'), crs = 4326) %>%
   st_transform(3395)
+
 br.tracks <- res_crw %>%
   filter(id %in% unique(dat[dat$Region == 'Brazil',]$Ptt)) %>%
   st_as_sf(., coords = c('lon','lat'), crs = 4326) %>%
   st_transform(3395)
+
 qa.tracks <- res_crw %>%
   filter(id %in% unique(dat[dat$Region == 'Qatar',]$Ptt)) %>%
   st_as_sf(., coords = c('lon','lat'), crs = 4326) %>%
@@ -147,7 +155,7 @@ toc()  #takes 1 min to run
 
 
 
-# Filter by the defined bout periods
+# Defined bout periods per observation
 gom.tracks2 <- gom.tracks %>%
   split(.$id) %>%
   map2(.,
@@ -180,7 +188,7 @@ qa.tracks2 <- qa.tracks %>%
 
 
 
-# Change from list of sf objects back to single data.frame
+# Remove location estimates from large gaps (> 3 days) and convert to DF from sf object
 gom.tracks3 <- gom.tracks2 %>%
   drop_na(bout) %>%  #remove predictions that fall w/in 3-day time gaps
   mutate(x = st_coordinates(.)[,1],
@@ -191,7 +199,7 @@ gom.tracks3 <- gom.tracks2 %>%
   bind_rows()
 
 br.tracks3 <- br.tracks2 %>%
-  drop_na(bout) %>%
+  drop_na(bout) %>%  #remove predictions that fall w/in 3-day time gaps
   mutate(x = st_coordinates(.)[,1],
          y = st_coordinates(.)[,2]) %>%
   st_drop_geometry() %>%
@@ -200,7 +208,7 @@ br.tracks3 <- br.tracks2 %>%
   bind_rows()
 
 qa.tracks3 <- qa.tracks2 %>%
-  drop_na(bout) %>%
+  drop_na(bout) %>%  #remove predictions that fall w/in 3-day time gaps
   mutate(x = st_coordinates(.)[,1],
          y = st_coordinates(.)[,2]) %>%
   st_drop_geometry() %>%
@@ -209,11 +217,11 @@ qa.tracks3 <- qa.tracks2 %>%
   bind_rows()
 
 
+
+
 #############################
 ### Inspect mapped tracks ###
 #############################
-
-
 
 # GoM
 ggplotly(
@@ -275,8 +283,10 @@ dat3 <- rbind(gom.tracks3, br.tracks3, qa.tracks3) %>%
 
 
 p.gom <- ggplot() +
-  geom_sf(data = gom.sf) +
-  geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
+  geom_sf(data = gom.sf |>
+            st_transform(4326)) +
+  geom_sf(data = dat3 |>
+            st_transform(4326), aes(color = Age), size = 0.5, alpha = 0.5) +
   scale_color_brewer("Life Stage", palette = "Dark2") +
   annotate(geom = "text", label = "Gulf of\nMexico", fontface = "italic",
            size = 8, x = -92, y = 25) +
@@ -295,8 +305,10 @@ p.gom <- ggplot() +
 
 
 p.br <- ggplot() +
-  geom_sf(data = br.sf) +
-  geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
+  geom_sf(data = br.sf |>
+            st_transform(4326)) +
+  geom_sf(data = dat3 |>
+            st_transform(4326), aes(color = Age), size = 0.5, alpha = 0.5) +
   scale_color_brewer(palette = "Dark2") +
   annotate(geom = "text", label = "Brazil", fontface = "italic", size = 8, x = -43, y = -8) +
   geom_text(aes(x = -47, y = -2.5, label = "(b)"), size = 10, fontface = "bold") +
@@ -313,8 +325,10 @@ p.br <- ggplot() +
 
 
 p.qa <- ggplot() +
-  geom_sf(data = qa.sf) +
-  geom_sf(data = dat3, aes(color = Age), size = 0.5, alpha = 0.5) +
+  geom_sf(data = qa.sf |>
+            st_transform(4326)) +
+  geom_sf(data = dat3 |>
+            st_transform(4326), aes(color = Age), size = 0.5, alpha = 0.5) +
   scale_color_brewer(palette = "Dark2") +
   annotate(geom = "text", label = "Qatar", fontface = "italic", size = 8,
            x = 51.0, y = 25.3) +
@@ -333,18 +347,22 @@ p.qa <- ggplot() +
 
 p.gom / (p.br + p.qa)
 
-# ggsave("Tables_Figs/Figure S1.png", width = 5, height = 7, units = "in", dpi = 400)
+ggsave("Tables_Figs/Figure S1.png", width = 5, height = 7, units = "in", dpi = 400)
 
 
 
-### Export fitted tracks ###
 
-# write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
-# write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
-# write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+###############################################
+### Export fitted tracks and spatial layers ###
+###############################################
+
+# tracks
+write.csv(gom.tracks3, "Processed_data/Processed_GoM_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+write.csv(br.tracks3, "Processed_data/Processed_Brazil_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
+write.csv(qa.tracks3, "Processed_data/Processed_Qatar_Cm_Tracks_SSM_4hr_aniMotum.csv", row.names = FALSE)
 
 
-## Write files for coastline spatial layers
-# st_write_parquet(gom.sf, 'Environ_data/GoM_land.parquet')
-# st_write_parquet(br.sf, 'Environ_data/Brazil_land.parquet')
-# st_write_parquet(qa.sf, 'Environ_data/Qatar_land.parquet')
+# spatial layers
+st_write_parquet(gom.sf, 'Environ_data/GoM_land.parquet')
+st_write_parquet(br.sf, 'Environ_data/Brazil_land.parquet')
+st_write_parquet(qa.sf, 'Environ_data/Qatar_land.parquet')

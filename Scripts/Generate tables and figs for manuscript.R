@@ -11,11 +11,13 @@ library(patchwork)
 ### Load data ###
 #################
 
+# Data from tracks, as well as metadata per turtle
 dat <- read_csv("Raw_data/Master Sat Tag Dataset.csv")
 dat.meta <- read_csv("Raw_data/Turtle tag metadata.csv") %>%
   dplyr::select(Ptt, CCL_cm)
 
 
+# Boyce Index results per model comparison
 boyce.alg <- read_csv("Data_products/boyce_alg_results.csv")
 boyce.scale <- read_csv("Data_products/boyce_scale_results.csv") |>
   mutate(across(scale, \(x) factor(x, levels = c(5, 10, 20, 40))))

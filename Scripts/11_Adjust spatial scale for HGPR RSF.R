@@ -25,14 +25,13 @@ rsf.pts_10_5km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x.csv")
 rsf.pts_10_10km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_10km.csv")
 rsf.pts_10_20km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_20km.csv")
 rsf.pts_10_40km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_40km.csv")
-# rsf.pts_10_80km <- read_csv("Processed_data/GoM_Cm_RSFprep_10x_80km.csv")
+
 
 rsf.list <- list(
   sc.5 = rsf.pts_10_5km,
   sc.10 = rsf.pts_10_10km,
   sc.20 = rsf.pts_10_20km,
-  sc.40 = rsf.pts_10_40km#,
-  # sc.80 = rsf.pts_10_80km
+  sc.40 = rsf.pts_10_40km
 )
 
 gom.sf <- st_read_parquet("Environ_data/GoM_land.parquet")
@@ -42,9 +41,9 @@ summary(rsf.pts_10_5km)
 
 
 
-#####################
-### Fit HGLM RSFs ###
-#####################
+#################################
+### Fit correlative HGPR RSFs ###
+#################################
 
 # Remove rows w/ incomplete observations; log-transform covars
 rsf.list2 <- rsf.list %>%
@@ -73,16 +72,15 @@ rsf.list2 %>%
 Area.list <- list(sc.5 = 4759.836 ^ 2,
                   sc.10 = 9532.72 ^ 2,
                   sc.20 = 19065.44 ^ 2,
-                  sc.40 = 38130.88 ^ 2#,
-                  # sc.80 = 76261.76 ^ 2
+                  sc.40 = 38130.88 ^ 2
                   )
+
+# Calculate weights for pres and abs per spatial scale
 rsf.list2 <- rsf.list2 %>%
   map2(.x = ., .y = Area.list,
        ~{.x %>%
            mutate(wts = case_when(obs == 0 ~ .y / sum(obs == 0),
                                   obs == 1 ~ 1e-6))
-           # mutate(wts = case_when(obs == 0 ~ 5000,
-           #                        obs == 1 ~ 1))
          }
   )
 
@@ -92,55 +90,23 @@ rsf.list2 <- rsf.list2 %>%
 rsf.list2 <- rsf.list2 %>%
   map(.x = .,
        ~{.x %>%
-           mutate(id1 = as.integer(factor(id)),
-                  id2 = id1,
-                  id3 = id1,
-                  id4 = id1,
-                  id5 = id1,
-                  id6 = id1,
-                  id7 = id1) #%>%
-           # arrange(id1)
+           mutate(id1 = as.integer(factor(id)))
          }
   )
-
-# # create vector of ID values
-# id.vals <- unique(rsf.list2$sc.5$id1)
-#
-# RSF.formula <- obs/wts ~ log.bathym + I(log.bathym ^ 2) + log.npp + I(log.npp ^ 2) + log.sst + I(log.sst ^ 2) +
-#   f(id1, model = "iid", hyper = list(theta = list(initial = log(1e-6), fixed = TRUE))) +
-#   f(id2, log.bathym, values = id.vals, model = "iid",
-#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id3, I(log.bathym ^ 2), values = id.vals, model = "iid",
-#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id4, log.npp, values = id.vals, model = "iid",
-#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id5, I(log.npp ^ 2), values = id.vals, model = "iid",
-#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id6, log.sst, values = id.vals, model = "iid",
-#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05)))) +
-#   f(id7, I(log.sst ^ 2), values = id.vals, model = "iid",
-#     hyper = list(theta = list(fixed = FALSE, prior = "pc.prec", param = c(1,0.05))))
-
-
-# plan(multisession, workers = availableCores() - 2)
-# tic()
-# hglm.fit <- future_map(rsf.list2,
-#                        ~fit_hglm(data = .x),
-#                        .options = furrr_options(seed = TRUE))
-# toc()
-# plan(sequential)  #took 23 min to run
-
 
 # Specify model params, predictors, and data
 covars <- c('log.bathym','log.npp','log.sst')
 
-pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))  #stores rho_0 and sigma_0, respectively
+pcprior <- list(bathym = c(1,10), npp = c(1,10), sst = c(1,10))  #stores range and SD, respectively
 ngroup <- n_distinct(rsf.list2$sc.5$id1)
 mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
                  log.sst = c(12,35)) %>%
   map(log)
 
+
+
+### Run models ###
 
 hgpr.mod_5km <- fit_hgpr(data = rsf.list2$sc.5, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
                          nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto',
@@ -166,16 +132,7 @@ hgpr.mod_40km <- fit_hgpr(data = rsf.list2$sc.40, covars = covars, pcprior = pcp
 #took 1.25 min to run
 summary(hgpr.mod_40km)
 
-# hgpr.mod_80km <- fit_hgpr(data = rsf.list2$sc.80, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
-#                           nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'eb')
-# #took x min to run
-# summary(hgpr.mod_80km)
 
-
-# summary(hglm.fit$sc.5)
-# summary(hglm.fit$sc.10)
-# summary(hglm.fit$sc.20)
-# summary(hglm.fit$sc.40)
 
 
 # Store all model results in list
@@ -231,34 +188,16 @@ pred.vals.pop[[i]] <- A.me.pop %>%
   mutate(across(mean:x, exp))
 }
 
+# Convert from list to data.frame
 pred.vals.pop <- pred.vals.pop %>%
   bind_rows(.id = "scale") %>%
   mutate(across(scale, \(x) factor(x, levels = c('sc.5','sc.10','sc.20','sc.40'))))
 
 
-# # Make predictions of linear SST terms
-# sst.newdata <- data.frame(sst = newdat.list$log.sst,
-#                           sst.2 = newdat.list$log.sst ^ 2) %>%
-#   as.matrix()
-#
-# fixed.sst.pred <- vector("list", length = length(hgpr.fit)) %>%
-#   set_names(names(hgpr.fit))
-#
-# for (i in 1:length(fixed.sst.pred)) {
-#   fixed.sst.coeff <- hgpr.fit[[i]]$summary.fixed$mean[-1]
-#
-#   fixed.sst.pred[[i]] <- sst.newdata %*% fixed.sst.coeff %>%
-#     data.frame(pred = .) %>%
-#     mutate(sst = exp(sst.newdata[,1]))
-# }
-# fixed.sst.pred <- fixed.sst.pred %>%
-#   bind_rows(.id = "scale") %>%
-#   mutate(across(scale, factor, levels = c('sc.5','sc.10','sc.20','sc.40')))
 
 
 # Depth
 ggplot() +
-  # geom_ribbon(data = pred.vals[[1]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
   geom_line(data = pred.vals.pop %>%
               filter(covar == "log.bathym"), aes(x = x, y = mean), linewidth = 1.5) +
   theme_bw() +
@@ -270,11 +209,9 @@ ggplot() +
 
 # NPP
 ggplot() +
-  # geom_ribbon(data = pred.vals[[2]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
   geom_line(data = pred.vals.pop %>%
               filter(covar == "log.npp"), aes(x = x / 1000, y = mean), linewidth = 1.5) +
   theme_bw() +
-  # lims(x = c(0,300)) +
   labs(x = expression(paste("NPP (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 30),
         axis.text = element_text(size = 24)) +
@@ -282,7 +219,6 @@ ggplot() +
 
 # SST
 ggplot() +
-  # geom_ribbon(data = pred.vals[[3]], aes(x = x, ymin = lcb, ymax = ucb), alpha = 0.5) +
   geom_line(data = pred.vals.pop %>%
               filter(covar == "log.sst"), aes(x = x, y = mean), linewidth = 1.5) +
   theme_bw() +
@@ -290,14 +226,6 @@ ggplot() +
   theme(axis.title = element_text(size = 30),
         axis.text = element_text(size = 24)) +
   facet_wrap(~ scale, scales = "free")
-
-# ggplot() +
-#   geom_line(data = fixed.sst.pred, aes(x = sst, y = pred), linewidth = 1.5) +
-#   theme_bw() +
-#   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
-#   theme(axis.title = element_text(size = 30),
-#         axis.text = element_text(size = 24)) +
-#   facet_wrap(~ scale, scales = "free")
 
 
 
@@ -312,8 +240,6 @@ ggplot() +
 
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
-# files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -360,6 +286,7 @@ for (i in 1:length(cov_coarse_list)) {
 rast.pred <- vector("list", length = length(cov_coarse_list)) %>%
   set_names(names(cov_coarse_list))
 
+# Convert rasters to data.frame and then make spatial predictions
 for (i in 1:length(rast.pred)) {
   rast.sep.20 <- data.frame(log.bathym = log(abs(terra::values(cov_coarse_list[[i]]$bathym))) %>%
                               as.vector(),
@@ -397,6 +324,7 @@ for (i in 1:length(rast.pred)) {
   terra::values(rast.pred[[i]])[rast.sep.20$row_id] <- pred.sep.20
   }
 
+# Define spatial extent
 bbox <- ext(rast.pred[[1]])
 
 

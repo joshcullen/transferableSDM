@@ -38,8 +38,6 @@ summary(rsf.pts_10)
 
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
-# files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -76,10 +74,11 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 ### Adjust scale of environmental covariates ###
 ################################################
 
-scale.fact <- c(2, 4, 8, 16)
+scale.fact <- c(2, 4, 8)  #factor multiplied by ~5 km (10, 20, 40 km)
 cov_coarse_list <- vector("list", length(scale.fact))
-names(cov_coarse_list) <- c("sc.10", "sc.20", "sc.40", "sc.80")
+names(cov_coarse_list) <- c("sc.10", "sc.20", "sc.40")
 
+# Generate coarsened covariates and store in list
 for (i in 1:length(cov_coarse_list)) {
   cov_coarse_list[[i]] <- cov_list %>%
     map(., ~terra::aggregate(.x, fact = scale.fact[i], fun = mean, na.rm = TRUE))
@@ -90,7 +89,7 @@ for (i in 1:length(cov_coarse_list)) {
 sst.sc <- cov_coarse_list %>%
   map_depth(1, pluck, "sst") %>%
   append(cov_list["sst"], .) %>%
-  set_names(c(5, 10, 20, 40, 80))
+  set_names(c(5, 10, 20, 40))
 
 
 p.sst.5 <- ggplot() +
@@ -138,7 +137,7 @@ p.sst.80 <- ggplot() +
            expand = FALSE) +
   theme_bw()
 
-(p.sst.5 | ((p.sst.10 + p.sst.20) / (p.sst.40 + p.sst.80))) +
+p.sst.5 + p.sst.10 + p.sst.20 + p.sst.40  +
   plot_layout(guides = 'collect') & theme(legend.position = "top")
 
 
@@ -163,9 +162,6 @@ rsf.pts_10_40km <- extract.covars(data = rsf.pts_10, layers = cov_coarse_list$sc
                                   along = FALSE, ind = "month.year", imputed = FALSE)
 #takes 7 sec to run on desktop (18 cores)
 
-rsf.pts_10_80km <- extract.covars(data = rsf.pts_10, layers = cov_coarse_list$sc.80, dyn_names = c('npp', 'sst'),
-                                  along = FALSE, ind = "month.year", imputed = FALSE)
-#takes 7 sec to run on desktop (18 cores)
 plan(sequential)
 
 
@@ -182,12 +178,10 @@ x181796 <- list(`5km` = rsf.pts_10_5km %>%
   `20km` = rsf.pts_10_20km %>%
     filter(id == 181796),
   `40km` = rsf.pts_10_40km %>%
-    filter(id == 181796),
-  `80km` = rsf.pts_10_80km %>%
     filter(id == 181796)
 ) %>%
   bind_rows(.id = "scale") %>%
-  mutate(scale = factor(scale, levels = c('5km','10km','20km','40km','80km')))
+  mutate(scale = factor(scale, levels = c('5km','10km','20km','40km')))
 
 ggplot() +
   geom_point(data = x181796 %>%
@@ -233,7 +227,7 @@ ggplot() +
 ### Export prepped data ###
 ###########################
 
-# write_csv(rsf.pts_10_10km, "Processed_data/GoM_Cm_RSFprep_10x_10km.csv")
-# write_csv(rsf.pts_10_20km, "Processed_data/GoM_Cm_RSFprep_10x_20km.csv")
-# write_csv(rsf.pts_10_40km, "Processed_data/GoM_Cm_RSFprep_10x_40km.csv")
-# write_csv(rsf.pts_10_80km, "Processed_data/GoM_Cm_RSFprep_10x_80km.csv")
+write_csv(rsf.pts_10_10km, "Processed_data/GoM_Cm_RSFprep_10x_10km.csv")
+write_csv(rsf.pts_10_20km, "Processed_data/GoM_Cm_RSFprep_10x_20km.csv")
+write_csv(rsf.pts_10_40km, "Processed_data/GoM_Cm_RSFprep_10x_40km.csv")
+

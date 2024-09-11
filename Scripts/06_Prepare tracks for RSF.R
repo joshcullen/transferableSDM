@@ -29,7 +29,7 @@ gom.sf <- st_read_parquet("Environ_data/GoM_land.parquet")
 glimpse(dat)
 summary(dat)
 
-
+# Add columns for month-year and step length
 dat <- dat %>%
   mutate(month.year = as_date(date), .after = 'date') %>%
   mutate(month.year = str_replace(month.year, pattern = "..$", replacement = "01"))
@@ -43,6 +43,7 @@ bbox <- dat %>%
   st_as_sfc() %>%
   st_buffer(5000)  #buffer each side by 5 km
 
+# Viz GoM tracks w/in study region
 ggplot() +
   geom_sf(data = gom.sf) +
   geom_point(data = dat, aes(x, y, color = behav), alpha = 0.6) +
@@ -51,18 +52,15 @@ ggplot() +
   labs(x="",y="") +
   coord_sf(expand = FALSE) +
   theme_bw()
-# ggsave("../../Conference Presentations/SERSTM 2023/behav_gom_map.png", width = 8, height = 6,
-#        units = "in", dpi = 400)
+
 
 
 #####################################
 ### Load environmental covariates ###
 #####################################
 
-## Load in environ rasters
+## Load environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
-# files <- files[!grepl(pattern = "Kd490", files)]  #remove Kd490 datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -95,7 +93,7 @@ cov_list <- map(cov_list, terra::project, 'EPSG:3395')
 
 
 
-## Map example of environmental covariates
+### Map example of environmental covariates ###
 
 # Define map extent
 bbox_p <- ext(cov_list$bathym)
@@ -140,6 +138,7 @@ p.gom.bathym + p.gom.npp + p.gom.sst +
 # ggsave("Tables_Figs/Figure S4.png", width = 8, height = 3, units = "in", dpi = 400)
 
 
+
 #####################################################################
 ### Generate random (available) points and extract environ covars ###
 #####################################################################
@@ -161,31 +160,20 @@ toc()  #took 10 sec
 table(dat2$id)  #min of 38; max of 1961
 
 
-# Mask the bbox by the land layer to generate available pts in water
-bbox_mask <- st_mask(bbox, gom.sf)
-
-# Check polygon of availability
-ggplot() +
-  geom_sf(data = bbox, fill = "lightblue") +
-  geom_sf(data = gom.sf) +
-  geom_point(data = dat2, aes(x, y, color = behav)) +
-  geom_sf(data = bbox_mask, color = "red", fill = "transparent") +
-  scale_color_viridis_d() +
-  theme_bw()
 
 
 # Convert to class for use of {amt} functions
 dat3 <- make_track(dat2, .x = x, .y = y, .t = date, id = id, month.year = month.year,
                    behav = behav, crs = 3395) %>%
   nest(data = -id)
-# dat3 <- dat2 %>%
-#   nest(data = -id)
+
 
 # Create KDE_href for each ID and add as nested column
 tic()
 dat4 <- dat3 %>%
   mutate(ud = map(data, ~hr_akde(.x, levels = 0.99)))
 toc()  #took 40 sec to run
+
 
 # Add buffer to extend available area
 mean(dat2$step, na.rm = TRUE) * 6  #check avg distance that could be covered in a day (based on 4 hr time step)
@@ -207,10 +195,7 @@ dat4 <- dat4 %>%
   mutate(data_res = map(data, ~{.x %>%
       filter(behav == 'Resident')}
       ))
-# dat4 <- dat3 %>%
-#   mutate(data_res = map(data, ~{.x %>%
-#       filter(behav == 'Resident')}
-#   ))
+
 
 
 # Generate available points and randomly assign to month.year per ID
@@ -227,17 +212,6 @@ dat4 <- dat4 %>%
 toc()  #takes 3.5 sec to run
 
 
-# set.seed(2023)
-# tic()
-# dat4 <- dat4 %>%
-#   mutate(avail_pts10 = map2(.x = cov_list$bathym,
-#                             .y = data_res,
-#                             ~{sample_rast_gradient(.x, n_pts = 10 * nrow(.y)) %>%
-#                                 mutate(month.year = sample(unique(.y$month.year), size = n(), replace = T))
-#                             }
-#   )
-#   )
-# toc()
 
 
 # Viz example of available point spread by month.year
@@ -257,9 +231,6 @@ used <- dat4 %>%
   dplyr::select(id, month.year, x, y, obs) %>%
   data.frame()
 
-table(used$id)  #check N per ID again; min = 34, max = 1961
-
-
 avail_10 <- dat4 %>%
   dplyr::select(id, avail_pts10) %>%
   mutate(avail_pts10 = map(avail_pts10, ~{.x %>%
@@ -269,7 +240,6 @@ avail_10 <- dat4 %>%
       )) %>%
   unnest(cols = avail_pts10) %>%
   mutate(obs = 0)
-
 
 
 rsf.pts_10 <- rbind(used, avail_10)
@@ -290,10 +260,11 @@ plan(sequential)
 
 
 
-# Viz example of available point covar values by month.year
+### Viz example of available point covar values by month.year
 x181796 <- rsf.pts_10 %>%
   filter(id == 181796)
 
+# Bathymetry
 ggplot() +
   geom_point(data = x181796 %>%
             filter(obs == 0), aes(x, y, color = bathym)) +
@@ -310,9 +281,9 @@ ggplot() +
         legend.title = element_text(size = 12),
         legend.text = element_text(size = 10)) +
   facet_wrap(~ month.year)
-# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_depth_map.png", width = 6, height = 6,
-#        units = "in", dpi = 400)
 
+
+# SST
 ggplot() +
   geom_point(data = rsf.pts_10 %>%
                filter(id == 181796, obs == 0), aes(x, y, color = sst)) +
@@ -328,8 +299,7 @@ ggplot() +
         legend.title = element_text(size = 12),
         legend.text = element_text(size = 10)) +
   facet_wrap(~ month.year)
-# ggsave("../../Conference Presentations/SERSTM 2023/use_avail_sst_map.png", width = 6, height = 6,
-#        units = "in", dpi = 400)
+
 
 
 
@@ -337,6 +307,4 @@ ggplot() +
 ### Export prepped data ###
 ###########################
 
-# write_csv(rsf.pts_10, "Processed_data/GoM_Cm_RSFprep_10x.csv")
-# write_csv(rsf.pts_30, "Processed_data/GoM_Cm_RSFprep_30x.csv")
-# write_csv(rsf.pts_50, "Processed_data/GoM_Cm_RSFprep_50x.csv")
+write_csv(rsf.pts_10, "Processed_data/GoM_Cm_RSFprep_10x.csv")

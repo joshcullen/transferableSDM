@@ -1,7 +1,5 @@
 
-##########################################################################
 ### Prefilter tracks for analysis by continuous-time state-space model ###
-##########################################################################
 
 
 library(tidyverse)
@@ -11,6 +9,10 @@ library(rnaturalearth)
 library(plotly)
 
 
+
+#################
+### Load data ###
+#################
 
 ## Load turtle data
 dat<- read_csv("Raw_data/Master Sat Tag Dataset.csv")
@@ -38,7 +40,7 @@ dat2<- dat %>%
 
 
 
-## Remove observations before deployment; easiest to do this per region and source
+## Remove any observations prior to tag deployment; easiest to do this per region and source
 
 ###############
 # Fuentes-GoM #
@@ -126,7 +128,7 @@ fuentes.gom3 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
-#original length is 8556; after filetering w/ deploy dates, new length is 8527
+#original length is 8960; after filtering w/ deploy dates, new length is 8527
 
 
 ##############
@@ -205,7 +207,7 @@ lamont.gom3 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
-#original has length 19512; filtered by deploy date has length 19444
+#original has length 19762; filtered by deploy date has length 19444
 
 
 
@@ -251,7 +253,7 @@ plotly::ggplotly(
     coord_sf(xlim = c(-90, -78), ylim = c(18, 30))
 )
 
-
+#original has length 19289; filtered data has length 18467
 
 
 
@@ -290,6 +292,8 @@ fuentes.fdn %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
+
+#original has length 59375; filtered by deploy date has length 59325
 
 
 
@@ -343,7 +347,7 @@ fuentes.par2 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
-#original has length of 7543; filtered by deploy date has length of 7530
+#original has length of 7544; filtered by deploy date has length of 7530
 
 
 
@@ -402,7 +406,7 @@ domit.par2 %>%
   dplyr::select(id, date, x, y) %>%
   bayesmove::shiny_tracks(epsg = 4326)
 
-#original has length 7514; filtered by deploy date has length 7488
+#original has length 7574; filtered by deploy date has length 7488
 
 
 
@@ -445,12 +449,13 @@ plotly::ggplotly(
     coord_sf(xlim = c(50, 53), ylim = c(24, 27))
 )
 
+#original has length 1582; filtered data has length 1580
 
 
 
-######################################################################
-### Account for location error w/ continuous-time SSM based on CRW ###
-######################################################################
+#####################################################
+### Merge data and remove IDs w/ few observations ###
+#####################################################
 
 # merge all filtered datasets back together
 dat3 <- rbind(fuentes.gom3,
@@ -477,8 +482,10 @@ dat4 <- dat3 %>%
 
 
 
-## Export processed data
+#############################
+### Export processed data ###
+#############################
 
-# write.csv(dat4, "Processed_data/Prefiltered_Cm_Tracks.csv", row.names = FALSE)  #add info here to save your data
+write.csv(dat4, "Processed_data/Prefiltered_Cm_Tracks.csv", row.names = FALSE)  #add info here to save your data
 
 

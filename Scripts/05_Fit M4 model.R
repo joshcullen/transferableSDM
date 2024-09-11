@@ -1,5 +1,4 @@
 
-
 ### Fit M4 to estimate resident and migratory phases ###
 
 library(tidyverse)
@@ -45,7 +44,11 @@ dat <- list(GoM = dat_gom, Brazil = dat_br, Qatar = dat_qa) %>%
   bind_rows(.id = "Region")
 
 
-# Map all tracks
+
+######################
+### Map all tracks ###
+######################
+
 world <- ne_countries(scale = 50, returnclass = 'sf') %>%
   filter(continent != "Antarctica")
 dat.sf <- dat %>%
@@ -53,7 +56,7 @@ dat.sf <- dat %>%
   st_as_sf(., coords = c('x','y'), crs = 3395) %>%
   st_transform(4326) %>%
   mutate(lon = st_coordinates(.)[,1],
-         lat = st_coordinates(.)[,2]) %>%
+         lat = st_coordinates(.)[,2]) %>%  #convert projected coords to lat/lon
   st_drop_geometry()
 
 # Generate color palette for tracks
@@ -90,6 +93,7 @@ br.sf <- st_read_parquet("Environ_data/Brazil_land.parquet") %>%
 qa.sf <- st_read_parquet("Environ_data/Qatar_land.parquet") %>%
   st_transform(4326)
 
+# Gulf of Mexico
 ggplot() +
   geom_sf(data = gom.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
@@ -117,7 +121,7 @@ ggplot() +
 # ggsave("Tables_Figs/Figure_1_GoM.png", width = 7, height = 5, units = "in", dpi = 400)
 
 
-
+# Brazil
 ggplot() +
   geom_sf(data = br.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
@@ -145,6 +149,7 @@ ggplot() +
 # ggsave("Tables_Figs/Figure_1_Brazil.png", width = 3.5, height = 5, units = "in", dpi = 400)
 
 
+# Qatar
 ggplot() +
   geom_sf(data = qa.sf) +
   geom_path(data = dat.sf, aes(lon, lat, group = id, color = id), linewidth = 0.75) +
@@ -182,18 +187,13 @@ ggplot() +
 ### Prepare data for model ###
 ##############################
 
-# Wrangle data into proper format for {momentuHMM}
+# Wrangle data into proper format for {bayesmove}
 dat2 <- dat %>%
   prep_data(dat = ., coord.names = c('x','y'), id = "id")
 
 
-# Remove any bouts that have large (i.e., 3-day) gaps
-dat3 <- dat2 %>%
-  drop_na(x, y)
-
-
 # Since we don't need to filter out obs at other time intervals, we still need to add required variables to data.frame
-dat3 <- dat3 %>%
+dat3 <- dat2 %>%
   group_by(id) %>%  #need to number rows separately for each ID
   mutate(time1 = 1:n(),
          obs = 1:n()) %>%
@@ -214,7 +214,9 @@ dat3$step <- dat3$step / 1000
 
 
 
-### Discretize data stream for models
+#########################################
+### Discretize data stream for models ###
+#########################################
 
 # Viz density plots of step length and displacement
 ggplot(dat3) +
@@ -314,7 +316,7 @@ set.seed(123)
 
 alpha <- 1  # hyperparameter for prior (Dirichlet) distribution
 ngibbs <- 80000  # number of iterations for Gibbs sampler
-nbins <- c(max(dat.disc$SL, na.rm = TRUE), max(dat.disc$Disp))  # define number of bins per data stream (in order from dat.list.sub)
+nbins <- c(max(dat.disc$SL, na.rm = TRUE), max(dat.disc$Disp, na.rm = TRUE))  # define number of bins per data stream (in order from dat.list.sub)
 
 progressr::handlers(progressr::handler_progress(clear = FALSE))  #to initialize progress bar
 future::plan(multisession, workers = availableCores() - 2)  #run MCMC chains in parallel
@@ -488,8 +490,10 @@ ggplot(theta.estim.long %>%
 
 
 
+#########################################
+### Assign states to segments and map ###
+#########################################
 
-#### Assign states to segments and map ####
 world <- ne_countries(scale = 50, returnclass = 'sf') %>%
   filter(continent != 'Antarctica') %>%
   st_transform(3395)
@@ -500,8 +504,9 @@ dat.seg.list <- df_to_list(dat = dat.seg, ind = "id")
 # Merge results with original data
 dat.out <- assign_behavior(dat.orig = dat3,
                           dat.seg.list = dat.seg.list,
-                          theta.estim.long = theta.estim.long,
-                          behav.names = levels(theta.estim.long$behavior))
+                          theta.estim.long = theta.estim.long#,
+                          # behav.names = levels(theta.estim.long$behavior)
+                          )
 
 # Map dominant behavior for all IDs
 plotly::ggplotly(
@@ -539,11 +544,13 @@ qa.dat.out <- dat.out %>%
 
 
 
-
+############################
 ### Viz behavior for GoM ###
+############################
 
 # Convert coords to lon/lat
 gom.dat.sf <- gom.dat.out %>%
+  drop_na(x, y) %>%
   st_as_sf(., coords = c('x','y'), crs = 3395) %>%
   st_transform(4326)
 
@@ -572,10 +579,12 @@ p.statedep + p.behav_map +
 # ggsave("Tables_Figs/Figure S3.png", width = 6, height = 3.5, units = "in", dpi = 400)
 
 
+
+
 ###############################
 ### Export annotated tracks ###
 ###############################
 
-# write_csv(gom.dat.out, "Processed_data/GoM_Cm_Tracks_behav.csv")
-# write_csv(br.dat.out, "Processed_data/Brazil_Cm_Tracks_behav.csv")
-# write_csv(qa.dat.out, "Processed_data/Qatar_Cm_Tracks_behav.csv")
+write_csv(gom.dat.out, "Processed_data/GoM_Cm_Tracks_behav.csv")
+write_csv(br.dat.out, "Processed_data/Brazil_Cm_Tracks_behav.csv")
+write_csv(qa.dat.out, "Processed_data/Qatar_Cm_Tracks_behav.csv")

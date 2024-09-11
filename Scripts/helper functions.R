@@ -1504,3 +1504,16 @@ sample_rast_gradient <- function(rast, n_pts) {
 
   return(avail)
 }
+
+#-----------------------------------
+
+# Function from {crawlUtils} (v0.1.56) to define bouts of movement to retain
+#https://github.com/dsjohnson/crawlUtils/blob/master/R/cu_add_gaps.R
+cu_add_gaps <- function(x, gap=7, time_unit="days", ...){
+  . <- NULL #handle 'no visible binding...'
+  time <- x$datetime
+  dt <- diff(time) %>% `units<-`(time_unit)
+  time_diff <- c(0, dt)
+  x$bout_id <- (time_diff >= gap) %>% {cumsum(.)+1}
+  return(x)
+}

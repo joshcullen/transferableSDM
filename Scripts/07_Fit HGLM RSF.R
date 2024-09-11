@@ -66,11 +66,12 @@ rsf.pts_10s %>%
 
 
 # Down-weighted Poisson regression
-A <- 4759.836 ^ 2  #in m^2; pixel res is 4759.836 m
+A <- 4759.836 ^ 2  #pixel area in m^2; pixel res is 4759.836 m
 rsf.pts_10s$wts <- ifelse(rsf.pts_10s$obs == 0, 5000, 1)
 rsf.pts_10s$wts2 <- ifelse(rsf.pts_10s$obs == 0, A / sum(rsf.pts_10s$obs == 0), 1e-6)
 
 
+# Test that coeffs (excluding intercept) for weighted logistic and Poisson regressions match
 logis.mod <- glm(obs ~ log.bathym + log.npp + log.sst,
                 data = rsf.pts_10s, family = binomial(), weights = wts)
 
@@ -152,71 +153,24 @@ summary(fit.RSF_hybrid)
 
 
 
-# The summary for the posterior distribution of the fixed effects:
-# fixed.coeffs <- cbind(fit.RSF_10$summary.fixed[-1,],
-#                       sigma = inla_emarginal(fit.RSF_10) %>%
-#                         sqrt()) %>%
-#   mutate(lo = mean - sigma, hi = mean + sigma) %>%
-#   mutate(param = factor(rownames(.), levels = rownames(.)))
-# fixed.coeffs <- fit.RSF_10$summary.fixed[-1,] %>%
-#   mutate(param = factor(rownames(.), levels = rownames(.)))
 
-
+# Store coefficients for fixed effects from each model
 fixed.coeffs.list <- list(corr = fit.RSF_corr$summary.fixed[-1,],
                           hybrid = fit.RSF_hybrid$summary.fixed[-1,])
 fixed.coeffs <- fixed.coeffs.list %>%
   map(~{.x %>%
-      # mutate(lo = mean - sigma, hi = mean + sigma) %>%
       mutate(param = factor(rownames(.x), levels = rownames(.x)))}) %>%
   bind_rows(.id = "dataset")
-# dplyr::slice(2:n()) %>%  #remove intercept
 
 
 ggplot(fixed.coeffs, aes(x = param)) +
   geom_hline(yintercept = 0, linewidth = 0.75) +
-  geom_linerange(aes(ymin = `0.025quant`, ymax = `0.975quant`, color = dataset), position = position_dodge(width = 0.1)) +
+  geom_linerange(aes(ymin = `0.025quant`, ymax = `0.975quant`, color = dataset),
+                 position = position_dodge(width = 0.1)) +
   geom_point(aes(y = mean, color = dataset), position = position_dodge(width = 0.1)) +
   theme_bw()
 
 
-
-# random.coeffs.list <- list(x10 = fit.RSF_10$summary.random[-1] %>%
-#                              bind_rows(.id = "param") %>%
-#                              mutate(across(param, factor)),
-#                            x30 = fit.RSF_30$summary.random[-1] %>%
-#                              bind_rows(.id = "param") %>%
-#                              mutate(across(param, factor)),
-#                            x50 = fit.RSF_50$summary.random[-1] %>%
-#                              bind_rows(.id = "param") %>%
-#                              mutate(across(param, factor)))
-#
-# random.coeffs <- random.coeffs.list %>%
-#   bind_rows(.id = "dataset")
-# levels(random.coeffs$param) <- unique(fixed.coeffs$param)
-
-
-# Add population means to random effects
-# random.coeffs <- random.coeffs %>%
-#   group_by(dataset, param) %>%
-#   group_split() %>%
-#   map2(.x = .,
-#        .y = fixed.coeffs %>%
-#          group_by(dataset, param) %>%
-#          group_split(),
-#        ~mutate(.x,
-#                mean = mean + .y$mean,
-#                `0.025quant` = `0.025quant` + .y$mean,
-#                `0.975quant` = `0.975quant` + .y$mean)) %>%
-#   bind_rows()
-
-# ggplot(random.coeffs) +
-#   geom_hline(yintercept = 0, linewidth = 0.75) +
-#   geom_linerange(aes(x = ID, ymin = `0.025quant`, ymax = `0.975quant`, color = param)) +
-#   geom_point(aes(y = mean, x = ID, color = param)) +
-#   geom_linerange(data = fixed.coeffs, aes(ymin = `0.025quant`, ymax = `0.975quant`), x = 50) +
-#   geom_point(data = fixed.coeffs, aes(y = mean), x = 50) +
-#   theme_bw() +
-#   facet_grid(dataset ~ param, scales = "free")
 
 
 
@@ -227,16 +181,13 @@ ggplot(fixed.coeffs, aes(x = param)) +
 ### Viz marginal effects plots per environ covar ###
 ####################################################
 
-
-# random.coeffs2 <- random.coeffs %>%
-#   filter(dataset == 'x10') %>%
-#   dplyr::select(param, ID, mean, `0.025quant`, `0.975quant`)
-
-
 ### Bathymetry ###
 
-bathym.newdata <- data.frame(bathym = seq(min(rsf.pts_10s$log.bathym), max(rsf.pts_10s$log.bathym), length.out = 500),
-                             bathym.2 = seq(min(rsf.pts_10s$log.bathym), max(rsf.pts_10s$log.bathym), length.out = 500) ^ 2,
+# Define range of depth values on which to predict (while holding other covars at 0)
+bathym.newdata <- data.frame(bathym = seq(min(rsf.pts_10s$log.bathym), max(rsf.pts_10s$log.bathym),
+                                          length.out = 500),
+                             bathym.2 = seq(min(rsf.pts_10s$log.bathym), max(rsf.pts_10s$log.bathym),
+                                            length.out = 500) ^ 2,
                              npp = 0,
                              npp.2 = 0,
                              sst = 0,
@@ -244,27 +195,7 @@ bathym.newdata <- data.frame(bathym = seq(min(rsf.pts_10s$log.bathym), max(rsf.p
   as.matrix()
 
 
-
-
-# pred.bathym <- vector("list", length = n_distinct(random.coeffs2$ID))
-# names(pred.bathym) <- unique(random.coeffs2$ID)
-#
-# for (i in 1:n_distinct(random.coeffs2$ID)) {
-#
-#   coeff1 <- random.coeffs2 %>%
-#     filter(ID == unique(random.coeffs2$ID)[i]) %>%
-#     dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
-#     as.matrix()
-#
-#   tmp <- bathym.newdata %*% coeff1 %>%
-#     data.frame() %>%
-#     mutate(bathym = exp(bathym.newdata[,1]))
-#
-#   pred.bathym[[i]] <- tmp
-# }
-# pred.bathym <- pred.bathym %>%
-#   bind_rows(.id = "id")
-
+# Store properly formatted coeffs for mean of fixed effects
 coeffs <- fixed.coeffs %>%
   mutate(coeff = rep(rownames(fit.RSF_corr$summary.fixed[-1,]), 2)) %>%
   select(dataset, mean, coeff) %>%
@@ -272,6 +203,7 @@ coeffs <- fixed.coeffs %>%
   select(-coeff) %>%
   as.matrix()
 
+# Use matrix multiplication to generate prediction of marginal effect
 pred.bathym.pop <- bathym.newdata %*% coeffs %>%
   data.frame() %>%
   mutate(bathym = exp(bathym.newdata[,1])) %>%
@@ -289,61 +221,25 @@ ggplot() +
         axis.text = element_text(size = 24)) +
   facet_wrap(~ method)
 
-# ggplot() +
-#   geom_line(data = pred.bathym, aes(x = bathym, y = exp(mean), group = id, color = id),
-#             linewidth = 1, show.legend = FALSE) +
-#   theme_bw() +
-#   lims(x = c(0,300), y = c(0,1500)) +
-#   labs(x = "Depth (m)", y = "Relative Intensity of Use") +
-#   theme(axis.title = element_text(size = 30),
-#         axis.text = element_text(size = 24),
-#         panel.background = element_rect(fill = "black"),
-#         panel.grid = element_blank())
-
-
-
 
 
 
 
 ### SST ###
 
+# Define range of SST values on which to predict (while holding other covars at 0)
 sst.newdata <- data.frame(bathym = 0,
                           bathym.2 = 0,
                           npp = 0,
                           npp.2 = 0,
-                          sst = seq(min(rsf.pts_10s$log.sst), max(rsf.pts_10s$log.sst), length.out = 500),
-                          sst.2 = seq(min(rsf.pts_10s$log.sst), max(rsf.pts_10s$log.sst), length.out = 500) ^ 2) %>%
+                          sst = seq(min(rsf.pts_10s$log.sst), max(rsf.pts_10s$log.sst),
+                                    length.out = 500),
+                          sst.2 = seq(min(rsf.pts_10s$log.sst), max(rsf.pts_10s$log.sst),
+                                      length.out = 500) ^ 2) %>%
   as.matrix()
 
 
-
-
-
-
-# pred.sst <- vector("list", length = n_distinct(random.coeffs2$ID))
-# names(pred.sst) <- unique(random.coeffs2$ID)
-#
-# for (i in 1:n_distinct(random.coeffs2$ID)) {
-#
-#   coeff1 <- random.coeffs2 %>%
-#     filter(ID == unique(random.coeffs2$ID)[i]) %>%
-#     dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
-#     as.matrix()
-#
-#   tmp <- sst.newdata %*% coeff1 %>%
-#     data.frame() %>%
-#     # mutate(sst = (sst.newdata[,7] * sd(rsf.pts_10s$sst, na.rm = T)) + mean(rsf.pts_10s[obs.ind_10,]$sst, na.rm = T))
-#     mutate(sst = exp(sst.newdata[,5]))
-#
-#   pred.sst[[i]] <- tmp
-# }
-#
-# pred.sst <- pred.sst %>%
-#   bind_rows(.id = "id")
-
-
-
+# Use matrix multiplication to generate prediction of marginal effect
 pred.sst.pop <- sst.newdata %*% coeffs %>%
   data.frame() %>%
   mutate(sst = exp(sst.newdata[,5])) %>%
@@ -359,16 +255,6 @@ ggplot() +
         axis.text = element_text(size = 24)) +
   facet_wrap(~ method, scales = "free_y")
 
-# ggplot() +
-#   geom_line(data = pred.sst, aes(x = sst, y = exp(mean), group = id, color = id),
-#             linewidth = 1, show.legend = FALSE) +
-#   theme_bw() +
-#   lims(y = c(0,2e140)) +
-#   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
-#   theme(axis.title = element_text(size = 30),
-#         axis.text = element_text(size = 24),
-#         panel.background = element_rect(fill = "black"),
-#         panel.grid = element_blank())
 
 
 
@@ -376,41 +262,20 @@ ggplot() +
 
 ### NPP ###
 
+# Define range of SST values on which to predict (while holding other covars at 0)
 npp.newdata <- data.frame(bathym = 0,
                           bathym.2 = 0,
-                          npp = seq(min(rsf.pts_10s$log.npp), max(rsf.pts_10s$log.npp), length.out = 500),
-                          npp.2 = seq(min(rsf.pts_10s$log.npp), max(rsf.pts_10s$log.npp), length.out = 500) ^ 2,
+                          npp = seq(min(rsf.pts_10s$log.npp), max(rsf.pts_10s$log.npp),
+                                    length.out = 500),
+                          npp.2 = seq(min(rsf.pts_10s$log.npp), max(rsf.pts_10s$log.npp),
+                                      length.out = 500) ^ 2,
                           sst = 0,
                           sst.2 = 0) %>%
   as.matrix()
 
 
 
-
-
-# pred.npp <- vector("list", length = n_distinct(random.coeffs2$ID))
-# names(pred.npp) <- unique(random.coeffs2$ID)
-#
-# for (i in 1:n_distinct(random.coeffs2$ID)) {
-#
-#   coeff1 <- random.coeffs2 %>%
-#     filter(ID == unique(random.coeffs2$ID)[i]) %>%
-#     dplyr::select(mean, `0.025quant`, `0.975quant`) %>%
-#     as.matrix()
-#
-#   tmp <- npp.newdata %*% coeff1 %>%
-#     data.frame() %>%
-#     # mutate(npp = (npp.newdata[,7] * sd(rsf.pts_10s$npp, na.rm = T)) + mean(rsf.pts_10s[obs.ind_10,]$npp, na.rm = T))
-#     mutate(npp = exp(npp.newdata[,3]))
-#
-#   pred.npp[[i]] <- tmp
-# }
-#
-# pred.npp <- pred.npp %>%
-#   bind_rows(.id = "id")
-
-
-
+# Use matrix multiplication to generate prediction of marginal effect
 pred.npp.pop <- npp.newdata %*% coeffs %>%
   data.frame() %>%
   mutate(npp = exp(npp.newdata[,3])) %>%
@@ -425,16 +290,6 @@ ggplot() +
         axis.text = element_text(size = 24)) +
   facet_wrap(~ method)
 
-# ggplot() +
-#   geom_line(data = pred.npp, aes(x = npp / 1000, y = exp(mean), group = id, color = id),
-#             linewidth = 1, show.legend = FALSE) +
-#   theme_bw() +
-#   lims(y = c(0,1000)) +
-#   labs(x = expression(paste("Net Primary Productivity (", g~C~m^-2~d^-1, ")")), y = "Relative Intensity of Use") +
-#   theme(axis.title = element_text(size = 30),
-#         axis.text = element_text(size = 24),
-#         panel.background = element_rect(fill = "black"),
-#         panel.grid = element_blank())
 
 
 
@@ -447,7 +302,6 @@ ggplot() +
 
 ## Load in environ rasters
 files <- list.files(path = 'Environ_data', pattern = "GoM", full.names = TRUE)
-# files <- files[!grepl(pattern = "example", files)]  #remove any example datasets
 files <- files[grepl(pattern = "tif", files)]  #only keep GeoTIFFs
 
 # Merge into list; each element is a different covariate
@@ -506,22 +360,23 @@ newdat <- data.frame(log.bathym = terra::values(cov_list$bathym) %>%
 names(newdat) <- c('log.bathym','log.bathym2','log.npp','log.npp2','log.sst','log.sst2')
 summary(newdat)
 
-# coeff1 <- fit.RSF_10$summary.fixed$mean[-1]
-mean.pred <- as.matrix(newdat) %*% coeffs  #make predictions
+# Use matrix multiplication to generate predictions for raster by model
+mean.pred <- as.matrix(newdat) %*% coeffs
 
 
+# Store results in raster format
 rast.pred <- c(cov_list$bathym, cov_list$bathym)
 names(rast.pred) <- colnames(mean.pred)
 terra::values(rast.pred[[1]]) <- mean.pred[,1]
 terra::values(rast.pred[[2]]) <- mean.pred[,2]
-plot(rast.pred)
 
 
+# Convert from SpatRaster to DF for ggplot2
 rast.pred.df <- as.data.frame(rast.pred, xy = TRUE) |>
   pivot_longer(cols = c(corr, hybrid), names_to = "method", values_to = "pred")
-# names(rast.pred.df)[3] <- "pred"
 bbox <- ext(rast.pred)
 
+# select points co-occurring during September 2020
 tmp.pts <- rsf.pts_10s %>%
   filter(month.year == "2020-09-01", obs == 1)
 
@@ -529,7 +384,7 @@ ggplot() +
   geom_raster(data = rast.pred.df, aes(x, y, fill = pred)) +
   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
   geom_sf(data = gom.sf) +
-  geom_point(data = tmp.pts, aes(x, y), color = "forestgreen", alpha = 0.7, size = 2) +
+  geom_point(data = tmp.pts, aes(x, y), color = "chartreuse", alpha = 0.7, size = 2) +
   labs(x="",y="", title = "Population Mean: September 2020") +
   theme_bw() +
   coord_sf(xlim = c(bbox[1], bbox[2]),
@@ -541,70 +396,6 @@ ggplot() +
         legend.text = element_text(size = 16)) +
   guides(fill = guide_colourbar(barwidth = 2, barheight = 20)) +
   facet_wrap(~ method)
-
-
-
-
-
-
-# For ID 181796 in 2020-08
-# rsf.pts_10s %>%
-#   filter(id == 181796, obs == 1) %>%
-#   group_by(month.year) %>%
-#   count()  # most obs are in August
-#
-# newdat <- data.frame(log.bathym = terra::values(cov_list$bathym) %>%
-#                        abs() %>%
-#                        log(),
-#                      log.bathym2 = terra::values(cov_list$bathym) %>%
-#                        abs() %>%
-#                        log() %>%
-#                        apply(., 2, function(x) x^2),
-#                      log.npp = terra::values(cov_list$npp$`2020-08-01`) %>%
-#                        log(),
-#                      log.npp2 = terra::values(cov_list$npp$`2020-08-01`) %>%
-#                        log() %>%
-#                        apply(., 2, function(x) x^2),
-#                      log.sst = terra::values(cov_list$sst$`2020-08-01`) %>%
-#                        log(),
-#                      log.sst2 = terra::values(cov_list$sst$`2020-08-01`) %>%
-#                        log() %>%
-#                        apply(., 2, function(x) x^2))
-# names(newdat) <- c('log.bathym','log.bathym2','log.npp','log.npp2','log.sst','log.sst2')
-# summary(newdat)
-#
-# # Specify terms for ID 181796
-# ind <- which(unique(rsf.pts_10s$id) == 181796)
-# coeff.181796 <- random.coeffs2 %>%
-#   filter(ID == ind) %>%
-#   pull(mean)
-# x181796.pred <- as.matrix(newdat) %*% coeff.181796  #make predictions
-#
-#
-# rast.pred.181796 <- cov_list$bathym
-# terra::values(rast.pred.181796) <- exp(x181796.pred)
-#
-#
-# rast.pred.181796.df <- as.data.frame(rast.pred.181796, xy = TRUE)
-# names(rast.pred.181796.df)[3] <- "pred"
-#
-# ggplot() +
-#   geom_raster(data = rast.pred.181796.df, aes(x, y, fill = log(pred))) +
-#   scale_fill_viridis_c("log(Intensity)", option = 'inferno') +
-#   geom_sf(data = gom.sf) +
-#   geom_path(data = rsf.pts_10s %>%
-#               filter(id == 181796, month.year == '2020-08-01', obs == 1), aes(x, y),
-#             color = "chartreuse", linewidth = 0.5) +
-#   labs(x="",y="", title = "ID 181796: August 2020") +
-#   theme_bw() +
-#   coord_sf(xlim = c(bbox[1], bbox[2]),
-#            ylim = c(bbox[3], bbox[4]),
-#            expand = FALSE) +
-#   theme(axis.text = element_text(size = 12),
-#         plot.title = element_text(size = 26, face = "bold"),
-#         legend.title = element_text(size = 18),
-#         legend.text = element_text(size = 16)) +
-#   guides(fill = guide_colourbar(barwidth = 2, barheight = 20))
 
 
 

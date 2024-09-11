@@ -3,9 +3,6 @@
 
 library(tidyverse)
 library(INLA)
-# library(mgcv)
-# library(gratia)
-# library(gbm)
 library(terra)
 library(sfarrow)
 library(tictoc)
@@ -14,6 +11,7 @@ library(BRRR)
 library(MetBrewer)
 library(tidyterra)
 library(patchwork)
+library(ggh4x)
 
 source('Scripts/helper functions.R')
 
@@ -131,16 +129,20 @@ cov_list_qa <- map(cov_list_qa, terra::project, 'EPSG:3395')
 
 
 
-#################################
-### Validate correlative HGLM ###
-#################################
+############################
+### Validate HGLM models ###
+############################
 
 ### Brazil ###
 
+# Create vector storing all month-year values
 my.ind.br <- names(cov_list_br$npp)
-br.rast.tmp <- rep(cov_list_br$bathym, nlyr(cov_list_br$npp))
+
+# Create list to store raster predictions per month-year per model (corr vs hybrid)
+br.rast.tmp <- rep(cov_list_br$bathym, nlyr(cov_list_br$npp))  #uses bathym layer as template
 br.rast.hglm <- list(corr = br.rast.tmp, hybrid = br.rast.tmp)  #store results for both corr and hybrid
 
+# Add month-year as names for stack of SpatRasters
 names(br.rast.hglm$corr) <- my.ind.br
 names(br.rast.hglm$hybrid) <- my.ind.br
 
@@ -177,8 +179,8 @@ for (i in 1:nlyr(cov_list_br$npp)) {
   br.hglm_corr <- as.matrix(vars) %*% coeff_corr
   br.hglm_hybrid <- as.matrix(vars) %*% coeff_hybrid
 
-  # Store results in raster stack
-  terra::values(br.rast.hglm$corr[[i]]) <- br.hglm_corr  #keep on log-scale
+  # Store results in raster stack (on log-scale)
+  terra::values(br.rast.hglm$corr[[i]]) <- br.hglm_corr
   terra::values(br.rast.hglm$hybrid[[i]]) <- br.hglm_hybrid
 
 }
@@ -194,20 +196,24 @@ br.rast.hglm2 <- br.rast.hglm |>
 ## Assess model performance via Continuous Boyce Index ##
 
 ## Correlative HGLM
-boyce.br.full.hglm_corr <- vector("list", nlyr(br.rast.hglm2$corr))
-boyce.br.sub.hglm_corr <- vector("list", nlyr(br.rast.hglm2$corr))
+boyce.br.full.hglm_corr <- vector("list", nlyr(br.rast.hglm2$corr))  #all locations from Brazil
+boyce.br.sub.hglm_corr <- vector("list", nlyr(br.rast.hglm2$corr))  #subset from Brazil mainland
+
+# Calculate by month.year
 tic()
 for (i in 1:nlyr(br.rast.hglm2$corr)) {
 
-  # Subset tracks by month.year
+  # Full set of Brazil locations
   obs_full <- dat.br %>%
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
+  # Subset of Brazil locations from mainland
   obs_main <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3800000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%  #filter out locations east of this longitude
     dplyr::select(x, y)
 
+  # Calculate Boyce Index per dataset
   boyce.br.full.hglm_corr[[i]] <- boyce(fit = br.rast.hglm2$corr[[i]],
                                    obs = obs_full,
                                    nbins = 10,
@@ -229,52 +235,7 @@ toc()  #took 2.5 sec
 
 
 
-# perc.use.br.full.hglm_corr <- boyce.br.full.hglm_corr %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.full.hglm_corr, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.6 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.full.hglm %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
-#
-#
-#
-# perc.use.br.sub.hglm <- boyce.br.sub.hglm %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.sub.hglm, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #1.3 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.sub.hglm %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   ylim(0,1) +
-#   theme_bw()
-
-
+# Summarize results per dataset
 boyce.br.full.hglm_corr <- boyce.br.full.hglm_corr %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -294,20 +255,25 @@ boyce.br.sub.hglm_corr <- boyce.br.sub.hglm_corr %>%
 
 
 ## Hybrid HGLM
-boyce.br.full.hglm_hybrid <- vector("list", nlyr(br.rast.hglm2$hybrid))
-boyce.br.sub.hglm_hybrid <- vector("list", nlyr(br.rast.hglm2$hybrid))
+boyce.br.full.hglm_hybrid <- vector("list", nlyr(br.rast.hglm2$hybrid))  #all locations from Brazil
+boyce.br.sub.hglm_hybrid <- vector("list", nlyr(br.rast.hglm2$hybrid))  #subset from Brazil mainland
+
+# Calculate by month.year
 tic()
 for (i in 1:nlyr(br.rast.hglm2$hybrid)) {
 
-  # Subset tracks by month.year
+  # Full set of Brazil locations
   obs_full <- dat.br %>%
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
+  # Subset of Brazil locations from mainland
   obs_main <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3800000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%  #filter out locations east of this longitude
     dplyr::select(x, y)
 
+
+  # Calculate Boyce Index per dataset
   boyce.br.full.hglm_hybrid[[i]] <- boyce(fit = br.rast.hglm2$hybrid[[i]],
                                         obs = obs_full,
                                         nbins = 10,
@@ -329,52 +295,7 @@ toc()  #took 2.5 sec
 
 
 
-# perc.use.br.full.hglm_hybrid <- boyce.br.full.hglm_hybrid %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-
-# check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.full.hglm_hybrid, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.6 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.full.hglm %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
-#
-#
-#
-# perc.use.br.sub.hglm <- boyce.br.sub.hglm %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.sub.hglm, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #1.3 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.sub.hglm %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   ylim(0,1) +
-#   theme_bw()
-
-
+# Summarize results per dataset
 boyce.br.full.hglm_hybrid <- boyce.br.full.hglm_hybrid %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -395,10 +316,14 @@ boyce.br.sub.hglm_hybrid <- boyce.br.sub.hglm_hybrid %>%
 
 ### Qatar ###
 
+# Create vector storing all month-year values
 my.ind.qa <- names(cov_list_qa$npp)
+
+# Create list to store raster predictions per month-year per model (corr vs hybrid)
 qa.rast.tmp <- rep(cov_list_qa$bathym, nlyr(cov_list_qa$npp))
 qa.rast.hglm <- list(corr = qa.rast.tmp, hybrid = qa.rast.tmp)  #store results for both corr and hybrid
 
+# Add month-year as names for stack of SpatRasters
 names(qa.rast.hglm$corr) <- my.ind.qa
 names(qa.rast.hglm$hybrid) <- my.ind.qa
 
@@ -435,8 +360,8 @@ for (i in 1:nlyr(cov_list_qa$npp)) {
   qa.hglm_corr <- as.matrix(vars) %*% coeff_corr
   qa.hglm_hybrid <- as.matrix(vars) %*% coeff_hybrid
 
-  # Store results in raster stack
-  terra::values(qa.rast.hglm$corr[[i]]) <- qa.hglm_corr  #keep on log-scale
+  # Store results in raster stack (on log-scale)
+  terra::values(qa.rast.hglm$corr[[i]]) <- qa.hglm_corr
   terra::values(qa.rast.hglm$hybrid[[i]]) <- qa.hglm_hybrid
 
 }
@@ -461,6 +386,7 @@ for (i in 1:nlyr(qa.rast.hglm2$corr)) {
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
+  # Calculate Boyce Index
   boyce.qa.hglm_corr[[i]] <- boyce(fit = qa.rast.hglm2$corr[[i]],
                               obs = obs,
                               nbins = 10,
@@ -473,26 +399,7 @@ skrrrahh("khaled3")
 toc()  #took 1 sec
 
 
-# perc.use.qa.hglm <- boyce.qa.hglm %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.qa.hglm, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.6 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.qa.hglm %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
+
 
 
 
@@ -506,6 +413,7 @@ for (i in 1:nlyr(qa.rast.hglm2$hybrid)) {
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
+  # Calculate Boyce Index
   boyce.qa.hglm_hybrid[[i]] <- boyce(fit = qa.rast.hglm2$hybrid[[i]],
                                    obs = obs,
                                    nbins = 10,
@@ -519,7 +427,7 @@ toc()  #took 1 sec
 
 
 
-
+# Summarize results per model
 boyce.qa.hglm_corr <- boyce.qa.hglm_corr %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -543,9 +451,9 @@ boyce.qa.hglm_hybrid <- boyce.qa.hglm_hybrid %>%
 
 
 
-#####################
-### Validate HGPR ###
-#####################
+############################
+### Validate HGPR models ###
+############################
 
 
 # Define vector of covar names
@@ -556,10 +464,6 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
                  log.npp = c(20, 200000),
                  log.sst = c(12,35)) %>%
   map(log)
-
-# nbasis <- 5  #number of basis functions for approximating GP
-# degree <- 2  #degree for defining 1D mesh of GP
-# alpha <- 2  #for calculating Matern covariance matrix
 
 
 # Define 1D mesh per covar
@@ -576,10 +480,14 @@ for (i in 1:length(covars)) {
 
 ### Brazil ###
 
+# Create vector storing all month-year values
 my.ind.br <- names(cov_list_br$npp)
-br.rast.tmp <- rep(cov_list_br$bathym, nlyr(cov_list_br$npp))
+
+# Create list to store raster predictions per month-year per model (corr vs hybrid)
+br.rast.tmp <- rep(cov_list_br$bathym, nlyr(cov_list_br$npp))  #uses bathym layer as template
 br.rast.hgpr <- list(corr = br.rast.tmp, hybrid = br.rast.tmp)  #store results for both corr and hybrid
 
+# Add month-year as names for stack of SpatRasters
 names(br.rast.hgpr$corr) <- my.ind.br
 names(br.rast.hgpr$hybrid) <- my.ind.br
 
@@ -659,6 +567,8 @@ skrrrahh('khaled2')
 toc()  #took 30 sec
 
 
+
+
 # Normalize predictions on 0-1 scale
 br.rast.hgpr2 <- br.rast.hgpr |>
   map(normalize)
@@ -667,20 +577,25 @@ br.rast.hgpr2 <- br.rast.hgpr |>
 ## Assess model performance via Continuous Boyce Index ##
 
 ## Correlative HGPR
-boyce.br.full.hgpr_corr <- vector("list", nlyr(br.rast.hgpr2$corr))
-boyce.br.sub.hgpr_corr <- vector("list", nlyr(br.rast.hgpr2$corr))
+boyce.br.full.hgpr_corr <- vector("list", nlyr(br.rast.hgpr2$corr))  #all locations from Brazil
+boyce.br.sub.hgpr_corr <- vector("list", nlyr(br.rast.hgpr2$corr))  #subset from Brazil mainland
+
+# Calculate by month.year
 tic()
 for (i in 1:nlyr(br.rast.hgpr2$corr)) {
 
-  # Subset tracks by month.year
+  # Full set of Brazil locations
   obs_full <- dat.br %>%
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
+  # Subset of Brazil locations from mainland
   obs_main <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3800000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%  #filter out locations east of this longitude
     dplyr::select(x, y)
 
+
+  # Calculate Boyce Index per dataset
   boyce.br.full.hgpr_corr[[i]] <- boyce(fit = br.rast.hgpr2$corr[[i]],
                                    obs = obs_full,
                                    nbins = 10,
@@ -702,52 +617,7 @@ toc()  #took 2 sec
 
 
 
-# perc.use.br.full.hgpr <- boyce.br.full.hgpr %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.full.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #5 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.full.hgpr %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
-#
-#
-#
-# perc.use.br.sub.hgpr <- boyce.br.sub.hgpr %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.sub.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.2 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.sub.hgpr %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   ylim(0,1) +
-#   theme_bw()
-
-
+# Summarize results per dataset
 boyce.br.full.hgpr_corr <- boyce.br.full.hgpr_corr %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -766,20 +636,25 @@ boyce.br.sub.hgpr_corr <- boyce.br.sub.hgpr_corr %>%
 
 
 ## Hybrid HGPR
-boyce.br.full.hgpr_hybrid <- vector("list", nlyr(br.rast.hgpr2$hybrid))
-boyce.br.sub.hgpr_hybrid <- vector("list", nlyr(br.rast.hgpr2$hybrid))
+boyce.br.full.hgpr_hybrid <- vector("list", nlyr(br.rast.hgpr2$hybrid))  #all locations from Brazil
+boyce.br.sub.hgpr_hybrid <- vector("list", nlyr(br.rast.hgpr2$hybrid))  #subset from Brazil mainland
+
+# Calculate by month.year
 tic()
 for (i in 1:nlyr(br.rast.hgpr2$hybrid)) {
 
-  # Subset tracks by month.year
+  # Full set of Brazil locations
   obs_full <- dat.br %>%
     filter(month.year == my.ind.br[i]) %>%
     dplyr::select(x, y)
 
+  # Subset of Brazil locations from mainland
   obs_main <- dat.br %>%
-    filter(month.year == my.ind.br[i], x < -3800000) %>%
+    filter(month.year == my.ind.br[i], x < -3800000) %>%  #filter out locations east of this longitude
     dplyr::select(x, y)
 
+
+  # Calculate Boyce Index per dataset
   boyce.br.full.hgpr_hybrid[[i]] <- boyce(fit = br.rast.hgpr2$hybrid[[i]],
                                         obs = obs_full,
                                         nbins = 10,
@@ -801,52 +676,7 @@ toc()  #took 2 sec
 
 
 
-# perc.use.br.full.hgpr <- boyce.br.full.hgpr %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.full.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #5 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.full.hgpr %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
-#
-#
-#
-# perc.use.br.sub.hgpr <- boyce.br.sub.hgpr %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.br.sub.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.2 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.br.sub.hgpr %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   ylim(0,1) +
-#   theme_bw()
-
-
+# Summarize results per dataset
 boyce.br.full.hgpr_hybrid <- boyce.br.full.hgpr_hybrid %>%
   map(., pluck, "cor") %>%
   unlist() %>%
@@ -869,10 +699,14 @@ boyce.br.sub.hgpr_hybrid <- boyce.br.sub.hgpr_hybrid %>%
 
 ### Qatar ###
 
+# Create vector storing all month-year values
 my.ind.qa <- names(cov_list_qa$npp)
-qa.rast.tmp <- rep(cov_list_qa$bathym, nlyr(cov_list_qa$npp))
+
+# Create list to store raster predictions per month-year per model (corr vs hybrid)
+qa.rast.tmp <- rep(cov_list_qa$bathym, nlyr(cov_list_qa$npp))  #uses bathym layer as template
 qa.rast.hgpr <- list(corr = qa.rast.tmp, hybrid = qa.rast.tmp)  #store results for both corr and hybrid
 
+# Add month-year as names for stack of SpatRasters
 names(qa.rast.hgpr$corr) <- my.ind.qa
 names(qa.rast.hgpr$hybrid) <- my.ind.qa
 
@@ -953,6 +787,7 @@ skrrrahh('khaled2')
 toc()  #took 1 sec
 
 
+
 # Normalize predictions on 0-1 scale
 qa.rast.hgpr2 <- qa.rast.hgpr |>
   map(normalize)
@@ -970,6 +805,8 @@ for (i in 1:nlyr(qa.rast.hgpr2$corr)) {
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
+
+  # Calculate Boyce Index
   boyce.qa.hgpr_corr[[i]] <- boyce(fit = qa.rast.hgpr2$corr[[i]],
                               obs = obs,
                               nbins = 10,
@@ -980,38 +817,6 @@ for (i in 1:nlyr(qa.rast.hgpr2$corr)) {
 }
 skrrrahh("khaled3")
 toc()  #took 1 sec
-
-
-# perc.use.qa.hgpr <- boyce.qa.hgpr %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.qa.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.6 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.qa.hgpr %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
-
-
-
-boyce.qa.hgpr_corr <- boyce.qa.hgpr_corr %>%
-  map(., pluck, "cor") %>%
-  unlist() %>%
-  data.frame(cor = .,
-             Region = "Qatar",
-             Method = "HGPR_corr")
-
 
 
 
@@ -1027,6 +832,8 @@ for (i in 1:nlyr(qa.rast.hgpr2$hybrid)) {
     filter(month.year == my.ind.qa[i]) %>%
     dplyr::select(x, y)
 
+
+  # Calculate Boyce Index
   boyce.qa.hgpr_hybrid[[i]] <- boyce(fit = qa.rast.hgpr2$hybrid[[i]],
                                    obs = obs,
                                    nbins = 10,
@@ -1039,27 +846,14 @@ skrrrahh("khaled3")
 toc()  #took 1 sec
 
 
-# perc.use.qa.hgpr <- boyce.qa.hgpr %>%
-#   map(., pluck, "perc.use") %>%
-#   set_names(1:length(.)) %>%
-#   bind_rows() %>%
-#   janitor::remove_empty(which = "cols") %>%
-#   apply(., 2, function(x) cumsum(rev(x)))
-#
-# # check fewest bins that contain >=90% of all obs
-# apply(perc.use.qa.hgpr, 2, function(x) which(x >= 0.9)[1]) %>%
-#   mean()  #2.6 bins
-#
-# # Viz plot of cumulative percentage of obs per bin (highest to lowest)
-# perc.use.qa.hgpr %>%
-#   data.frame() %>%
-#   mutate(bin = factor(10:1, levels = 10:1)) %>%
-#   pivot_longer(cols = -bin, names_to = 'month.year', values_to = "cum.perc") %>%
-#   ggplot(aes(bin, cum.perc)) +
-#   geom_hline(yintercept = 0.9, linewidth = 0.75, linetype = "dashed", color = "red") +
-#   geom_line(aes(group = month.year, color = month.year)) +
-#   theme_bw()
 
+# Summarize results per model
+boyce.qa.hgpr_corr <- boyce.qa.hgpr_corr %>%
+  map(., pluck, "cor") %>%
+  unlist() %>%
+  data.frame(cor = .,
+             Region = "Qatar",
+             Method = "HGPR_corr")
 
 
 boyce.qa.hgpr_hybrid <- boyce.qa.hgpr_hybrid %>%
@@ -1079,15 +873,18 @@ boyce.qa.hgpr_hybrid <- boyce.qa.hgpr_hybrid %>%
 ### Summarize Validation Results ###
 ####################################
 
+# Merge all results together
 boyce.fit <- rbind(boyce.br.full.hglm_corr, boyce.br.sub.hglm_corr, boyce.qa.hglm_corr,
                    boyce.br.full.hglm_hybrid, boyce.br.sub.hglm_hybrid, boyce.qa.hglm_hybrid,
                    boyce.br.full.hgpr_corr, boyce.br.sub.hgpr_corr, boyce.qa.hgpr_corr,
                    boyce.br.full.hgpr_hybrid, boyce.br.sub.hgpr_hybrid, boyce.qa.hgpr_hybrid)
 
+# Calculate avg Boyce Index for Method x Region
 boyce.mean <- boyce.fit %>%
   group_by(Method, Region) %>%
   summarize(mean = mean(cor, na.rm = TRUE)) %>%
   ungroup()
+
 
 ggplot(data = boyce.fit, aes(Region, cor)) +
   geom_point(aes(fill = Method), pch = 21, alpha = 0.7, size = 4,
@@ -1116,15 +913,16 @@ ggplot(data = boyce.fit, aes(Region, cor)) +
 
 
 
-# Create example prediction maps per method
+### Create example prediction maps per method
 
+# Define spatial extent for Brazil
 bbox <- ext(br.rast.hglm$corr)
 
 # time-matched observations
 tmp.br <- dat.br %>%
   filter(month.year == "2022-02-01")
 
-# Break rasters into bins used for Boyce Index
+# Break rasters into bins used for Boyce Index (by model)
 br.rast.hglm_corr.d <- classify(br.rast.hglm2$corr, seq(0, 1, by = 0.1))
 br.rast.hglm_corr.d <- br.rast.hglm_corr.d + 1
 br.rast.hglm_corr.df <- as.data.frame(br.rast.hglm_corr.d, xy = TRUE) %>%
@@ -1151,79 +949,13 @@ br.rast.hgpr_hybrid.df <- as.data.frame(br.rast.hgpr_hybrid.d, xy = TRUE) %>%
 
 
 
-# p.hglm.br <- ggplot() +
-#   geom_raster(data = br.rast.hglm.df, aes(x, y, fill = `2022-02-01`)) +
-#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
-#   geom_sf(data = br.sf) +
-#   # geom_point(data = tmp.br, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-#   labs(x="",y="", title = "HGLM") +
-#   theme_bw() +
-#   coord_sf(xlim = c(bbox[1], bbox[2]),
-#            ylim = c(bbox[3], bbox[4]),
-#            expand = FALSE) +
-#   theme(plot.title = element_text(size = 16, face = "bold"),
-#         axis.text = element_blank(),
-#         axis.ticks = element_blank())
-#
-#
-# p.hgam.br <- ggplot() +
-#   geom_raster(data = br.rast.hgam.df, aes(x, y, fill = `2022-02-01`)) +
-#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
-#   geom_sf(data = br.sf) +
-#   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-#   labs(x="",y="", title = "HGAM") +
-#   theme_bw() +
-#   coord_sf(xlim = c(bbox[1], bbox[2]),
-#            ylim = c(bbox[3], bbox[4]),
-#            expand = FALSE) +
-#   theme(plot.title = element_text(size = 16, face = "bold"),
-#         axis.text = element_blank(),
-#         axis.ticks = element_blank())
-#
-#
-# p.brt.br <- ggplot() +
-#   geom_raster(data = br.rast.brt.df, aes(x, y, fill = `2022-02-01`)) +
-#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
-#   geom_sf(data = br.sf) +
-#   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-#   labs(x="",y="", title = "BRT") +
-#   theme_bw() +
-#   coord_sf(xlim = c(bbox[1], bbox[2]),
-#            ylim = c(bbox[3], bbox[4]),
-#            expand = FALSE) +
-#   theme(plot.title = element_text(size = 16, face = "bold"),
-#         axis.text = element_blank(),
-#         axis.ticks = element_blank())
-#
-#
-# p.hgpr.br <- ggplot() +
-#   geom_raster(data = br.rast.hgpr.df, aes(x, y, fill = `2022-02-01`)) +
-#   scale_fill_viridis_d("HS Bins", option = 'inferno', direction = -1, drop = FALSE) +
-#   geom_sf(data = br.sf) +
-#   # geom_point(data = tmp.pts, aes(x, y), color = "blue", alpha = 0.7, size = 1) +
-#   labs(x="",y="", title = "HGPR") +
-#   theme_bw() +
-#   coord_sf(xlim = c(bbox[1], bbox[2]),
-#            ylim = c(bbox[3], bbox[4]),
-#            expand = FALSE) +
-#   theme(plot.title = element_text(size = 16, face = "bold"),
-#         axis.text = element_blank(),
-#         axis.ticks = element_blank())
-#
-#
-#
-# # Make composite plot
-# p.hglm.br + p.hgam.br + p.brt.br + p.hgpr.br +
-#   plot_layout(ncol = 2, guides = "collect")
-#
-# ggsave("Tables_Figs/Figure 4.png", width = 4, height = 5, units = "in", dpi = 400)
-
-
+# Merge all binned spatial predictions
 spat.preds <- rbind(br.rast.hglm_corr.df,
                     br.rast.hglm_hybrid.df,
                     br.rast.hgpr_corr.df,
                     br.rast.hgpr_hybrid.df) %>%
   mutate(across(Method, \(x) factor(x, levels = c("HGLM (corr)","HGLM (hybrid)","HGPR (corr)","HGPR (hybrid)"))))
+
 
 ggplot() +
   geom_raster(data = spat.preds, aes(x, y, fill = `2022-02-01`)) +
@@ -1321,6 +1053,8 @@ newdat.hglm <- list(depth = data.frame(bathym = seq(min(rsf.pts_10s$log.bathym),
 marg.eff.hglm <- vector("list", length = 3) %>%
   set_names(names(newdat.hglm))
 
+
+# make prediction per covar
 for (i in seq_along(newdat.hglm)) {
 
   # Find first column per covariate to add for x-axis
@@ -1446,7 +1180,7 @@ marg.eff.hgpr2[marg.eff.hgpr2$covar == "sst" &
 
 
 
-### Combine all predictions into single DF and plot
+### Combine all predictions into single DF and plot ###
 
 marg.eff <- rbind(marg.eff.hglm2,
                  marg.eff.hgpr2) %>%
@@ -1471,7 +1205,6 @@ ggplot() +
         axis.title = element_text(face = "bold"),
         panel.grid = element_blank()
         ) +
-  # facet_wrap(Method ~ covar, ncol = 3, scales = "free", strip.position = "bottom")
   ggh4x::facet_grid2(Method ~ covar,
                      independent = "y",
                      scales = "free",
@@ -1483,4 +1216,4 @@ ggplot() +
 
 ### Export Boyce Index results ###
 
-# write_csv(boyce.fit, "Data_products/boyce_alg_results.csv")
+write_csv(boyce.fit, "Data_products/boyce_alg_results.csv")
