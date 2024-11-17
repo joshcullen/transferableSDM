@@ -66,7 +66,7 @@ rsf.pts_10s %>%
 
 
 # Down-weighted Poisson regression
-A <- 4759.836 ^ 2  #pixel area in m^2; pixel res is 4759.836 m
+A <- 2345557  #area of study region (Gulf of Mexico) in km^2; from region used to generate 'available' pts
 rsf.pts_10s$wts <- ifelse(rsf.pts_10s$obs == 0, 5000, 1)
 rsf.pts_10s$wts2 <- ifelse(rsf.pts_10s$obs == 0, A / sum(rsf.pts_10s$obs == 0), 1e-6)
 
@@ -141,7 +141,7 @@ set.seed(2023)
 tic()
 fit.RSF_hybrid <- inla(RSF.formula, family = "Poisson", data = rsf.pts_10s, weights = rsf.pts_10s$wts2,
                      control.fixed = list(
-                       mean = list(log.sst = 30*6.592, `I(log.sst^2)` = 31*-1),
+                       mean = list(log.sst = 30*6.592, `I(log.sst^2)` = 30*-1),
                        prec = list(log.sst = 0.005, `I(log.sst^2)` = 0.005)
                        ),
                      control.compute = list(waic = TRUE,

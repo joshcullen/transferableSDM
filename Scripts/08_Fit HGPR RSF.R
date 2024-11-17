@@ -41,7 +41,7 @@ rsf.pts_10s <- rsf.pts_10 %>%
 
 
 # Down-weighted Poisson regression
-A <- 4759.836 ^ 2  #pixel area in m^2; pixel res is 4759.836 m
+A <- 2345557  #area of study region (Gulf of Mexico) in km^2; from region used to generate 'available' pts
 rsf.pts_10s$wts <- ifelse(rsf.pts_10s$obs == 0, A / sum(rsf.pts_10s$obs == 0), 1e-6)
 
 
@@ -67,7 +67,7 @@ mesh.seq <- list(log.bathym = c(0.001, 5500),
 hgpr.fit_hybrid <- fit_hgpr(data = rsf.pts_10s, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
                             nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto',
                             method = "hybrid")
-#took 1.5 min
+#took 1 min
 
 summary(hgpr.fit_hybrid)
 
@@ -194,7 +194,7 @@ ggplot() +
   labs(x = "SST (°C)", y = "Relative Intensity of Use") +
   theme(axis.title = element_text(size = 30),
         axis.text = element_text(size = 24)) +
-  facet_wrap(~ method)
+  facet_wrap(~ method, scales = "free_y")
 
 ggplot() +
   geom_line(data = fixed.sst.pred, aes(x = sst, y = pred), linewidth = 1.5) +
