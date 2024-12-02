@@ -156,7 +156,8 @@ fixed.sst.coeff <- hgpr.fit_hybrid$summary.fixed$mean[-1]
 # Make predictions via linear algebra
 fixed.sst.pred <- sst.newdata %*% fixed.sst.coeff %>%
   data.frame(pred = .) %>%
-  mutate(sst = exp(sst.newdata[,1]))
+  mutate(sst = exp(sst.newdata[,1]),
+         pred = exp(pred))
 
 
 ### Viz marginal effects for corr HGPR model ###

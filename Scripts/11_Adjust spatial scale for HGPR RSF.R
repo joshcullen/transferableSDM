@@ -68,18 +68,14 @@ rsf.list2 %>%
 
 ### Down-weighted Poisson regression
 
-# Define pixel area for each spatial scale (in m^2)
-Area.list <- list(sc.5 = 4759.836 ^ 2,
-                  sc.10 = 9532.72 ^ 2,
-                  sc.20 = 19065.44 ^ 2,
-                  sc.40 = 38130.88 ^ 2
-                  )
+# Define area of study region (Gulf of Mexico) in km^2; from region used to generate 'available' pts
+A <- 2345557
 
 # Calculate weights for pres and abs per spatial scale
 rsf.list2 <- rsf.list2 %>%
-  map2(.x = ., .y = Area.list,
+  map(.x = .,
        ~{.x %>%
-           mutate(wts = case_when(obs == 0 ~ .y / sum(obs == 0),
+           mutate(wts = case_when(obs == 0 ~ A / sum(obs == 0),
                                   obs == 1 ~ 1e-6))
          }
   )
@@ -117,19 +113,19 @@ summary(hgpr.mod_5km)
 hgpr.mod_10km <- fit_hgpr(data = rsf.list2$sc.10, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
                           nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto',
                           method = "corr")
-#took 2 min to run
+#took 1.5 min to run
 summary(hgpr.mod_10km)
 
 hgpr.mod_20km <- fit_hgpr(data = rsf.list2$sc.20, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
                           nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'eb',
                           method = "corr")
-#took 1 min to run
+#took 40 sec to run
 summary(hgpr.mod_20km)
 
 hgpr.mod_40km <- fit_hgpr(data = rsf.list2$sc.40, covars = covars, pcprior = pcprior, mesh.seq = mesh.seq,
                           nbasis = 5, degree = 2, alpha = 2, age.class = FALSE, int.strategy = 'auto',
                           method = "corr")
-#took 1.25 min to run
+#took 1 min to run
 summary(hgpr.mod_40km)
 
 

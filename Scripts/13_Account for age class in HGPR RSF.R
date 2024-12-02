@@ -57,7 +57,7 @@ rsf.pts_10_5kms <- rsf.pts_10_5km %>%
 
 
 # Down-weighted Poisson regression
-A <- 4759.836 ^ 2  #pixel area in m^2; pixel res is 4759.836 m
+A <- 2345557  #area of study region (Gulf of Mexico) in km^2; from region used to generate 'available' pts
 rsf.pts_10_5kms$wts <- ifelse(rsf.pts_10_5kms$obs == 0, A / sum(rsf.pts_10_5kms$obs == 0), 1e-6)
 
 

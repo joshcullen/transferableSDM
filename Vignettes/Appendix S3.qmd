@@ -1,5 +1,5 @@
 ---
-title: "Steps to apply transferable SDM approach with hierarchical Gaussian process regression"
+title: "Example to fit transferable green turtle SDM with hierarchical Gaussian process regression"
 author:
   - name: Joshua A Cullen
     affiliations:
@@ -74,7 +74,7 @@ In this study, SDMs were implemented as habitat selection analyses within a use-
 $$\lambda = exp(\beta_0 + \beta_1 x_{depth} + \beta_2 x_{NPP} + \beta_3 x_{SST}) \tag{1}$$
 $$y \sim Poisson(\lambda) \tag{2},$$
 
-where $\lambda$ represents the intensity(i.e., relative density) of green turtles for a given pixel of the rasterized landscape as an exponential function of depth, NPP, and SST. Additionally, $y$ represents the weighted  response depending on whether the observation represents either a presence or pseudo-absence, and $\beta$ coefficients represent the intercept and slopes. To ensure that the $\beta$ coefficients reached their asymptotic estimates, we applied this model as a down-weighted Poisson regression where $y$ was transformed as
+where $\lambda$ represents the intensity (i.e., relative density) of green turtles for a given pixel of the rasterized landscape as an exponential function of depth, NPP, and SST. Additionally, $y$ represents the weighted response depending on whether the observation represents either a presence or pseudo-absence, and $\beta$ coefficients represent the intercept and slopes. To ensure that the $\beta$ coefficients reached their asymptotic estimates, we applied this model as a down-weighted Poisson regression where $y$ was transformed as
 
 $$y = 
 \begin{cases}
@@ -82,7 +82,7 @@ $$y =
     \frac{absence}{wt} = \frac{0}{A/N_{abs}},              & \text{pseudo-absence } (0)
 \end{cases}$$
 
-where weights ($wt$) were set as $1\times10^{-6}$ for presences and $\frac{A}{N_{abs}}$ for pseudo-absences. '$A$' represents the area of each grid cell of the rasterized landscape (22656039 m^2^ or 22.66 km^2^) and $N_{abs}$ is the total number of pseudo-absences. These weights were also applied when calculating the log likelihood of the model. To account for variablity in responses to environmental covariates among individual turtles, each of the slopes and the intercept was allowed to vary by turtle ID (i.e., treated as random slopes and intercept).
+where weights ($wt$) were set as $1\times10^{-6}$ for presences and $\frac{A}{N_{abs}}$ for pseudo-absences. '$A$' represents the area of study region (Gulf of Mexico; 2,345,557 km^2^) where the total number of pseudo-absences ($N_{abs}$) are sampled from. These weights were also applied when calculating the log likelihood of the model. To account for variablity in responses to environmental covariates among individual turtles, each of the slopes and the intercept was allowed to vary by turtle ID (i.e., treated as random slopes and intercept).
 
 
 # Fitting correlative HGPR model
@@ -130,7 +130,7 @@ rsf.pts_filt <- rsf.pts %>%
          log.sst = log(sst))  # log-transform covars due to right-skewed distrib
 
 # Assign weights for down-weighted Poisson regression
-A <- 4759.836 ^ 2  # grid cell area in m^2; pixel res is 4759.836 m
+A <- 2345557  #area of study region (Gulf of Mexico) in km^2
 rsf.pts_filt$wts <- ifelse(rsf.pts_filt$obs == 0, 
                         A / sum(rsf.pts_filt$obs == 0),  #weight for pseudo-absences
                         1e-6)  #weight for presences
